@@ -1,0 +1,68 @@
+// Cricket ball: polished leather with a raised main seam (six rows of
+// stitching) and a quarter seam, generated procedurally from the object-space
+// direction, so it needs no image files or UVs. The mesh must be centred on
+// the origin; the main seam is the great circle in the object's YZ plane.
+material {
+    name : ball,
+    shadingModel : lit,
+    parameters : [
+        { type : float3, name : leatherColor },
+        { type : float3, name : seamColor },
+        { type : float,  name : roughness },
+        { type : float,  name : clearCoat }
+    ],
+    variables : [ objectPos ],
+    requires : [ tangents ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.objectPos = vec4(getPosition().xyz, 0.0);
+    }
+}
+
+fragment {
+    // Cheap hash noise for leather grain.
+    float hash(vec3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec3 n = normalize(variable_objectPos.xyz);
+        vec3 color = materialParams.leatherColor;
+        float rough = materialParams.roughness;
+
+        // Leather grain: small brightness variation.
+        color *= 0.92 + 0.16 * hash(floor(n * 180.0));
+
+        // Main seam around the x = 0 great circle.
+        float d = abs(n.x);                  // distance from the seam plane (on the unit sphere)
+        float angle = atan(n.y, n.z);        // position along the seam
+        // Units are on the unit sphere: for a 36 mm radius ball, 0.028 ~ 1 mm.
+        if (d < 0.028) {
+            color *= 0.55;                   // the groove between the two halves
+            rough = 0.7;
+        } else if (d < 0.14) {
+            // Three stitch rows each side; stitches are short dashes along the seam
+            // (~80 per revolution, about 2.8 mm apart).
+            float row = fract((d - 0.028) / 0.0373);
+            float dash = fract(angle * 80.0 / 6.2831853);
+            if (row > 0.3 && row < 0.7 && dash < 0.55) {
+                color = materialParams.seamColor;
+                rough = 0.8;
+            }
+        }
+
+        // Quarter seam (flush, inside stitching only) across each half.
+        if (abs(n.z) < 0.012 && d > 0.15) color *= 0.65;
+
+        material.baseColor = vec4(color, 1.0);
+        material.roughness = rough;
+        material.metallic = 0.0;
+        material.clearCoat = materialParams.clearCoat;
+        material.clearCoatRoughness = 0.25;
+    }
+}

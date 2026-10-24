@@ -127,6 +127,51 @@ MeshData makeCapsule(float radius, float height, int segments, int rings) {
     return m;
 }
 
+MeshData makeRing(float innerRadius, float outerRadius, int segments) {
+    MeshData m;
+    Vec3 n{0, 1, 0};
+    for (int s = 0; s <= segments; ++s) {
+        float a = math::kTwoPi * static_cast<float>(s) / static_cast<float>(segments);
+        Vec3 dir(std::cos(a), 0, -std::sin(a));
+        addVertex(m, dir * innerRadius, n);
+        addVertex(m, dir * outerRadius, n);
+    }
+    for (uint32_t s = 0; s < static_cast<uint32_t>(segments); ++s) {
+        uint32_t i = s * 2;  // inner, outer, next inner, next outer
+        addQuad(m, i, i + 1, i + 3, i + 2);
+    }
+    return m;
+}
+
+MeshData makeTorus(float majorRadius, float minorRadius, int segments, int sides) {
+    MeshData m;
+    for (int s = 0; s <= segments; ++s) {
+        float a = math::kTwoPi * static_cast<float>(s) / static_cast<float>(segments);
+        Vec3 radial(std::cos(a), 0, -std::sin(a));
+        for (int k = 0; k <= sides; ++k) {
+            float b = math::kTwoPi * static_cast<float>(k) / static_cast<float>(sides);
+            Vec3 n = radial * std::cos(b) + Vec3(0, std::sin(b), 0);
+            addVertex(m, radial * majorRadius + n * minorRadius, n);
+        }
+    }
+    uint32_t stride = static_cast<uint32_t>(sides + 1);
+    for (uint32_t s = 0; s < static_cast<uint32_t>(segments); ++s)
+        for (uint32_t k = 0; k < static_cast<uint32_t>(sides); ++k) {
+            uint32_t i0 = s * stride + k, i1 = i0 + stride;
+            addQuad(m, i0, i1, i1 + 1, i0 + 1);
+        }
+    return m;
+}
+
+void appendMesh(MeshData& dst, const MeshData& src, const math::Transform& t) {
+    uint32_t base = static_cast<uint32_t>(dst.positions.size());
+    for (size_t i = 0; i < src.positions.size(); ++i) {
+        dst.positions.push_back(t.transformPoint(src.positions[i]));
+        dst.normals.push_back(math::safeNormalize(t.transformDirection(src.normals[i]), math::kUp));
+    }
+    for (uint32_t i : src.indices) dst.indices.push_back(base + i);
+}
+
 MeshData makeSphere(float radius, int segments, int rings) {
     MeshData m;
     std::vector<ProfilePoint> profile;

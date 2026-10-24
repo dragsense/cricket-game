@@ -26,5 +26,12 @@ MeshData makeCylinder(float radius, float height, int segments);
 // Capsule along +Y, base at y = 0, total height includes both hemispheres.
 MeshData makeCapsule(float radius, float height, int segments, int rings);
 MeshData makeSphere(float radius, int segments, int rings);
+// Flat annulus in the XZ plane, facing +Y.
+MeshData makeRing(float innerRadius, float outerRadius, int segments);
+// Torus lying in the XZ plane around the origin (e.g. a boundary rope).
+MeshData makeTorus(float majorRadius, float minorRadius, int segments, int sides);
+
+// Appends `src` transformed by `t` to `dst` (merge many small parts into one draw).
+void appendMesh(MeshData& dst, const MeshData& src, const math::Transform& t);
 
 } // namespace render

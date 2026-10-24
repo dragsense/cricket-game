@@ -18,6 +18,10 @@ set(DOCTEST_VERSION  "v2.5.2")
 
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
+# Once a dependency is downloaded, never contact the network again for it on
+# reconfigure (avoids slow git fetches and accidental re-clones/rebuilds).
+# Changing a *_VERSION above still triggers a fresh download.
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
 
 # --- SDL3 (shared library, copied next to the exe) ---
 set(SDL_SHARED ON CACHE BOOL "" FORCE)

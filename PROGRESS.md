@@ -29,6 +29,12 @@ Next milestone: **M1 Rig and IK**. Start it with the `start-milestone` skill.
 - [x] EnTT `game::World` → Filament TransformManager
 - [x] GLM wrapper + doctest (56 assertions passing)
 - [x] Debug and release build warning-free, game runs
+- [x] Real-measurement ground (config/scene.json):
+  - round outfield (70 m), boundary rope, run-off, 30-yard circle markers;
+  - pitch 20.12 × 3.05 m with bowling, popping and return creases (Law 7);
+  - wickets with stumps and bails (Law 8);
+  - ball 22.65 cm circumference with a procedural leather, seam and quarter-seam
+    shader (Law 4).
 - [ ] User visual check of cameras and scene (pending)
 
 ## Roadmap

@@ -10,6 +10,7 @@ namespace game {
 
 struct TestScene {
     entt::entity probe = entt::null;  // follows the sim probe
+    entt::entity ball = entt::null;   // static for now; ball physics is M2
     float pitchLength = 20.12f;       // stump to stump
 };
 

@@ -78,6 +78,21 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Reason:** widest driver compatibility for development. Vulkan is the target on
   Android.
 
+## 2026-10-24: Procedural ball texture in a shader
+- **Decision:** the ball's leather, seam stitching and quarter seam are generated in
+  `assets/materials/ball.mat` from the object-space direction. There are no image files
+  and no UVs.
+- **Reason:** "everything created from code". It stays sharp at any distance and is
+  easily tuned via config (colours, clear coat).
+- **Rejected:** an image texture with sphere UVs, which needs an asset pipeline and
+  shows seams and pole distortion.
+
+## 2026-10-24: FetchContent updates disconnected
+- **Decision:** `FETCHCONTENT_UPDATES_DISCONNECTED ON`.
+- **Reason:** once downloaded, dependencies are never re-fetched on reconfigure. One
+  reconfigure had re-cloned everything and caused a full rebuild. Changing a version
+  still downloads.
+
 ## 2026-10-24: Milestone order: ball physics before fielding
 - **Decision:** M1 rig and IK, M2 basic ball flight and bounce, M3 fielding.
 - **Reason:** fielders need a ball to chase and catch.

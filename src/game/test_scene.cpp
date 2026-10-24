@@ -13,6 +13,8 @@ MaterialDesc readMaterial(const core::Config& c, const std::string& key, Materia
     m.metallic = c.getFloat(key + ".metallic", m.metallic);
     m.stripeWidth = c.getFloat(key + ".stripeWidth", m.stripeWidth);
     m.stripeStrength = c.getFloat(key + ".stripeStrength", m.stripeStrength);
+    m.seamColor = c.getVec3(key + ".seamColor", m.seamColor);
+    m.clearCoat = c.getFloat(key + ".clearCoat", m.clearCoat);
     return m;
 }
 
@@ -23,57 +25,138 @@ math::Transform at(Vec3 pos, math::Quat rot = math::identityQuat()) {
     return t;
 }
 
+// Painted-line heights above the grass/pitch, to avoid z-fighting.
+constexpr float kPitchY = 0.004f;
+constexpr float kPaintY = 0.006f;
+
+// The 30-yard fielding circle: two semicircles centred on each middle stump,
+// joined by straight lines parallel to the pitch. Returns marker positions
+// spaced roughly `spacing` metres apart along that outline.
+std::vector<Vec3> fieldingCirclePoints(float radius, float halfPitch, float spacing) {
+    std::vector<Vec3> pts;
+    int arcCount = std::max(4, static_cast<int>(math::kPi * radius / spacing));
+    int lineCount = std::max(1, static_cast<int>(2.0f * halfPitch / spacing));
+    for (int end = 0; end < 2; ++end) {
+        float sign = end == 0 ? 1.0f : -1.0f;
+        // Semicircle behind this end's stumps.
+        for (int i = 0; i <= arcCount; ++i) {
+            float a = math::kPi * static_cast<float>(i) / static_cast<float>(arcCount);
+            pts.emplace_back(radius * std::cos(a), 0.0f, sign * (halfPitch + radius * std::sin(a)));
+        }
+        // Straight side on this end's x side.
+        for (int i = 1; i < lineCount; ++i) {
+            float z = -halfPitch + 2.0f * halfPitch * static_cast<float>(i) / static_cast<float>(lineCount);
+            pts.emplace_back(sign * radius, 0.0f, z);
+        }
+    }
+    return pts;
+}
+
 } // namespace
 
 TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
     TestScene scene;
-
-    // --- Field: a grass disc out to the boundary, with a wider surround. ---
-    float fieldRadius = c.getFloat("field.radius", 70.0f);
-    MaterialDesc grass = readMaterial(c, "field.grass", {{0.25f, 0.5f, 0.18f}, 0.9f, 0.0f, 4.0f, 0.12f});
-    w.spawn(r, render::makeDisc(fieldRadius, 128), grass, at(Vec3(0.0f)), false);
-
-    MaterialDesc surround = readMaterial(c, "field.surround", {{0.2f, 0.4f, 0.15f}, 0.95f, 0.0f, 0.0f, 0.0f});
-    float surroundSize = c.getFloat("field.surroundSize", 400.0f);
-    w.spawn(r, render::makePlane(surroundSize, surroundSize), surround, at(Vec3(0, -0.01f, 0)), false);
-
-    // --- Pitch: 22 yards between the stumps, laid along Z. ---
     scene.pitchLength = c.getFloat("pitch.length", 20.12f);
-    float pitchWidth = c.getFloat("pitch.width", 3.05f);
-    float pitchOverrun = c.getFloat("pitch.overrun", 1.22f);  // prepared surface beyond each set of stumps
-    MaterialDesc pitchMat = readMaterial(c, "pitch", {{0.76f, 0.68f, 0.48f}, 0.85f, 0.0f, 0.0f, 0.0f});
-    w.spawn(r, render::makePlane(pitchWidth, scene.pitchLength + 2.0f * pitchOverrun), pitchMat, at(Vec3(0, 0.004f, 0)), false);
+    float halfPitch = 0.5f * scene.pitchLength;
 
-    // --- Creases (painted lines, 5 cm wide). ---
-    MaterialDesc paint = readMaterial(c, "crease", {{0.95f, 0.95f, 0.95f}, 0.7f, 0.0f, 0.0f, 0.0f});
-    float lineW = c.getFloat("crease.lineWidth", 0.05f);
-    float popping = c.getFloat("crease.poppingDistance", 1.22f);
-    float creaseLen = c.getFloat("crease.poppingLength", 3.66f);
-    float bowlingLen = c.getFloat("crease.bowlingLength", 2.64f);
-    render::MeshData bowlingCrease = render::makePlane(bowlingLen, lineW);
-    render::MeshData poppingCrease = render::makePlane(creaseLen, lineW);
-    for (int end = 0; end < 2; ++end) {
-        float sign = end == 0 ? 1.0f : -1.0f;
-        float stumpZ = sign * 0.5f * scene.pitchLength;
-        w.spawn(r, bowlingCrease, paint, at(Vec3(0, 0.006f, stumpZ)), false);
-        w.spawn(r, poppingCrease, paint, at(Vec3(0, 0.006f, stumpZ - sign * popping)), false);
+    // --- Round ground: outfield to the boundary, run-off beyond it. ---
+    float boundary = c.getFloat("field.boundaryRadius", 70.0f);
+    float runOff = c.getFloat("field.runOffWidth", 6.0f);
+    MaterialDesc grass = readMaterial(c, "field.grass", {{0.27f, 0.52f, 0.18f}, 0.9f, 0.0f, 5.0f, 0.12f});
+    w.spawn(r, render::makeDisc(boundary, 192), grass, at(Vec3(0.0f)), false);
+
+    MaterialDesc runOffMat = readMaterial(c, "field.runOff", {{0.22f, 0.44f, 0.16f}, 0.95f, 0.0f, 0.0f, 0.0f});
+    w.spawn(r, render::makeRing(boundary, boundary + runOff, 192), runOffMat, at(Vec3(0.0f)), false);
+
+    float surroundRadius = c.getFloat("field.surroundRadius", 300.0f);
+    MaterialDesc surround = readMaterial(c, "field.surround", {{0.35f, 0.37f, 0.33f}, 0.95f, 0.0f, 0.0f, 0.0f});
+    w.spawn(r, render::makeRing(boundary + runOff, surroundRadius, 192), surround, at(Vec3(0.0f)), false);
+
+    // Boundary rope lying on the grass.
+    float ropeR = c.getFloat("field.ropeRadius", 0.05f);
+    MaterialDesc rope = readMaterial(c, "field.rope", {{0.95f, 0.95f, 0.95f}, 0.6f, 0.0f, 0.0f, 0.0f});
+    w.spawn(r, render::makeTorus(boundary, ropeR, 256, 8), rope, at(Vec3(0, ropeR, 0)), true);
+
+    // 30-yard fielding circle: painted discs, merged into one mesh.
+    MaterialDesc paint = readMaterial(c, "crease", {{0.96f, 0.96f, 0.96f}, 0.7f, 0.0f, 0.0f, 0.0f});
+    {
+        float radius = c.getFloat("field.innerCircleRadius", 27.43f);
+        float spacing = c.getFloat("field.innerCircleMarkerSpacing", 3.0f);
+        render::MeshData dot = render::makeDisc(c.getFloat("field.innerCircleMarkerRadius", 0.15f), 16);
+        render::MeshData markers;
+        for (Vec3 p : fieldingCirclePoints(radius, halfPitch, spacing))
+            render::appendMesh(markers, dot, at(p + Vec3(0, kPaintY, 0)));
+        w.spawn(r, markers, paint, at(Vec3(0.0f)), false);
     }
 
-    // --- Stumps and bails at both ends. ---
-    float stumpH = c.getFloat("stumps.height", 0.711f);
-    float stumpR = c.getFloat("stumps.radius", 0.0175f);
+    // --- Pitch: 20.12 m (22 yards) between the stumps, 3.05 m wide, along Z. ---
+    float pitchWidth = c.getFloat("pitch.width", 3.05f);
+    float pitchOverrun = c.getFloat("pitch.overrun", 1.22f);  // prepared surface beyond each set of stumps
+    MaterialDesc pitchMat = readMaterial(c, "pitch", {{0.78f, 0.70f, 0.50f}, 0.85f, 0.0f, 0.0f, 0.0f});
+    w.spawn(r, render::makePlane(pitchWidth, scene.pitchLength + 2.0f * pitchOverrun), pitchMat,
+            at(Vec3(0, kPitchY, 0)), false);
+
+    // --- Creases (Law 7): bowling, popping and return creases at both ends, one mesh. ---
+    {
+        float lineW = c.getFloat("crease.lineWidth", 0.05f);
+        float popping = c.getFloat("crease.poppingDistance", 1.22f);  // in front of the stumps
+        float poppingLen = c.getFloat("crease.poppingLength", 3.66f);
+        float bowlingLen = c.getFloat("crease.bowlingLength", 2.64f);
+        float returnX = 0.5f * bowlingLen;                         // 1.32 m either side of middle stump
+        float returnLen = c.getFloat("crease.returnLength", 2.44f);  // popping crease back to 1.22 m behind stumps
+        render::MeshData bowling = render::makePlane(bowlingLen, lineW);
+        render::MeshData poppingLine = render::makePlane(poppingLen, lineW);
+        render::MeshData returnLine = render::makePlane(lineW, returnLen);
+        render::MeshData lines;
+        for (int end = 0; end < 2; ++end) {
+            float sign = end == 0 ? 1.0f : -1.0f;
+            float stumpZ = sign * halfPitch;
+            render::appendMesh(lines, bowling, at(Vec3(0, kPaintY, stumpZ)));
+            render::appendMesh(lines, poppingLine, at(Vec3(0, kPaintY, stumpZ - sign * popping)));
+            // Return creases run from the popping crease back past the stumps.
+            float returnCentreZ = stumpZ - sign * (popping - 0.5f * returnLen);
+            render::appendMesh(lines, returnLine, at(Vec3(returnX, kPaintY, returnCentreZ)));
+            render::appendMesh(lines, returnLine, at(Vec3(-returnX, kPaintY, returnCentreZ)));
+        }
+        w.spawn(r, lines, paint, at(Vec3(0.0f)), false);
+    }
+
+    // --- Wickets (Law 8): three stumps and two bails at each end. ---
+    float stumpH = c.getFloat("stumps.height", 0.7112f);
+    float stumpR = c.getFloat("stumps.radius", 0.0178f);
     float wicketW = c.getFloat("stumps.wicketWidth", 0.2286f);
+    float bailLen = c.getFloat("bails.length", 0.1095f);
+    float bailR = c.getFloat("bails.radius", 0.0065f);
+    float bailRise = c.getFloat("bails.heightAboveStumps", 0.0127f);  // max protrusion above the stumps
     MaterialDesc wood = readMaterial(c, "stumps", {{0.93f, 0.88f, 0.75f}, 0.45f, 0.0f, 0.0f, 0.0f});
-    render::MeshData stumpMesh = render::makeCylinder(stumpR, stumpH, 16);
-    float spacing = 0.5f * wicketW - stumpR;  // centre of outer stump from middle stump
-    render::MeshData bailMesh = render::makeBox(Vec3(0.02f, 0.02f, spacing + 0.01f));
+    MaterialDesc bailWood = readMaterial(c, "bails", wood);
+    render::MeshData stumpMesh = render::makeCylinder(stumpR, stumpH, 24);
+    render::MeshData bailMesh = render::makeCylinder(bailR, bailLen, 12);
+    float spacing = 0.5f * wicketW - stumpR;  // centre of an outer stump from the middle stump
+    // Bail cylinders are built along +Y; lay them along X.
+    math::Quat alongX = math::fromAxisAngle(math::Vec3(0, 0, 1), -math::kHalfPi);
+    float bailY = stumpH + bailRise - bailR;  // top of bail at the allowed height
     for (int end = 0; end < 2; ++end) {
-        float z = (end == 0 ? 0.5f : -0.5f) * scene.pitchLength;
+        float z = (end == 0 ? 1.0f : -1.0f) * halfPitch;
         for (int s = -1; s <= 1; ++s)
-            w.spawn(r, stumpMesh, wood, at(Vec3(static_cast<float>(s) * spacing, 0, z)), true);
-        math::Quat across = math::fromAxisAngle(math::kUp, math::kHalfPi);  // bails lie along X
-        for (int b = 0; b < 2; ++b)
-            w.spawn(r, bailMesh, wood, at(Vec3((b == 0 ? -0.5f : 0.5f) * spacing, stumpH + 0.01f, z), across), true);
+            w.spawn(r, stumpMesh, wood, at(Vec3(static_cast<float>(s) * spacing, kPitchY, z)), true);
+        for (int b = 0; b < 2; ++b) {
+            float centreX = (b == 0 ? -0.5f : 0.5f) * spacing;  // each bail spans middle to outer stump
+            w.spawn(r, bailMesh, bailWood, at(Vec3(centreX - 0.5f * bailLen, kPitchY + bailY, z), alongX), true);
+        }
+    }
+
+    // --- Ball (Law 4): men's ball, 22.4-22.9 cm circumference. ---
+    {
+        float circumference = c.getFloat("ball.circumference", 0.2265f);
+        float radius = circumference / math::kTwoPi;
+        MaterialDesc leather = readMaterial(c, "ball", {{0.55f, 0.06f, 0.05f}, 0.35f, 0.0f, 0.0f, 0.0f});
+        leather.kind = render::MaterialKind::CricketBall;
+        Vec3 pos = c.getVec3("ball.restPosition", Vec3(0.15f, 0.0f, 5.0f));
+        // The shader's seam is the object's x = 0 circle, so with no rotation
+        // it stands upright along the pitch, as when bowled.
+        scene.ball = w.spawn(r, render::makeSphere(radius, 48, 24), leather,
+                             at(pos + Vec3(0, kPitchY + radius, 0)), true);
     }
 
     // --- Human-sized capsules to judge scale. ---
@@ -82,10 +165,10 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
     MaterialDesc kit = readMaterial(c, "human", {{0.92f, 0.92f, 0.9f}, 0.7f, 0.0f, 0.0f, 0.0f});
     render::MeshData humanMesh = render::makeCapsule(humanR, humanH, 24, 8);
     const Vec3 spots[] = {
-        {0.6f, 0, 0.5f * scene.pitchLength - 1.3f},  // batter at the crease
-        {0.0f, 0, 0.5f * scene.pitchLength + 2.5f},  // keeper
-        {1.2f, 0, -0.5f * scene.pitchLength - 1.0f}, // bowler / non-striker end
-        {18.0f, 0, -6.0f},                           // a fielder
+        {0.6f, 0, halfPitch - 1.3f},   // batter at the crease
+        {0.0f, 0, halfPitch + 2.5f},   // keeper
+        {1.2f, 0, -halfPitch - 1.0f},  // non-striker end
+        {18.0f, 0, -6.0f},             // a fielder
     };
     for (Vec3 p : spots) w.spawn(r, humanMesh, kit, at(p), true);
 

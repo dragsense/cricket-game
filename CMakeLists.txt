@@ -67,6 +67,7 @@ cricket_compile_materials(CricketGame
     ${CMAKE_SOURCE_DIR}/assets/materials/lit.mat
     ${CMAKE_SOURCE_DIR}/assets/materials/debug_line.mat
     ${CMAKE_SOURCE_DIR}/assets/materials/ui.mat
+    ${CMAKE_SOURCE_DIR}/assets/materials/ball.mat
 )
 add_custom_command(TARGET CricketGame POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/config $<TARGET_FILE_DIR:CricketGame>/config

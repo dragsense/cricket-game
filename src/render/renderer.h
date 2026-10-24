@@ -31,6 +31,11 @@ struct RendererDesc {
     size_t debugLineCapacity = 65536;
 };
 
+enum class MaterialKind {
+    Lit,          // plain PBR colour (+ optional mowing stripes)
+    CricketBall,  // leather with procedural seam and stitching (object-space, mesh centred)
+};
+
 struct MaterialDesc {
     math::Vec3 baseColor{0.8f};   // sRGB, 0..1
     float roughness = 0.6f;
@@ -38,6 +43,11 @@ struct MaterialDesc {
     // Mowing stripes (field only): alternating bands along world X.
     float stripeWidth = 0.0f;     // metres; 0 disables
     float stripeStrength = 0.0f;  // 0..1 brightness variation
+
+    MaterialKind kind = MaterialKind::Lit;
+    // CricketBall only.
+    math::Vec3 seamColor{0.9f, 0.85f, 0.75f};  // sRGB stitching thread
+    float clearCoat = 0.0f;                    // lacquer/polish layer, 0..1
 };
 
 struct CameraDesc {

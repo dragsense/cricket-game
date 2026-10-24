@@ -1,31 +1,56 @@
-// Test scene dimensions (Laws of Cricket where applicable). Colours are sRGB.
+// Test scene dimensions, from the Laws of Cricket / ICC regulations. Metres.
+// Colours are sRGB 0..1.
 {
   "field": {
-    "radius": 70.0,
-    "surroundSize": 400.0,
+    "boundaryRadius": 70.0,         // ICC: 59.4 m (65 yd) min to 82.3 m (90 yd) max from the pitch centre
+    "runOffWidth": 6.0,             // grass beyond the rope
+    "surroundRadius": 300.0,
+    "ropeRadius": 0.05,
+    "innerCircleRadius": 27.43,     // 30 yards from each middle stump
+    "innerCircleMarkerSpacing": 3.0,
+    "innerCircleMarkerRadius": 0.15,
     "grass": { "color": [0.27, 0.52, 0.18], "roughness": 0.9, "stripeWidth": 5.0, "stripeStrength": 0.12 },
-    "surround": { "color": [0.20, 0.40, 0.15], "roughness": 0.95 }
+    "runOff": { "color": [0.22, 0.44, 0.16], "roughness": 0.95 },
+    "surround": { "color": [0.35, 0.37, 0.33], "roughness": 0.95 },
+    "rope": { "color": [0.95, 0.95, 0.95], "roughness": 0.6 }
   },
   "pitch": {
-    "length": 20.12,     // 22 yards, stumps to stumps
-    "width": 3.05,       // 10 ft
+    "length": 20.12,                // 22 yards, stumps to stumps (Law 6)
+    "width": 3.05,                  // 10 ft
     "overrun": 1.22,
     "color": [0.78, 0.70, 0.50],
     "roughness": 0.85
   },
-  "crease": {
+  "crease": {                       // Law 7
     "lineWidth": 0.05,
-    "poppingDistance": 1.22,  // 4 ft in front of the stumps
-    "poppingLength": 3.66,
-    "bowlingLength": 2.64,
+    "poppingDistance": 1.22,        // 4 ft in front of the stumps
+    "poppingLength": 3.66,          // at least 6 ft either side of middle stump
+    "bowlingLength": 2.64,          // 8 ft 8 in; return creases at its ends
+    "returnLength": 2.44,           // popping crease to 4 ft behind the stumps
     "color": [0.96, 0.96, 0.96]
   },
-  "stumps": {
-    "height": 0.711,       // 28 in
-    "radius": 0.0175,
-    "wicketWidth": 0.2286, // 9 in
+  "stumps": {                       // Law 8
+    "height": 0.7112,               // 28 in
+    "radius": 0.0178,               // 34.9-38.1 mm diameter
+    "wicketWidth": 0.2286,          // 9 in, outside edge to outside edge
     "color": [0.93, 0.88, 0.75],
     "roughness": 0.45
+  },
+  "bails": {
+    "length": 0.1095,               // 4.31 in
+    "radius": 0.0065,
+    "heightAboveStumps": 0.0127,    // max 0.5 in above the stumps
+    "color": [0.90, 0.84, 0.70],
+    "roughness": 0.45
+  },
+  "ball": {                         // Law 4, men's ball
+    "circumference": 0.2265,        // 22.4-22.9 cm
+    "mass": 0.160,                  // 155.9-163 g (used from M2)
+    "restPosition": [0.15, 0.0, 5.0],  // on the pitch, good-length area
+    "color": [0.55, 0.06, 0.05],
+    "seamColor": [0.92, 0.88, 0.80],
+    "roughness": 0.35,
+    "clearCoat": 0.6
   },
   "human": { "height": 1.80, "radius": 0.22, "color": [0.92, 0.92, 0.90] },
   "referenceCube": { "color": [0.60, 0.60, 0.62] },

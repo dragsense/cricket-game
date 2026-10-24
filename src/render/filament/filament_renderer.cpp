@@ -180,6 +180,7 @@ private:
     fl::Material* litMaterial_ = nullptr;
     fl::Material* lineMaterial_ = nullptr;
     fl::Material* uiMaterial_ = nullptr;
+    fl::Material* ballMaterial_ = nullptr;
 
     utils::Entity sun_;
     fl::IndirectLight* ibl_ = nullptr;
@@ -229,7 +230,8 @@ bool FilamentRenderer::init(const RendererDesc& desc) {
     litMaterial_ = loadMaterial("lit");
     lineMaterial_ = loadMaterial("debug_line");
     uiMaterial_ = loadMaterial("ui");
-    if (!litMaterial_ || !lineMaterial_ || !uiMaterial_) return false;
+    ballMaterial_ = loadMaterial("ball");
+    if (!litMaterial_ || !lineMaterial_ || !uiMaterial_ || !ballMaterial_) return false;
 
     auto& em = utils::EntityManager::get();
 
@@ -385,12 +387,20 @@ ObjectId FilamentRenderer::createObject(const MeshData& mesh, const MaterialDesc
                  .build(*engine_);
     obj.ib->setBuffer(*engine_, copyBuffer(mesh.indices.data(), mesh.indices.size()));
 
-    obj.mi = litMaterial_->createInstance();
-    obj.mi->setParameter("baseColor", toF3(srgbToLinear(mat.baseColor)));
-    obj.mi->setParameter("roughness", mat.roughness);
-    obj.mi->setParameter("metallic", mat.metallic);
-    obj.mi->setParameter("stripeWidth", mat.stripeWidth);
-    obj.mi->setParameter("stripeStrength", mat.stripeStrength);
+    if (mat.kind == MaterialKind::CricketBall) {
+        obj.mi = ballMaterial_->createInstance();
+        obj.mi->setParameter("leatherColor", toF3(srgbToLinear(mat.baseColor)));
+        obj.mi->setParameter("seamColor", toF3(srgbToLinear(mat.seamColor)));
+        obj.mi->setParameter("roughness", mat.roughness);
+        obj.mi->setParameter("clearCoat", mat.clearCoat);
+    } else {
+        obj.mi = litMaterial_->createInstance();
+        obj.mi->setParameter("baseColor", toF3(srgbToLinear(mat.baseColor)));
+        obj.mi->setParameter("roughness", mat.roughness);
+        obj.mi->setParameter("metallic", mat.metallic);
+        obj.mi->setParameter("stripeWidth", mat.stripeWidth);
+        obj.mi->setParameter("stripeStrength", mat.stripeStrength);
+    }
 
     math::Vec3 lo(1e30f), hi(-1e30f);
     for (const auto& p : mesh.positions) {
@@ -578,6 +588,7 @@ void FilamentRenderer::shutdown() {
     engine_->destroy(litMaterial_);
     engine_->destroy(lineMaterial_);
     engine_->destroy(uiMaterial_);
+    engine_->destroy(ballMaterial_);
 
     engine_->destroy(view_);
     engine_->destroy(uiView_);

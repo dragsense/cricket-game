@@ -182,6 +182,20 @@ the renderer needs (HWND on Windows; ANativeWindow / CAMetalLayer later).
 
 One section per system, filled in as each is built.
 
+### Test scene (M0): built
+`game/test_scene.cpp` builds everything from `config/scene.json`, using Laws of
+Cricket dimensions:
+- **Ground:** round outfield disc to the boundary radius, a boundary-rope torus, a
+  run-off ring and an outer surround.
+- **30-yard circle:** two semicircles around each middle stump joined by straight lines,
+  drawn as merged painted dots.
+- **Pitch and creases:** a pitch strip plus bowling, popping and return creases (one
+  merged mesh).
+- **Wickets:** stumps and bails, with each bail top at most 12.7 mm above the stumps.
+- **Ball:** a sphere using the `CricketBall` material kind (procedural seam shader).
+
+Small parts are merged with `render::appendMesh` to keep draw calls low.
+
 ### Rig (M1): not started
 ozz-animation runtime skeleton, loaded from the player glTF. Body sizes come from config.
 
