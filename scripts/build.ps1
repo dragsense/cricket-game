@@ -31,6 +31,13 @@ function Import-MsvcEnv {
 
 Import-MsvcEnv
 $buildDir = Join-Path $root "build\$Config"
+
+# A running game locks CricketGame.exe and the build cannot replace it, so close it first.
+Get-Process CricketGame -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "Closing running game (pid $($_.Id)) so it can be rebuilt..."
+    $_ | Stop-Process -Force
+    $_.WaitForExit()
+}
 if ($Clean -and (Test-Path $buildDir)) { Remove-Item $buildDir -Recurse -Force }
 
 cmake --preset $Config
