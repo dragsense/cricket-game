@@ -87,12 +87,17 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** an image texture with sphere UVs, which needs an asset pipeline and
   shows seams and pole distortion.
 
-## 2026-10-24: FetchContent updates disconnected
-- **Decision:** `FETCHCONTENT_UPDATES_DISCONNECTED ON`.
-- **Reason:** once downloaded, dependencies are never re-fetched on reconfigure. One
-  reconfigure had re-cloned everything and caused a full rebuild. Changing a version
-  still downloads.
-
+## 2026-10-24: Dependencies cloned once into third_party/deps
+- **Decision:** `cmake/dependencies.cmake` clones each library once, with git, into
+  `third_party/deps/<name>-<version>/`. FetchContent is pointed at that folder through
+  `FETCHCONTENT_SOURCE_DIR_*`, so it never downloads anything itself.
+- **Reason:** FetchContent re-cloned dependencies whenever its hidden download
+  sub-project changed (e.g. a different git on PATH in another terminal), causing slow
+  downloads and full rebuilds. Now debug and release share one copy, and deleting
+  `build/` never re-downloads.
+- **Rejected:**
+  - `FETCHCONTENT_UPDATES_DISCONNECTED`: did not prevent the re-clones.
+  - Archive URLs: re-extraction still touches timestamps.
 ## 2026-10-24: Milestone order: ball physics before fielding
 - **Decision:** M1 rig and IK, M2 basic ball flight and bounce, M3 fielding.
 - **Reason:** fielders need a ball to chase and catch.

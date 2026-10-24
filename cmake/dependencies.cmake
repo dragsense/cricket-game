@@ -16,68 +16,63 @@ set(DOCTEST_VERSION  "v2.5.2")
 #   Later:       Jolt Physics (player body collisions)
 # Model loading uses Filament's gltfio (ships with the Filament SDK).
 
+# Sources are cloned ONCE into third_party/deps/<name>-<version>/ and shared by
+# every build folder (debug, release). CMake never downloads them itself, so
+# reconfiguring or deleting build/ never re-clones or forces a full rebuild.
+# Changing a version above clones the new version into a new folder.
 include(FetchContent)
-set(FETCHCONTENT_QUIET OFF)
-# Once a dependency is downloaded, never contact the network again for it on
-# reconfigure (avoids slow git fetches and accidental re-clones/rebuilds).
-# Changing a *_VERSION above still triggers a fresh download.
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
+set(CRICKET_DEPS_DIR ${CMAKE_SOURCE_DIR}/third_party/deps)
+
+# cricket_dependency(<FetchContent name> <git repo> <tag>)
+function(cricket_dependency name repo tag)
+    set(dir ${CRICKET_DEPS_DIR}/${name}-${tag})
+    if(NOT EXISTS ${dir}/.cricket-complete)
+        find_package(Git REQUIRED)
+        file(REMOVE_RECURSE ${dir})
+        message(STATUS "Downloading ${name} ${tag} (one-time) ...")
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} -c advice.detachedHead=false clone --quiet --depth 1 --branch ${tag} ${repo} ${dir}
+            RESULT_VARIABLE result)
+        if(NOT result EQUAL 0)
+            message(FATAL_ERROR "Failed to clone ${repo} at ${tag}")
+        endif()
+        file(TOUCH ${dir}/.cricket-complete)
+    endif()
+    # Tell FetchContent the source is already present: no download step at all.
+    string(TOUPPER ${name} upper)
+    set(FETCHCONTENT_SOURCE_DIR_${upper} ${dir} PARENT_SCOPE)
+    FetchContent_Declare(${name} GIT_REPOSITORY ${repo} GIT_TAG ${tag} EXCLUDE_FROM_ALL)
+endfunction()
 
 # --- SDL3 (shared library, copied next to the exe) ---
 set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG ${SDL3_VERSION}
-    GIT_SHALLOW TRUE
-    EXCLUDE_FROM_ALL)
+cricket_dependency(SDL3 https://github.com/libsdl-org/SDL.git ${SDL3_VERSION})
 
 # --- GLM ---
 set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(glm
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG ${GLM_VERSION}
-    GIT_SHALLOW TRUE
-    EXCLUDE_FROM_ALL)
+cricket_dependency(glm https://github.com/g-truc/glm.git ${GLM_VERSION})
 
 # --- Dear ImGui (docking branch; has no CMake of its own) ---
-FetchContent_Declare(imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG ${IMGUI_VERSION}
-    GIT_SHALLOW TRUE)
+cricket_dependency(imgui https://github.com/ocornut/imgui.git ${IMGUI_VERSION})
 
 # --- nlohmann/json (config files) ---
-FetchContent_Declare(nlohmann_json
-    URL https://github.com/nlohmann/json/releases/download/${JSON_VERSION}/json.tar.xz
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    EXCLUDE_FROM_ALL)
+cricket_dependency(nlohmann_json https://github.com/nlohmann/json.git ${JSON_VERSION})
 
 # --- spdlog (logging) ---
 set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "" FORCE)  # C++20 <format>, no bundled fmt
-FetchContent_Declare(spdlog
-    GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG ${SPDLOG_VERSION}
-    GIT_SHALLOW TRUE
-    EXCLUDE_FROM_ALL)
+cricket_dependency(spdlog https://github.com/gabime/spdlog.git ${SPDLOG_VERSION})
 
 # --- doctest ---
 set(DOCTEST_WITH_TESTS OFF CACHE BOOL "" FORCE)
 set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)
-FetchContent_Declare(doctest
-    GIT_REPOSITORY https://github.com/doctest/doctest.git
-    GIT_TAG ${DOCTEST_VERSION}
-    GIT_SHALLOW TRUE
-    EXCLUDE_FROM_ALL)
+cricket_dependency(doctest https://github.com/doctest/doctest.git ${DOCTEST_VERSION})
 
 # --- EnTT (entity-component system for game objects) ---
-FetchContent_Declare(EnTT
-    GIT_REPOSITORY https://github.com/skypjack/entt.git
-    GIT_TAG ${ENTT_VERSION}
-    GIT_SHALLOW TRUE
-    EXCLUDE_FROM_ALL)
+cricket_dependency(EnTT https://github.com/skypjack/entt.git ${ENTT_VERSION})
 
 FetchContent_MakeAvailable(SDL3 glm imgui nlohmann_json spdlog EnTT doctest)
 
