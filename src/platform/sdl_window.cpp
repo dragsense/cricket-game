@@ -5,6 +5,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+
 namespace platform {
 
 namespace {
@@ -54,16 +56,52 @@ bool Window::create(const WindowDesc& desc) {
         LOG_ERROR("SDL_Init failed: {}", SDL_GetError());
         return false;
     }
-    SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    // Created hidden so it can be sized and placed before it first appears.
+    SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
     if (desc.resizable) flags |= SDL_WINDOW_RESIZABLE;
     window_ = SDL_CreateWindow(desc.title.c_str(), desc.width, desc.height, flags);
     if (!window_) {
         LOG_ERROR("SDL_CreateWindow failed: {}", SDL_GetError());
         return false;
     }
-    LOG_INFO("window {}x{} ({}x{} px), display {:.0f} Hz", desc.width, desc.height, pixelWidth(),
-             pixelHeight(), refreshRate());
+    placeOnScreen(desc);
+    SDL_ShowWindow(window_);
+
+    int w = 0, h = 0;
+    SDL_GetWindowSize(window_, &w, &h);
+    LOG_INFO("window {}x{} ({}x{} px), dock '{}', display {:.0f} Hz", w, h, pixelWidth(), pixelHeight(),
+             desc.dock, refreshRate());
     return true;
+}
+
+void Window::placeOnScreen(const WindowDesc& desc) {
+    SDL_Rect usable{};
+    if (!SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable)) return;  // keep defaults
+
+    // Window size excludes the title bar and borders; leave room for them.
+    int top = 0, left = 0, bottom = 0, right = 0;
+    SDL_GetWindowBordersSize(window_, &top, &left, &bottom, &right);
+    int availW = usable.w - left - right;
+    int availH = usable.h - top - bottom;
+
+    int x = 0, y = 0, w = desc.width, h = desc.height;
+    if (desc.dock == "left" || desc.dock == "right") {
+        // Half the screen, full height: code editor on the other half.
+        w = availW / 2 - (left + right);
+        h = availH;
+        x = usable.x + left + (desc.dock == "right" ? usable.w / 2 : 0);
+        y = usable.y + top;
+    } else {
+        // "center": requested size, shrunk (keeping aspect) to fit the screen.
+        float maxW = availW * desc.maxScreenFraction, maxH = availH * desc.maxScreenFraction;
+        float scale = std::min({1.0f, maxW / static_cast<float>(w), maxH / static_cast<float>(h)});
+        w = static_cast<int>(static_cast<float>(w) * scale);
+        h = static_cast<int>(static_cast<float>(h) * scale);
+        x = usable.x + (usable.w - w) / 2;
+        y = usable.y + (usable.h - h) / 2;
+    }
+    SDL_SetWindowSize(window_, w, h);
+    SDL_SetWindowPosition(window_, x, y);
 }
 
 void Window::destroy() {

@@ -42,6 +42,8 @@ bool CricketApp::init() {
     wd.width = e.getInt("window.width", wd.width);
     wd.height = e.getInt("window.height", wd.height);
     wd.resizable = e.getBool("window.resizable", true);
+    wd.dock = e.getString("window.dock", wd.dock);
+    wd.maxScreenFraction = e.getFloat("window.maxScreenFraction", wd.maxScreenFraction);
     if (!window_.create(wd)) return false;
 
     vsync_ = e.getBool("window.vsync", true);

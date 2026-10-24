@@ -15,6 +15,10 @@ struct WindowDesc {
     int width = 1600;
     int height = 900;
     bool resizable = true;
+    // "right" / "left": half the screen at full height (code on the other half);
+    // "center": width x height, shrunk to fit within maxScreenFraction of the screen.
+    std::string dock = "right";
+    float maxScreenFraction = 0.9f;
 };
 
 class Window {
@@ -36,6 +40,8 @@ public:
     SDL_Window* sdlWindow() const { return window_; }
 
 private:
+    void placeOnScreen(const WindowDesc& desc);
+
     SDL_Window* window_ = nullptr;
     bool relativeMouse_ = false;
 };
