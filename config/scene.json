@@ -18,8 +18,8 @@
     "length": 20.12,                // 22 yards, stumps to stumps (Law 6)
     "width": 3.05,                  // 10 ft
     "overrun": 1.22,
-    "color": [0.78, 0.70, 0.50],
-    "roughness": 0.85
+    "color": [0.69, 0.58, 0.41],     // dry, rolled clay/grass pitch (khaki-brown)
+    "roughness": 0.9
   },
   "crease": {                       // Law 7
     "lineWidth": 0.05,
@@ -33,15 +33,15 @@
     "height": 0.7112,               // 28 in
     "radius": 0.0178,               // 34.9-38.1 mm diameter
     "wicketWidth": 0.2286,          // 9 in, outside edge to outside edge
-    "color": [0.93, 0.88, 0.75],
-    "roughness": 0.45
+    "color": [0.86, 0.71, 0.47],     // varnished ash wood
+    "roughness": 0.35
   },
   "bails": {
     "length": 0.1095,               // 4.31 in
     "radius": 0.0065,
     "heightAboveStumps": 0.0127,    // max 0.5 in above the stumps
-    "color": [0.90, 0.84, 0.70],
-    "roughness": 0.45
+    "color": [0.82, 0.66, 0.42],     // ash wood, slightly darker
+    "roughness": 0.35
   },
   "ball": {                         // Law 4, men's ball
     "circumference": 0.2265,        // 22.4-22.9 cm

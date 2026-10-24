@@ -69,8 +69,14 @@ cricket_compile_materials(CricketGame
     ${CMAKE_SOURCE_DIR}/assets/materials/ui.mat
     ${CMAKE_SOURCE_DIR}/assets/materials/ball.mat
 )
+# Config is synced on every build (not only when the exe relinks), so editing
+# a .json and running the build is enough to see the change.
+add_custom_target(CricketGame_config ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_SOURCE_DIR}/config ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config
+    COMMENT "Sync config/"
+    VERBATIM)
+add_dependencies(CricketGame CricketGame_config)
 add_custom_command(TARGET CricketGame POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/config $<TARGET_FILE_DIR:CricketGame>/config
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:CricketGame>
     VERBATIM)
 
