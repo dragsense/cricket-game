@@ -36,7 +36,7 @@ void drawOverlay(DebugSettings& s, const OverlayInfo& info) {
 
     ImGui::Separator();
     ImGui::TextUnformatted("Camera (orbit)");
-    ImGui::TextDisabled("RMB drag: rotate (Tab: mouse-look)  MMB drag: pan  wheel: zoom");
+    ImGui::TextDisabled("RMB drag: rotate (Tab: mouse-look)  wheel: zoom");
 
     if (ImGui::CollapsingHeader("Camera speed", ImGuiTreeNodeFlags_DefaultOpen)) {
         camera::CameraSpeeds& c = s.cameraSpeeds;

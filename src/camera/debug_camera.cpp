@@ -5,6 +5,7 @@
 #include <camutils/Manipulator.h>
 
 #include <algorithm>
+#include <cmath>
 
 namespace camera {
 
@@ -24,6 +25,11 @@ struct DebugCamera::Impl {
         if (old) m->jumpToBookmark(old->getCurrentBookmark());
         return m;
     }
+
+    // Orbit limits (config/engine.json camera.orbit): the eye never goes
+    // under the ground, through the target or too far out.
+    math::Vec3 target{0.0f};
+    float minEyeHeight = 0.3f, minDistance = 1.5f, maxDistance = 300.0f;
 
     int width = 1, height = 1;
     // Virtual cursor fed to grabUpdate, built from relative mouse deltas.
@@ -52,6 +58,10 @@ void DebugCamera::configure(const core::Config& c, int width, int height) {
     float farPlane = c.getFloat("camera.far", 2000.0f);
 
     speeds_ = readCameraSpeeds(c);
+    s.target = target;
+    s.minEyeHeight = c.getFloat("camera.orbit.minEyeHeight", s.minEyeHeight);
+    s.minDistance = c.getFloat("camera.orbit.minDistance", s.minDistance);
+    s.maxDistance = c.getFloat("camera.orbit.maxDistance", s.maxDistance);
 
     Manip::Builder ob;
     ob.viewport(width, height)
@@ -91,9 +101,10 @@ void DebugCamera::update(const core::InputState& in, float dt) {
     Impl& s = *impl_;
     Manip* m = s.orbit.get();
 
-    // Mouse: mouse-look or the right button rotates, the middle button pans.
+    // Mouse: mouse-look or the right button rotates. No pan: the orbit
+    // follows the fielder and its pivot is pinned (constrain()).
     bool rotate = mouseLook_ || in.down(core::MouseButton::Right);
-    bool pan = !rotate && in.down(core::MouseButton::Middle);
+    bool pan = false;
     bool wantGrab = (rotate || pan) && (s.grabbing || mouseLook_ || !in.uiWantsMouse);
     if (wantGrab && !s.grabbing) {
         // camutils expects a bottom-left origin, like Filament viewports.
@@ -112,7 +123,9 @@ void DebugCamera::update(const core::InputState& in, float dt) {
     }
 
     if (!in.uiWantsMouse && in.wheel != 0.0f) {
-        int sx = static_cast<int>(in.mouseX), sy = static_cast<int>(s.height - in.mouseY);
+        // Zoom toward the screen centre (the target), not the cursor: a ray
+        // under the cursor can carry the eye past the target and underground.
+        int sx = s.width / 2, sy = s.height / 2;
         // camutils zooms a fixed distance per notch, which crawls when far
         // away. Scale the step by the distance to the ground point being
         // looked at, so each notch is a constant fraction of the view.
@@ -126,6 +139,40 @@ void DebugCamera::update(const core::InputState& in, float dt) {
     }
 
     m->update(dt);
+    constrain();
+}
+
+void DebugCamera::constrain() {
+    Impl& s = *impl_;
+    filament::math::float3 e, t, up;
+    s.orbit->getLookAt(&e, &t, &up);
+    const math::Vec3 eye(e.x, e.y, e.z), target(t.x, t.y, t.z);
+
+    // Keep the configured pivot, the distance in range and the eye above the
+    // ground (orbit space: the ground is y = 0 under the follow point).
+    math::Vec3 offset = eye - s.target;
+    const float dist = math::clamp(math::length(offset), s.minDistance, s.maxDistance);
+    offset = math::safeNormalize(offset, math::Vec3(0, 1, 1)) * dist;
+    const float minY = s.minEyeHeight - s.target.y;
+    if (offset.y < minY) {
+        // Same heading and distance, raised to the minimum height.
+        const float y = std::min(minY, dist * 0.99f);
+        const float flat = std::sqrt(std::max(dist * dist - y * y, 0.0f));
+        const math::Vec3 dir = math::safeNormalize(math::Vec3(offset.x, 0.0f, offset.z), math::Vec3(0, 0, 1));
+        offset = dir * flat + math::Vec3(0.0f, y, 0.0f);
+    }
+    const math::Vec3 fixedEye = s.target + offset;
+    if (math::distance(fixedEye, eye) < 1e-3f && math::distance(target, s.target) < 1e-3f) return;
+
+    // camutils keeps its orbit state private: rebuild at the corrected pose
+    // (only when a limit is hit), keeping any drag going.
+    const bool grabbing = s.grabbing;
+    if (grabbing) s.orbit->grabEnd();
+    Manip::Builder b;
+    b.details = s.orbitCfg;
+    b.targetPosition(s.target.x, s.target.y, s.target.z).orbitHomePosition(fixedEye.x, fixedEye.y, fixedEye.z);
+    s.orbit.reset(b.build(Mode::ORBIT));
+    if (grabbing) s.orbit->grabBegin(static_cast<int>(s.cursorX), static_cast<int>(s.cursorY), false);
 }
 
 CameraPose DebugCamera::pose() const {

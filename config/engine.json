@@ -43,7 +43,10 @@
       "target": [0.0, 0.5, 0.0],
       "home": [22.0, 12.0, 26.0],
       "rotateDegPerPixel": 0.5,     // live-tunable in the Debug panel ("Camera speed")
-      "zoomStep": 0.15              // fraction of the view distance per wheel notch
+      "zoomStep": 0.15,             // fraction of the view distance per wheel notch
+      "minEyeHeight": 0.3,          // m above the ground; the eye never goes under the field
+      "minDistance": 1.5,           // m from the target (zoom never passes through it)
+      "maxDistance": 300.0
     }
   },
   "debug": {

@@ -134,9 +134,10 @@ Scope:
 Before M1, decide the player body mesh (MakeHuman CC0 or Blender → glTF).
 
 ## Known issues / pending
-- **Camera freeze (unconfirmed):** the screen went gray and the camera stuck while holding
-  the arrow keys and dragging the camera. Suspected cause: a debug-assert dialog hidden
-  behind the window. If it recurs, get the assert text (Alt+Tab).
+- **Camera gray screen (fixed 2026-10-25):** zoom moved the eye along the ray under the
+  cursor and the orbit pitch was unclamped, so the eye went under the field (seen from
+  below, the ground is invisible). Zoom now aims at the screen centre, and the orbit is
+  clamped (min eye height, min/max distance; config/engine.json camera.orbit).
 - **Namespace migration:** M0 code uses bare layer namespaces (`core`, `render`, …).
   The convention is now `cricket::<layer>`. This needs approval, as a mechanical rename.
 - **filagui** is not shipped in the prebuilt Filament release, so a small custom ImGui

@@ -54,6 +54,9 @@ public:
     void setMouseLook(bool on) { mouseLook_ = on; }
 
 private:
+    // Clamps the orbit to the configured limits after input.
+    void constrain();
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
     CameraSpeeds speeds_;
