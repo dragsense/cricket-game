@@ -26,7 +26,7 @@ public:
     void tick(double dt);
 
     // Creates the fielder from its skeleton description. Load-time only.
-    bool initFielder(const rig::SkeletonDef& def, const core::Config& joints);
+    bool initFielder(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion);
     agents::Fielder& fielder() { return fielder_; }
     const agents::Fielder& fielder() const { return fielder_; }
 

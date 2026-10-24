@@ -89,7 +89,7 @@ bool CricketApp::init() {
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
 
     rig::SkeletonDef skeletonDef;
-    if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef, cfg_.fielderJoints)) return false;
+    if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef, cfg_.fielderJoints, cfg_.locomotion)) return false;
     const agents::Fielder& fielder = sim_.fielder();
     fielderVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.fielderSkeleton);
     fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
@@ -142,7 +142,10 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         } else if (name == "fielder_joints.json") {
             cfg_.fielderJoints = std::move(fresh);
             agents::Fielder& f = sim_.fielder();
-            f.init(f.def(), f.rig().height(), cfg_.fielderJoints);  // limits + IK settings
+            f.init(f.def(), f.rig().height(), cfg_.fielderJoints, cfg_.locomotion);  // limits + IK settings
+        } else if (name == "locomotion.json") {
+            cfg_.locomotion = std::move(fresh);
+            sim_.fielder().loadLocomotion(cfg_.locomotion);
         } else {
             continue;  // not a file this app uses
         }
@@ -187,19 +190,22 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::ToggleOverlay)) debugSettings_.showOverlay = !debugSettings_.showOverlay;
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
 
-    // Fielder steps, in character space (+X is the fielder's left).
+    // Fielder walk: W turns toward the camera's heading and walks forward;
+    // A/D sidestep and S backs up without turning (character space, +X left).
     auto axis = [&](core::Action pos, core::Action neg) {
         return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
     };
-    math::Vec2 step(axis(core::Action::StepLeft, core::Action::StepRight),
-                    axis(core::Action::StepForward, core::Action::StepBack));
-    if (math::length2(step) > 1.0f) step /= math::length(step);  // diagonals
-    sim_.fielder().setStepInput(step);
+    const camera::CameraPose view = camera_.pose();
+    const math::Vec3 ahead = math::safeNormalize(math::Vec3(view.target.x - view.eye.x, 0.0f, view.target.z - view.eye.z),
+                                                 -math::kForward);
+    const math::Vec2 move(axis(core::Action::StepLeft, core::Action::StepRight),
+                          axis(core::Action::StepForward, core::Action::StepBack));
+    sim_.fielder().setMoveInput(move, actions_.down(input_, core::Action::StepForward), std::atan2(ahead.x, ahead.z));
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
-        changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json"};
+        changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json", "locomotion.json"};
     else if (cfg_.liveReload)
         configWatcher_.poll(changedConfigs_);
     if (!changedConfigs_.empty()) reloadConfig(changedConfigs_);
@@ -213,7 +219,8 @@ void CricketApp::fixedUpdate(double dt) {
 void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
 
-    // --- Cameras (render-side, real frame time) ---
+    // --- Cameras (render-side, real frame time); the orbit follows the fielder ---
+    camera_.setFollowPoint(sim_.fielder().interpolatedRoot(alpha).position);
     camera_.update(input_, static_cast<float>(frameSeconds));
     camera::CameraPose pose = camera_.pose();
     render::CameraDesc cam;
@@ -271,7 +278,7 @@ void CricketApp::updateFielder(float alpha) {
     const agents::Fielder& fielder = sim_.fielder();
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
-    fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.root());
+    fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
 }
 
 void CricketApp::drawDebugGeometry(float alpha) {
@@ -285,7 +292,7 @@ void CricketApp::drawDebugGeometry(float alpha) {
     dd.box(math::Vec3(0, 0.36f, -halfLen), math::Vec3(0.115f, 0.36f, 0.02f), render::colors::kYellow);
 
     // Player's local axes at its root: X red (left), Y green (up), Z blue (forward).
-    dd.axes(sim_.fielder().root(), 0.5f);
+    dd.axes(sim_.fielder().interpolatedRoot(alpha), 0.5f);
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

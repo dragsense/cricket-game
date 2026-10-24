@@ -300,6 +300,30 @@ foot). Sources: ([Wikipedia gait cycle](https://en.wikipedia.org/wiki/Bipedal_ga
 - **Head and trunk lead turns:** the head turns toward the new direction first, then the
   trunk, then the feet **[T]**.
 
+### 4.7 Sideways and backward walking
+- **Two sideways patterns.** A *sidestep* (side shuffle): the lead foot steps out, the
+  trail foot closes toward it, and the feet never cross. A *crossover step*: the trail
+  foot crosses over the lead leg, either in front or behind. Both occur in daily life and
+  in balance recovery. In young adults, long sidesteps measured about 60 cm wide; long
+  crossovers were slightly narrower (about 56 cm) with a longer fore-aft component
+  ([PMC4362666 table](https://pmc.ncbi.nlm.nih.gov/articles/PMC4362666/table/T2)) **[P]**.
+- **A crossover is never in line.** The crossing foot must pass in front of or behind the
+  stance leg, so it lands offset fore-aft from the other foot. The base of support gets
+  very narrow, so a crossover is less stable than a sidestep
+  ([PMC6501204](https://pmc.ncbi.nlm.nih.gov/articles/PMC6501204/figure/F3);
+  [Thies, Salford](https://salford-repository.worktribe.com/output/1475113/what-causes-a-crossover-step-when-walking-on-uneven-ground-a-study-in-healthy-young-women)) **[P]**.
+- **First step from standing:** the foot on the side of travel steps out first; stepping
+  with the far foot first would force an immediate crossover **[T]**.
+- **Body:** the trunk stays facing forward. Arm swing is small or absent, and the pelvis
+  shifts sideways over each new stance foot instead of bobbing much **[T]**.
+- **Backward walking:** speed, cadence and stride length are all lower than forward
+  walking, and stance is longer. Knee range of motion is smaller. Hip and ankle moment
+  patterns are roughly mirror images of forward walking, with much less joint power. The
+  forefoot tends to touch down first instead of the heel
+  ([Salford knee study](https://salford-repository.worktribe.com/output/1396748/comparison-of-biomechanical-characteristics-of-the-knee-joint-during-forward-walking-and-backward-walking);
+  [PMC4723164](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4723164/)) **[P]**. The
+  evidence is from small studies (8–13 people).
+
 ### Implementation notes (`config/locomotion.json`, `walk` block)
 - Timing: `stance_fraction` 0.60, `double_support_fraction` 0.10 per transition. Both
   shrink linearly toward 0 at `walk_run_speed`.
@@ -322,6 +346,16 @@ foot). Sources: ([Wikipedia gait cycle](https://en.wikipedia.org/wiki/Bipedal_ga
 - Start: a short CoM-shift phase toward the stance foot (`start_shift_s` ≈ 0.3) before
   the first lift.
 - Stop: shorten the final step and bring the second foot alongside.
+- Sideways (section 4.7): a **side shuffle**, the pattern athletes and fielders use for
+  controlled lateral movement: the lead foot steps out and the trail foot closes beside
+  it, never crossing ([Coaches Insider](https://coachesinsider.com/baseball/agility-drills-to-improve-baseball-fielding/);
+  [CricConnect, keeper footwork](https://cricconnect.com/question/80/what-is-the-right-footwork-for-a-wicket-keeper-standing-back-to-fast-bowlers-is-it-having-the-feet-cross-over-behind-each-other-as-the-keeper-moves-sideways-or-a-shuffle-where-the-feet-following-each)).
+  `sideSpeed` 0.8 m/s. From standing, the foot on the side of travel leads (A: left,
+  D: right). The trunk stays forward and the arm swing fades out. The **crossover**
+  (hips turn about 45°, trail foot crosses in front) is for longer or faster lateral
+  moves and belongs with running (Step 1.6).
+- Backward: `backSpeed` 0.9 m/s (slower than forward), arm swing fades out. Shorter
+  steps and a forefoot-first landing are a later refinement.
 - Turn: head yaw leads (`head_lead_s`), then the chest, then the pelvis. Stepping
   re-aims through the "ideal foot position" rule.
 

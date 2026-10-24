@@ -26,6 +26,7 @@ struct AppConfigs {
     core::Config scene;   // config/scene.json
     core::Config fielderSkeleton;  // config/fielder_skeleton.json
     core::Config fielderJoints;    // config/fielder_joints.json
+    core::Config locomotion;       // config/locomotion.json
     std::string dir = "config";    // where the files above were loaded from
     bool liveReload = false;       // dev builds: watch `dir` and re-apply changes
 };

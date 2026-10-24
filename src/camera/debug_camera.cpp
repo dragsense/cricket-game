@@ -132,7 +132,10 @@ CameraPose DebugCamera::pose() const {
     filament::math::float3 eye, target, up;
     const Impl& s = *impl_;
     s.orbit->getLookAt(&eye, &target, &up);
-    return {{eye.x, eye.y, eye.z}, {target.x, target.y, target.z}, {up.x, up.y, up.z}};
+    // camutils orbits a fixed pivot; the whole view is carried with the
+    // follow point, so grabs and zoom keep working wherever the player is.
+    const math::Vec3 f = follow_;
+    return {{eye.x + f.x, eye.y + f.y, eye.z + f.z}, {target.x + f.x, target.y + f.y, target.z + f.z}, {up.x, up.y, up.z}};
 }
 
 } // namespace camera

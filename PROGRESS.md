@@ -36,11 +36,26 @@ check after each step.
   `config/fielder_joints.json` "stepping"); one foot swings at a time on a smoothstep
   arc with a sine lift; the body follows via 1.3. Free-fly camera removed
   (user's choice: only the orbit camera is user-controlled; scripted camera paths come
-  with M8), freeing WASD/QE/Shift/C. No debug draw (user policy). The character root stays fixed
-  until 1.5.
-- [ ] **1.5 Walk**: desired-velocity controller (WASD, gamepad, walk-to-point), gait
-  from `config/locomotion.json`, pelvis bob and sway, lean, arm swing, head
-  stabilisation, smooth start, stop and turn.
+  with M8), freeing WASD/QE/Shift/C. No debug draw (user policy). Since 1.5, WASD walks
+  instead of single-stepping.
+- [ ] **1.5 Walk** (core pass built, untested by eye; not committed by the user's choice):
+  `motion::WalkController` (camera-relative WASD → desired velocity; eased start and
+  stop, limited turn rate, slows on sharp turns); `motion::gaitTiming` (step = 0.41 H ×
+  (v/1.35)^0.42, 60 % stance); `FootStepper::tickGait` places each swing foot ahead of
+  its stance spot by the velocity and settles to stance on stop; the root moves and is
+  interpolated for rendering; pelvis bob, sway and lean (speed, acceleration, turns).
+  Tunables in `config/locomotion.json` "walk" (hot-reloads). WASD now walks; the 1.4
+  "stepping" config block is gone (`FootStepper::tick` stays, tested). `motion_tests`
+  adds `test_walk.cpp`. W turns to the camera heading; A/D sidestep and S backs up
+  without turning. Steps start full size (0.6 m); on stop, feet stay unless more than
+  `settleDistance` off; a walk from standing picks its lead foot (no forced swap);
+  sidesteps never cross the feet. User-checked: walking works. Arm swing (opposite the
+  legs, fading for sidesteps/backing up) and head stabilisation (upright, leads W turns)
+  added, awaiting a visual check. Walk-to-point dropped (the fielding AI drives the
+  controller later). Gamepad deferred (user: later). Sideways is a side shuffle (feet
+  never cross; the crossover comes with running, 1.6), per docs/BIOMECHANICS.md 4.7.
+  The orbit camera now follows the fielder (`DebugCamera::setFollowPoint`).
+  `test_walk.cpp` not yet run (watch builds skip tests).
 - [ ] **1.6 Run**: speed-driven blend, flight phase, sprint up to realistic speed.
 - [ ] **1.7 Jump**: crouch, push, ballistic flight, tuck, absorbing landing, recovery;
   standing and running jumps.

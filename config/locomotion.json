@@ -1,0 +1,37 @@
+// Fielder locomotion. Metres, seconds; angles in degrees. Sources in
+// docs/BIOMECHANICS.md section 4 (walking gait).
+{
+  "walk": {
+    "speed": 1.35,          // m/s at full input (comfortable adult walk)
+    "backSpeed": 0.9,       // m/s walking backward (S)
+    "sideSpeed": 0.8,       // m/s sidestepping (A/D)
+    "acceleration": 5.0,    // m/s^2; full speed within the first step (full-size steps at once)
+    "deceleration": 5.0,    // m/s^2; stops within about one step
+    "turnRateDeg": 180,     // per second
+    "stepK": 0.33,          // step length = stepK * height * (v / refSpeed)^0.42 (0.6 m at 1.8 m)
+    "refSpeed": 1.35,
+    "swingFraction": 0.8,   // swing time / step period; the rest is double support
+    "minSwing": 0.3,        // s
+    "maxSwing": 0.5,        // s; also used for the settling steps when stopping
+    "stepHeight": 0.08,     // swing arc apex
+    "settleDistance": 0.12, // m; on stop, a foot closer than this to its stance spot stays put
+    "bob": 0.025,           // pelvis bob peak-to-peak at full speed, lowest in double support
+    "sway": 0.02,           // pelvis sway toward the stance foot
+    "leanPerSpeedDeg": 2.0, // forward lean per m/s
+    "leanPerAccelDeg": 3.0, // forward lean per m/s^2 (back when braking)
+    "turnLeanDeg": 3.0,     // lean into turns per (rad/s * m/s)
+    "maxLeanDeg": 10,
+    "leanRate": 6.0,        // 1/s, lean smoothing
+    // Arms swing opposite the same-side leg; full at walking speed forward,
+    // fading out for sidesteps and backing up.
+    "armSwingDeg": 35,      // shoulder swing, total range
+    "armBackBiasDeg": 5,    // swing centre behind vertical (more extension than flexion)
+    "elbowBiasDeg": 25,     // mean elbow bend
+    "elbowSwingDeg": 20,    // extra bend at the forward end of the swing
+    "armRate": 8.0,         // 1/s, arm smoothing
+    // Head stays upright and leads turns (W toward a new heading).
+    "headStabilise": 0.8,   // 0..1, share of body lean and sway the head cancels
+    "headLeadDeg": 30,      // max head turn ahead of the body
+    "headRate": 6.0         // 1/s, head turn smoothing
+  }
+}

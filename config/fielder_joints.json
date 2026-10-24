@@ -81,15 +81,5 @@
     "maxReach": 0.98,         // legs never lock fully straight
     "followRate": 10.0,       // 1/s, how fast the body settles over the feet
     "stanceBlendHeight": 0.1  // m; a foot this much higher than the other carries no weight
-  },
-
-  // Foot planting and stepping (WASD). Metres, seconds. A step lands
-  // relative to the planted foot: stance width to the side plus the step.
-  "stepping": {
-    "stepLength": 0.6,       // forward, ahead of the planted foot
-    "backStepLength": 0.35,
-    "sideStepLength": 0.3,
-    "stepDuration": 0.4,     // per swing
-    "stepHeight": 0.08       // swing arc apex
   }
 }

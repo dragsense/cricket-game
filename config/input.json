@@ -6,7 +6,7 @@
     "ToggleDebugDraw": ["F2"],
     "ReloadConfig": ["F5"],
     "Quit": ["Escape"],
-    // Fielder steps (hold to keep stepping, alternating feet).
+    // Fielder walk: W forward (turns to the camera heading), S back, A/D sidestep.
     "StepForward": ["W"],
     "StepBack": ["S"],
     "StepLeft": ["A"],

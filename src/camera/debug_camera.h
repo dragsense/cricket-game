@@ -46,11 +46,15 @@ public:
 
     const CameraSpeeds& speeds() const { return speeds_; }
     void setSpeeds(const CameraSpeeds& speeds);  // applies immediately
+    // Ground point the orbit follows (e.g. the player's root); the orbit
+    // keeps its configured offset above it. Rotate and zoom stay relative.
+    void setFollowPoint(math::Vec3 point) { follow_ = point; }
 
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     CameraSpeeds speeds_;
+    math::Vec3 follow_{0.0f};
 };
 
 } // namespace camera
