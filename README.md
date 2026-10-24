@@ -4,7 +4,7 @@ A 3D cricket game with fully procedural character motion, built on a small custo
 (SDL3 + Filament + GLM + Dear ImGui + EnTT). Windows first; Android and iOS later from the
 same codebase. See [DESIGN.md](DESIGN.md) for the architecture.
 
-**Current state: Milestone 0** — window, Filament PBR rendering of a cricket field at real
+**Current state: Milestone 0** â€” window, Filament PBR rendering of a cricket field at real
 scale, sun shadows + sky lighting, orbit and free-fly debug cameras, debug line renderer,
 ImGui stats overlay, fixed-timestep simulation loop, math wrapper with unit tests.
 

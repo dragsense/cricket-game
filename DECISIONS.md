@@ -3,7 +3,7 @@
 Dated log. Format: decision, reason, alternatives rejected.
 
 ## 2026-10-24: Custom stack instead of an off-the-shelf engine
-- **Decision:** build on libraries (SDL3, Filament, GLM, EnTT…) with no game engine.
+- **Decision:** build on libraries (SDL3, Filament, GLM, EnTTâ€¦) with no game engine.
 - **Reason:** full control over procedural motion and the sim loop. The custom code stays
   small and cricket-specific. The stack is cross-platform for mobile.
 - **Rejected:**
