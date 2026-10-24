@@ -1,6 +1,36 @@
 # Progress
 
-## Current milestone: M0 Foundation — DONE (2026-10-24), awaiting user review
+## Current milestone: M1 Procedural Fielder Body and Basic Locomotion — IN PROGRESS
+
+Goal: a single fielder with an ozz skeleton that stands, walks, runs and jumps with fully
+procedural motion. Out of scope: game logic, teams, ball interaction, skinned mesh. The
+M0 ground, pitch and ball stay as they are. Work one step at a time; stop for a visual
+check after each step.
+
+- [x] **1.0 Biomechanics research** → [docs/BIOMECHANICS.md](docs/BIOMECHANICS.md)
+  (proportions, ROM, balance, walk, run, jump, movement quality, fielding preview).
+  Awaiting user review.
+- [ ] **1.1 Skeleton and body**: ozz RawSkeleton built at runtime from
+  `config/fielder_skeleton.json` (height ratios); per-bone capsule/box visual kept
+  separate; debug bones, joints and axes; ImGui height slider and bone readouts;
+  neutral standing pose.
+- [ ] **1.2 Joint limits and IK**: `config/fielder_joints.json` (hinge and
+  swing-twist); our own swing-twist clamp after every solve; ozz IKTwoBoneJob for the
+  legs and arms with pole targets; IKAimJob for the head and chest; ImGuizmo targets.
+- [ ] **1.3 Body repositioning**: port of the user's RepositionBody, with the stance
+  foot as a parameter and leg length from the skeleton (or a better approach).
+- [ ] **1.4 Foot planting and stepping**: locked feet, a step trigger from the ideal
+  position, a swing arc from config, one swing foot at a time, debug draw.
+- [ ] **1.5 Walk**: desired-velocity controller (WASD, gamepad, walk-to-point), gait
+  from `config/locomotion.json`, pelvis bob and sway, lean, arm swing, head
+  stabilisation, smooth start, stop and turn.
+- [ ] **1.6 Run**: speed-driven blend, flight phase, sprint up to realistic speed.
+- [ ] **1.7 Jump**: crouch, push, ballistic flight, tuck, absorbing landing, recovery;
+  standing and running jumps.
+- [ ] Cross-cutting: config hot-reload key; slow motion (0.1–1x) and pause in ImGui;
+  unit tests for joint limits, swing-twist and repositioning.
+
+## Previous milestone: M0 Foundation — DONE (2026-10-24), awaiting user review
 
 Scope:
 - Windows build with one command, and a setup script.
@@ -41,7 +71,7 @@ Next milestone: **M1 Rig and IK**. Start it with the `start-milestone` skill.
 | # | Milestone | Status |
 |---|---|---|
 | M0 | Foundation: window, render, cameras, debug tools | done |
-| M1 | Rig and IK: ozz-animation skeleton, two-bone/aim IK, FABRIK, swing-twist joint limits, ImGuizmo targets | not started |
+| M1 | Procedural fielder body and basic locomotion: ozz skeleton, IK, joint limits, stepping, walk, run, jump | in progress |
 | M2 | Basic ball flight (drag), bounce, roll | not started |
 | M3 | Fielding: chase, intercept, pick-up, throw, catch | not started |
 | M4 | Wicketkeeper | not started |
