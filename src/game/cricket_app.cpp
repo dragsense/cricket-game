@@ -42,7 +42,11 @@ bool CricketApp::init() {
     wd.width = e.getInt("window.width", wd.width);
     wd.height = e.getInt("window.height", wd.height);
     wd.resizable = e.getBool("window.resizable", true);
-    wd.dock = e.getString("window.dock", wd.dock);
+#ifdef NDEBUG
+    wd.dock = e.getString("window.dockRelease", "fullscreen");
+#else
+    wd.dock = e.getString("window.dockDebug", wd.dock);
+#endif
     wd.maxScreenFraction = e.getFloat("window.maxScreenFraction", wd.maxScreenFraction);
     if (!window_.create(wd)) return false;
 

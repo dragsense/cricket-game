@@ -15,9 +15,12 @@ struct WindowDesc {
     int width = 1600;
     int height = 900;
     bool resizable = true;
+    // "fullscreen": borderless fullscreen at desktop resolution (player builds);
+    // "maximized": fills the screen as a normal window (title bar, minimize, resize);
     // "right" / "left": half the screen at full height (code on the other half);
     // "center": width x height, shrunk to fit within maxScreenFraction of the screen.
-    std::string dock = "right";
+    // "maximized" restores to the "center" size.
+    std::string dock = "maximized";
     float maxScreenFraction = 0.9f;
 };
 

@@ -5,7 +5,9 @@
     "width": 1600,
     "height": 900,
     "resizable": true,
-    "dock": "right",              // "right"/"left": half screen (code beside it); "center": width x height, fitted
+    // Window mode: "fullscreen" | "maximized" | "right"/"left" (half screen) | "center" (width x height, fitted)
+    "dockDebug": "maximized",     // dev builds: normal window, movable / minimizable / resizable
+    "dockRelease": "fullscreen",  // player builds
     "maxScreenFraction": 0.9,     // "center" only: never larger than this share of the screen
     "vsync": true
   },

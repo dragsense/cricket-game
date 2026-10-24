@@ -64,8 +64,11 @@ bool Window::create(const WindowDesc& desc) {
         LOG_ERROR("SDL_CreateWindow failed: {}", SDL_GetError());
         return false;
     }
-    placeOnScreen(desc);
+    placeOnScreen(desc);  // also the size it restores to when un-maximized
     SDL_ShowWindow(window_);
+    if (desc.dock == "maximized") SDL_MaximizeWindow(window_);  // normal window: movable, minimizable, resizable
+    if (desc.dock == "fullscreen") SDL_SetWindowFullscreen(window_, true);  // borderless, desktop resolution
+    SDL_SyncWindow(window_);
 
     int w = 0, h = 0;
     SDL_GetWindowSize(window_, &w, &h);
