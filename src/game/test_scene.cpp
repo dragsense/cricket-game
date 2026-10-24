@@ -165,23 +165,6 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
                              at(pos + Vec3(0, kPitchY + radius, 0)), true);
     }
 
-    // --- Human-sized capsules to judge scale. ---
-    float humanH = c.getFloat("human.height", 1.8f);
-    float humanR = c.getFloat("human.radius", 0.22f);
-    MaterialDesc kit = readMaterial(c, "human", {{0.92f, 0.92f, 0.9f}, 0.7f, 0.0f, 0.0f, 0.0f});
-    render::MeshData humanMesh = render::makeCapsule(humanR, humanH, 24, 8);
-    const Vec3 spots[] = {
-        {0.6f, 0, halfPitch - 1.3f},   // batter at the crease
-        {0.0f, 0, halfPitch + 2.5f},   // keeper
-        {1.2f, 0, -halfPitch - 1.0f},  // non-striker end
-        {18.0f, 0, -6.0f},             // a fielder
-    };
-    for (Vec3 p : spots) add(humanMesh, kit, at(p), true);
-
-    // --- 1 m reference cube. ---
-    MaterialDesc grey = readMaterial(c, "referenceCube", {{0.6f, 0.6f, 0.62f}, 0.5f, 0.0f, 0.0f, 0.0f});
-    add(render::makeBox(Vec3(1.0f)), grey, at(Vec3(4.0f, 0.5f, 0.0f)), true);
-
     // --- Probe that follows the fixed-step simulation (interpolated). ---
     MaterialDesc probeMat = readMaterial(c, "probe", {{0.8f, 0.1f, 0.1f}, 0.35f, 0.0f, 0.0f, 0.0f});
     scene.probe = add(render::makeSphere(0.25f, 24, 12), probeMat, at(Vec3(0.0f)), true);

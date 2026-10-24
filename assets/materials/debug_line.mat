@@ -1,6 +1,6 @@
 // Unlit vertex-coloured lines for the debug draw. Alpha-blended so grids can
-// be faint. Colours are divided by the camera exposure so they show at their
-// authored brightness regardless of the physical sun/exposure settings.
+// be faint. Unlit output is not exposed by Filament, so the authored colour is
+// used as is (dividing by exposure saturated every colour to white).
 material {
     name : debug_line,
     shadingModel : unlit,
@@ -14,6 +14,6 @@ fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         vec4 c = getColor();
-        material.baseColor = vec4(c.rgb * c.a / getExposure(), c.a);
+        material.baseColor = vec4(c.rgb * c.a, c.a);
     }
 }

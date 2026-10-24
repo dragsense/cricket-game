@@ -12,7 +12,9 @@ void SimWorld::configure(const core::Config& config) {
     previous_ = current_;
 }
 
-bool SimWorld::initFielder(const rig::SkeletonDef& def) { return fielder_.init(def, def.height); }
+bool SimWorld::initFielder(const rig::SkeletonDef& def, const core::Config& joints) {
+    return fielder_.init(def, def.height, joints);
+}
 
 void SimWorld::tick(double dt) {
     previous_ = current_;

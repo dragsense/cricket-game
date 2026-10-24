@@ -224,9 +224,29 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
   projection) and the ImGui "Fielder" panel (height slider, toggles, bone list with
   local rotations).
 
-### IK (M1): not started
-ozz two-bone and aim IK. Our own FABRIK chains and swing-twist joint limits (published
-algorithms), driven by targets that can be dragged with ImGuizmo.
+### IK (M1): joint limits and limb IK built (Step 1.2)
+- `ik::JointLimits` (`src/ik/joint_limits.*`, our own code): per-joint limits from
+  `config/fielder_joints.json`.
+  - **Hinge:** twist about one axis, clamped.
+  - **Swing-twist:** `math::swingTwist` decomposition. The twist is clamped to a range;
+    the swing rotation vector is clamped to an asymmetric ellipse (a radius for each
+    direction).
+  - The left side is in config; the right side is mirrored (rotations about Y and Z
+    flip sign).
+- `ik::solveTwoBone` / `ik::solveAim` (`src/ik/limb_ik.*`) wrap ozz `IKTwoBoneJob` /
+  `IKAimJob`. The mid axis opens the joint: the knee uses −X and the elbow +X. Poles
+  are set so the knees point forward and the elbows back and out.
+- `agents::Fielder::tick` order:
+  1. rest pose and pelvis offset;
+  2. chest aim, then limits;
+  3. head aim, then two-bone IK for legs and arms;
+  4. limits;
+  5. feet flattened to character space;
+  6. limits.
+  No allocations.
+- Debug: the "IK demo" checkbox in the Debug window sweeps all targets through and
+  beyond reach. The targets are drawn when "Fielder skeleton" is on. ImGuizmo was not
+  added (the user's choice).
 
 ### Motion (M1+): not started
 Balance, locomotion and procedural actions built on rig and IK.

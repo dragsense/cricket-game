@@ -1,0 +1,86 @@
+// Fielder joint limits and IK settings. Degrees. Ranges from docs/BIOMECHANICS.md
+// section 2 (clinical ROM; spine and neck ranges split across their bones).
+//
+// Limits are rotations relative to the rest (standing) pose, in the joint's local
+// frame, which in rest is aligned with the character: +X = left, +Y = up,
+// +Z = forward. Values are for the LEFT side; "_r" bones are mirrored
+// automatically (rotations about Y and Z flip sign). Bones not listed are free.
+//
+// "hinge":       rotation only about "axis", clamped to [min, max].
+// "swingTwist":  twist about "twistAxis" clamped to "twist" [min, max]; the swing
+//                (rotation about the two other axes, in x,y,z order) is clamped to
+//                an elliptical cone with per-direction limits "swing1"/"swing2".
+//
+// Sign guide (left side):
+//   about +X: positive tips +Y toward +Z (spine flexion, knee flexion, plantarflexion);
+//             a hanging limb (-Y) moves BACK for positive, FORWARD for negative.
+//   about +Z: a hanging limb (-Y) moves outward (+X) for positive.
+//   about +Y: forward (+Z) turns toward +X (outward, left side) for positive.
+{
+  "joints": {
+    "spine_01":  { "type": "swingTwist", "twistAxis": "y", "twist": [-5, 5],   "swing1": [-15, 30], "swing2": [-15, 15] },
+    "spine_02":  { "type": "swingTwist", "twistAxis": "y", "twist": [-15, 15], "swing1": [-10, 20], "swing2": [-10, 10] },
+    "chest":     { "type": "swingTwist", "twistAxis": "y", "twist": [-15, 15], "swing1": [-10, 20], "swing2": [-8, 8] },
+    "neck":      { "type": "swingTwist", "twistAxis": "y", "twist": [-35, 35], "swing1": [-30, 28], "swing2": [-20, 20] },
+    "head":      { "type": "swingTwist", "twistAxis": "y", "twist": [-35, 35], "swing1": [-30, 28], "swing2": [-20, 20] },
+
+    // Clavicle runs along +X: elevation about Z, protraction (forward) about -Y.
+    "clavicle":  { "type": "swingTwist", "twistAxis": "x", "twist": [-10, 10], "swing1": [-15, 25], "swing2": [-5, 40] },
+    // Shoulder: X = flexion(-)/extension(+), Z = adduction(-)/abduction(+), twist = internal(-)/external(+).
+    "upper_arm": { "type": "swingTwist", "twistAxis": "y", "twist": [-70, 90], "swing1": [-180, 60], "swing2": [-40, 180] },
+    // Elbow flexion brings the forearm forward (negative X); pronation/supination is forearm twist.
+    "forearm":   { "type": "swingTwist", "twistAxis": "y", "twist": [-80, 80], "swing1": [-145, 3], "swing2": [0, 0] },
+    // Wrist: palm faces the body (-X). Z = flexion(-)/extension(+), X = radial(-)/ulnar(+) deviation.
+    "hand":      { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0], "swing1": [-20, 30], "swing2": [-80, 70] },
+
+    // Hip: X = flexion(-)/extension(+), Z = adduction(-)/abduction(+), twist = internal(-)/external(+).
+    "thigh":     { "type": "swingTwist", "twistAxis": "y", "twist": [-40, 50], "swing1": [-120, 30], "swing2": [-30, 45] },
+    // Knee flexion moves the shin back (positive X). Small hyperextension allowance.
+    "shin":      { "type": "hinge", "axis": "x", "min": -3, "max": 140 },
+    // Ankle: foot runs along +Z. X = dorsiflexion(-)/plantarflexion(+), Y = toe in/out,
+    // twist about Z = inversion(-)/eversion(+).
+    "foot":      { "type": "swingTwist", "twistAxis": "z", "twist": [-30, 15], "swing1": [-20, 50], "swing2": [-15, 15] },
+    // Toe extension (toes up) is negative X.
+    "toe":       { "type": "hinge", "axis": "x", "min": -70, "max": 40 },
+
+    // Fingers curl toward the palm (-X on the left hand): negative Z.
+    "index_01":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0], "swing1": [-15, 15], "swing2": [-90, 20] },
+    "middle_01": { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0], "swing1": [-10, 10], "swing2": [-90, 20] },
+    "ring_01":   { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0], "swing1": [-10, 10], "swing2": [-90, 20] },
+    "pinky_01":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0], "swing1": [-15, 15], "swing2": [-90, 20] },
+    "index_02":  { "type": "hinge", "axis": "z", "min": -100, "max": 0 },
+    "middle_02": { "type": "hinge", "axis": "z", "min": -100, "max": 0 },
+    "ring_02":   { "type": "hinge", "axis": "z", "min": -100, "max": 0 },
+    "pinky_02":  { "type": "hinge", "axis": "z", "min": -100, "max": 0 },
+    "index_03":  { "type": "hinge", "axis": "z", "min": -80, "max": 0 },
+    "middle_03": { "type": "hinge", "axis": "z", "min": -80, "max": 0 },
+    "ring_03":   { "type": "hinge", "axis": "z", "min": -80, "max": 0 },
+    "pinky_03":  { "type": "hinge", "axis": "z", "min": -80, "max": 0 },
+    // Thumb (runs down, forward and toward the palm): kept loose for now.
+    "thumb_01":  { "type": "swingTwist", "twistAxis": "y", "twist": [-20, 20], "swing1": [-40, 40], "swing2": [-40, 40] },
+    "thumb_02":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-60, 10], "swing2": [-10, 10] },
+    "thumb_03":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-80, 10], "swing2": [-5, 5] }
+  },
+
+  "ik": {
+    // Pole directions in character space: knees point forward, elbows back and out.
+    "kneePole": [0.0, 0.0, 1.0],
+    "elbowPole": [0.3, 0.0, -1.0],
+    // ozz two-bone "soften" (1 = none). Slightly below 1 avoids the knee snapping straight.
+    "soften": 0.97,
+    // Aim IK: share of the look rotation taken by the chest before the head.
+    "chestAimWeight": 0.3,
+    "headAimWeight": 1.0
+  },
+
+  // Debug "IK demo" (Debug window checkbox): targets move along these paths so
+  // every joint is driven to and past its limits. Metres, seconds.
+  "ikDemo": {
+    "period": 6.0,
+    "handReach": 0.9,       // radius of the hand circles (beyond arm length on purpose)
+    "footLift": 0.35,
+    "footSwing": 0.5,
+    "pelvisDrop": 0.35,     // crouch depth; also lifts above full leg length
+    "lookRadius": 3.0
+  }
+}

@@ -8,11 +8,11 @@ namespace debug {
 
 struct DebugSettings {
     bool showOverlay = true;
-    bool shadows = true;
+    bool shadows = false;
     bool debugDraw = true;
-    bool showGrid = true;
-    bool showProbe = true;
-    bool fielderSkeleton = false;  // bones, joints, axes, centre of mass
+    bool showGrid = false;
+    bool showProbe = false;
+    bool ikDemo = false;           // fielder IK targets sweep through every joint's range
     bool showDemoWindow = false;
     int cameraMode = 0;  // 0 = orbit, 1 = free-fly
     camera::CameraSpeeds cameraSpeeds;

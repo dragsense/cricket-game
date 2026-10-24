@@ -20,7 +20,7 @@
   "render": {
     "backend": "opengl",          // "opengl" or "vulkan"
     "assetDir": "assets",
-    "shadows": true,
+    "shadows": false,
     "shadowMapSize": 2048,
     "shadowCascades": 4,
     "shadowFar": 150.0,

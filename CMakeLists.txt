@@ -49,6 +49,14 @@ add_library(cricket_rig STATIC
 target_link_libraries(cricket_rig PUBLIC cricket_core PRIVATE ozz_animation ozz_animation_offline)
 cricket_warnings(cricket_rig)
 
+# ---- ik: joint limits (own code) + ozz two-bone / aim IK ---------------------------
+add_library(cricket_ik STATIC
+    src/ik/joint_limits.cpp
+    src/ik/limb_ik.cpp
+)
+target_link_libraries(cricket_ik PUBLIC cricket_rig PRIVATE ozz_animation)
+cricket_warnings(cricket_ik)
+
 # ---- game executable --------------------------------------------------------
 add_executable(CricketGame
     src/main.cpp
@@ -69,7 +77,7 @@ add_executable(CricketGame
     src/debug/skeleton_debug.cpp
     src/debug/axis_gizmo.cpp
 )
-target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
+target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig cricket_ik SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
 cricket_warnings(CricketGame)
 # Debug builds read config/ straight from the source tree and hot-reload it.
 target_compile_definitions(CricketGame PRIVATE $<$<CONFIG:Debug>:CRICKET_DEV_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config">)
@@ -108,4 +116,10 @@ if(CRICKET_BUILD_TESTS)
     target_compile_definitions(rig_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
     cricket_warnings(rig_tests)
     add_test(NAME rig_tests COMMAND rig_tests)
+
+    add_executable(ik_tests tests/test_main.cpp tests/test_ik.cpp)
+    target_link_libraries(ik_tests PRIVATE cricket_ik doctest::doctest)
+    target_compile_definitions(ik_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
+    cricket_warnings(ik_tests)
+    add_test(NAME ik_tests COMMAND ik_tests)
 endif()

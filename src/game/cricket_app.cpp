@@ -2,7 +2,6 @@
 
 #include "core/log.h"
 #include "debug/axis_gizmo.h"
-#include "debug/skeleton_debug.h"
 #include "platform/imgui_platform.h"
 
 #include <imgui.h>
@@ -90,12 +89,12 @@ bool CricketApp::init() {
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
 
     rig::SkeletonDef skeletonDef;
-    if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef)) return false;
+    if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef, cfg_.fielderJoints)) return false;
     const agents::Fielder& fielder = sim_.fielder();
     fielderVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.fielderSkeleton);
     fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
 
-    debugSettings_.shadows = e.getBool("render.shadows", true);
+    debugSettings_.shadows = e.getBool("render.shadows", false);
     debugSettings_.debugDraw = e.getBool("debug.debugDraw", true);
     debugSettings_.showOverlay = e.getBool("debug.showOverlay", true);
     debugSettings_.cameraSpeeds = camera_.speeds();
@@ -140,6 +139,10 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             cfg_.fielderSkeleton = std::move(fresh);
             LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
             continue;
+        } else if (name == "fielder_joints.json") {
+            cfg_.fielderJoints = std::move(fresh);
+            agents::Fielder& f = sim_.fielder();
+            f.init(f.def(), f.rig().height(), cfg_.fielderJoints);  // limits + IK settings
         } else {
             continue;  // not a file this app uses
         }
@@ -195,7 +198,10 @@ bool CricketApp::pumpEvents() {
     return running;
 }
 
-void CricketApp::fixedUpdate(double dt) { sim_.tick(dt); }
+void CricketApp::fixedUpdate(double dt) {
+    sim_.fielder().setIkDemo(debugSettings_.ikDemo);
+    sim_.tick(dt);
+}
 
 void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
@@ -273,9 +279,8 @@ void CricketApp::drawDebugGeometry(float alpha) {
     dd.box(math::Vec3(0, 0.36f, halfLen), math::Vec3(0.115f, 0.36f, 0.02f), render::colors::kYellow);
     dd.box(math::Vec3(0, 0.36f, -halfLen), math::Vec3(0.115f, 0.36f, 0.02f), render::colors::kYellow);
 
-    const agents::Fielder& fielder = sim_.fielder();
-    if (debugSettings_.fielderSkeleton)
-        debug::drawSkeleton(dd, fielder.def(), fielder.rig(), fielderModels_, fielder.root(), debug::SkeletonDrawFlags{});
+    // Player's local axes at its root: X red (left), Y green (up), Z blue (forward).
+    dd.axes(sim_.fielder().root(), 0.5f);
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

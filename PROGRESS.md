@@ -18,7 +18,8 @@ check after each step.
   `config/fielder_skeleton.json` (height ratios); per-bone capsule/box visual kept
   separate; debug bones, joints and axes; ImGui height slider and bone readouts;
   neutral standing pose.
-- [ ] **1.2 Joint limits and IK**: `config/fielder_joints.json` (hinge and
+- [x] **1.2 Joint limits and IK** (unit-tested; awaiting the user's visual check via the
+  Debug window "IK demo"; ImGuizmo dropped at the user's request): `config/fielder_joints.json` (hinge and
   swing-twist); our own swing-twist clamp after every solve; ozz IKTwoBoneJob for the
   legs and arms with pole targets; IKAimJob for the head and chest; ImGuizmo targets.
 - [ ] **1.3 Body repositioning**: port of the user's RepositionBody, with the stance

@@ -25,6 +25,7 @@ struct AppConfigs {
     core::Config input;   // config/input.json
     core::Config scene;   // config/scene.json
     core::Config fielderSkeleton;  // config/fielder_skeleton.json
+    core::Config fielderJoints;    // config/fielder_joints.json
     std::string dir = "config";    // where the files above were loaded from
     bool liveReload = false;       // dev builds: watch `dir` and re-apply changes
 };

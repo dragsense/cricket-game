@@ -31,7 +31,7 @@ void drawOverlay(DebugSettings& s, const OverlayInfo& info) {
     ImGui::Checkbox("Grid", &s.showGrid);
     ImGui::EndDisabled();
     ImGui::Checkbox("Interpolation probe", &s.showProbe);
-    ImGui::Checkbox("Fielder skeleton", &s.fielderSkeleton);
+    ImGui::Checkbox("IK demo", &s.ikDemo);
     ImGui::Checkbox("ImGui demo", &s.showDemoWindow);
 
     ImGui::Separator();
