@@ -66,7 +66,7 @@ private:
     rig::Pose fielderPose_;                  // interpolated, render side
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
-    bool mouseLook_ = true;  // mouse turns the camera, cursor hidden; Tab toggles
+    bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)
     debug::DebugSettings appliedSettings_;  // last values pushed to the renderer
     std::string backendName_;
     bool imguiReady_ = false;

@@ -136,8 +136,9 @@ Dated log. Format: decision, reason, alternatives rejected.
   - Double-tap Shift to run (the user preferred Ctrl jog / Shift run).
 
 ## 2026-10-25: Mouse-look orbit camera (M1)
-- **Decision:** the mouse turns the orbit camera without a button (SDL relative mouse
-  mode, cursor hidden). Tab frees the cursor for the debug UI, where right-drag rotates.
+- **Decision:** right-drag rotates the orbit camera by default. Tab toggles mouse-look,
+  where the mouse turns the camera without a button (SDL relative mouse mode, cursor
+  hidden).
 - **Reason:** the user asked for third-person-style camera control while moving the
   fielder.
 

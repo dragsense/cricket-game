@@ -75,8 +75,8 @@ check after each step.
   Backing up and sidesteps cap at the jog (user's choice): the run preset has no
   back/side speeds, and the shape blend measures speed in the direction of travel.
   `test_walk.cpp` adds blend and flight-phase tests.
-  Camera: mouse-look on by default (the mouse turns the orbit camera, cursor hidden via
-  relative mouse mode); Tab frees the cursor for the debug UI, where right-drag rotates. Later: sprint (to 9 m/s), crossover, turn-and-run (M3).
+  Camera: right-drag rotates by default; Tab toggles mouse-look (the mouse turns the
+  orbit camera, cursor hidden via relative mouse mode). Later: sprint (to 9 m/s), crossover, turn-and-run (M3).
 - [ ] Cross-cutting: config hot-reload key; slow motion (0.1–1x) and pause in ImGui;
   unit tests for joint limits, swing-twist and repositioning.
 
