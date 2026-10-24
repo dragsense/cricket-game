@@ -206,8 +206,11 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
   `SkeletonBuilder`, and converts AoS `rig::Pose` locals to model matrices with
   `LocalToModelJob`. Joint indices are ozz's depth-first order; ozz types stay in
   `rig.cpp`.
-- 22 bones: pelvis (root), spine_01, spine_02, chest, neck, head; per side clavicle,
-  upper_arm, forearm, hand, thigh, shin, foot, toe.
+- 52 bones: pelvis (root), spine_01, spine_02, chest, neck, head; per side clavicle,
+  upper_arm, forearm, hand, thigh, shin, foot, toe, plus fingers (thumb, index, middle,
+  ring and pinky, `_01`–`_03` each; thumb_01 is the metacarpal). Finger segments are
+  fractions of hand length (Buchholz et al. 1992). The names map 1:1 to Mixamo's
+  skeleton for the planned textured body (Step 1.1b).
 - **Rest pose = neutral standing pose**, with identity local rotations. Every joint
   frame is aligned with character space (+Y up, +Z forward, +X = character's left), so
   joint-limit axes are the same for every bone. Key landmarks at H: hip 0.530, knee

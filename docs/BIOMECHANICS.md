@@ -90,6 +90,17 @@ whole-body CoM sits roughly at 0.55 H, just in front of the sacrum **[T]**.
     the vertex (H).
   - Each `clavicle` runs from the sternum to the shoulder joint, about
     0.5 × 0.259 H ≈ 0.13 H laterally **[E]**.
+- **Fingers** (added for ball pick-up and catching): 3 segments per finger. Phalanx
+  lengths are fractions of hand length L = 0.108 H **[T]**: thumb (metacarpal, proximal,
+  distal) 0.251 / 0.196 / 0.158; index 0.265 / 0.143 / 0.097; middle
+  0.277 / 0.170 / 0.108; ring 0.259 / 0.165 / 0.107; little 0.206 / 0.117 / 0.093. The
+  knuckles sit about 0.37 L from the wrist. Values follow Buchholz, Armstrong & Goldstein
+  1992, *Ergonomics* 35(3):261–273
+  ([catalogue record](https://documentacion.fundacionmapfre.org/documentacion/publico/i18n%20/bib/47249.do);
+  companion kinematic model, [Buchholz & Armstrong 1992](https://deepblue.lib.umich.edu/handle/2027.42/30224)).
+  The table itself is paywalled; the numbers are as commonly reproduced in hand-modelling
+  work. About 0.02 L is added to each fingertip for the pad. Finger mass is included in
+  the hand's 0.61 %.
 - The segment masses go in the same JSON (`mass_fraction`, `com_fraction`). They are used
   later to compute the whole-body CoM for balance (section 3) and to draw the CoM in
   debug.

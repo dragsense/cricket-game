@@ -30,11 +30,12 @@ math::Vec3 modelPos(const Rig& rig, const std::vector<math::Mat4>& models, const
 
 TEST_CASE("skeleton definition") {
     SkeletonDef def = loadDef();
-    CHECK(def.bones.size() == 22);
+    CHECK(def.bones.size() == 52);  // 22 body bones + 15 finger bones per hand
     CHECK(def.find("pelvis") == 0);
     CHECK(def.bones[0].parent == kNoParent);
     for (const char* n : {"spine_01", "spine_02", "chest", "neck", "head", "clavicle_l", "upper_arm_r", "forearm_l",
-                          "hand_r", "thigh_l", "shin_r", "foot_l", "toe_r"})
+                          "hand_r", "thigh_l", "shin_r", "foot_l", "toe_r", "thumb_01_l", "index_03_r",
+                          "middle_02_l", "ring_01_r", "pinky_03_l"})
         CHECK_MESSAGE(def.find(n) >= 0, n);
 
     SUBCASE("parents come before children") {
@@ -61,7 +62,7 @@ TEST_CASE("rig built with ozz matches anthropometric landmarks") {
     const float h = 1.8f;
     Rig rig;
     REQUIRE(rig.build(def, h));
-    REQUIRE(rig.numJoints() == 22);
+    REQUIRE(rig.numJoints() == 52);
     CHECK(rig.legLength() == doctest::Approx(0.491f * h));
 
     std::vector<math::Mat4> models(static_cast<size_t>(rig.numJoints()));
@@ -75,6 +76,15 @@ TEST_CASE("rig built with ozz matches anthropometric landmarks") {
     CHECK(modelPos(rig, models, "forearm_l").y == doctest::Approx(0.630f * h).epsilon(0.01));
     CHECK(modelPos(rig, models, "hand_l").y == doctest::Approx(0.485f * h).epsilon(0.01));
 
+    SUBCASE("fingertips reach about one hand length below the wrist") {
+        // Middle finger tip: wrist -> fingertip = hand length 0.108 H (Winter).
+        int j = rig.findJoint("middle_03_l");
+        math::Vec3 tip = math::Vec3(models[static_cast<size_t>(j)] *
+                                    math::Vec4(def.bones[static_cast<size_t>(rig.boneDefIndex(j))].tip * h, 1.0f));
+        float wristY = modelPos(rig, models, "hand_l").y;
+        CHECK(wristY - tip.y == doctest::Approx(0.108f * h).epsilon(0.08));
+        CHECK(modelPos(rig, models, "thumb_01_l").z > modelPos(rig, models, "pinky_01_l").z);  // thumb forward
+    }
     SUBCASE("parents precede children in joint order") {
         for (int j = 0; j < rig.numJoints(); ++j) CHECK(rig.parent(j) < j);
     }

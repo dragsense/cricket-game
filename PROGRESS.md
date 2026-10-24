@@ -11,7 +11,10 @@ check after each step.
   (proportions, ROM, balance, walk, run, jump, movement quality, fielding preview).
   Awaiting user review.
 - [x] **1.1 Skeleton and body** (built, 2 test suites passing; awaiting the user's visual
-  check): ozz RawSkeleton built at runtime from
+  check). Finger bones added (15 per hand, Mixamo-compatible names): 52 bones.
+- [ ] **1.1b Textured Mixamo body**: the user supplies `assets/models/fielder.glb`
+  (Mixamo FBX → Blender → glb). Skinned through gltfio, bone-name mapping in config,
+  per-bone retarget correction; capsules kept as a debug toggle.: ozz RawSkeleton built at runtime from
   `config/fielder_skeleton.json` (height ratios); per-bone capsule/box visual kept
   separate; debug bones, joints and axes; ImGui height slider and bone readouts;
   neutral standing pose.
