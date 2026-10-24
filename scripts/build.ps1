@@ -3,14 +3,19 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\build.ps1                # debug: build + test + run
 #   powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Config release
-#   ... -NoRun / -NoTests / -ConfigureOnly / -Clean
+#   ... -NoRun / -NoTests / -ConfigureOnly / -Clean / -Detach
+#
+# A running game keeps running while it rebuilds: its locked exe is renamed
+# aside (Windows allows that) so the linker can write the new one. The old game
+# is only closed when the new one starts, so a failed build leaves it running.
 
 param(
     [ValidateSet('debug', 'release')][string]$Config = 'debug',
     [switch]$NoRun,
     [switch]$NoTests,
     [switch]$ConfigureOnly,
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$Detach   # start the game without waiting for it (used by watch mode)
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -31,14 +36,36 @@ function Import-MsvcEnv {
 
 Import-MsvcEnv
 $buildDir = Join-Path $root "build\$Config"
+$bin = Join-Path $buildDir 'bin'
+$exe = Join-Path $bin 'CricketGame.exe'
 
-# A running game locks CricketGame.exe and the build cannot replace it, so close it first.
-Get-Process CricketGame -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "Closing running game (pid $($_.Id)) so it can be rebuilt..."
-    $_ | Stop-Process -Force
-    $_.WaitForExit()
+# Games started from this build folder (including renamed-aside copies).
+function Get-GameProcesses {
+    Get-Process CricketGame* -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) }
 }
-if ($Clean -and (Test-Path $buildDir)) { Remove-Item $buildDir -Recurse -Force }
+function Stop-Game {
+    Get-GameProcesses | ForEach-Object {
+        Write-Host "Closing previous game (pid $($_.Id))..."
+        $_ | Stop-Process -Force
+        $_.WaitForExit()
+    }
+}
+
+if ($Clean) {
+    Stop-Game
+    if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
+} else {
+    # Delete leftovers from earlier runs (skips any still in use), then move the
+    # running exe aside so the linker can write a new one.
+    Get-ChildItem $bin -Filter 'CricketGame.*.old.exe' -ErrorAction SilentlyContinue |
+        ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+    if ((Test-Path $exe) -and (Get-GameProcesses)) {
+        $aside = "CricketGame.$([DateTime]::Now.ToString('HHmmssfff')).old.exe"
+        Rename-Item $exe $aside
+        Write-Host "Game is running: keeping it open while rebuilding."
+    }
+}
 
 cmake --preset $Config
 if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
@@ -53,7 +80,12 @@ if (-not $NoTests) {
 }
 
 if (-not $NoRun) {
-    $bin = Join-Path $buildDir 'bin'
-    Push-Location $bin
-    try { & .\CricketGame.exe } finally { Pop-Location }
+    Stop-Game  # the new build is ready: swap it in
+    if ($Detach) {
+        Start-Process -FilePath $exe -WorkingDirectory $bin | Out-Null
+        Write-Host "Game started ($Config). Watching for changes..."
+    } else {
+        Push-Location $bin
+        try { & .\CricketGame.exe } finally { Pop-Location }
+    }
 }

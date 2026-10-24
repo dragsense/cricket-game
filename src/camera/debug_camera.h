@@ -21,6 +21,19 @@ namespace camera {
 
 enum class CameraMode { Orbit, FreeFly };
 
+// Live-tunable feel (Debug panel sliders; defaults from config/engine.json).
+struct CameraSpeeds {
+    float orbitRotateDeg = 0.5f;     // orbit: degrees per mouse pixel
+    float orbitZoomStep = 0.15f;     // orbit: fraction of the view distance per wheel notch
+    float flyLookDeg = 0.3f;         // free-fly: degrees per mouse pixel
+    float flyMoveSpeed = 20.0f;      // free-fly: m/s
+    float flyFastMultiplier = 4.0f;  // free-fly: Shift speed-up
+
+    bool operator==(const CameraSpeeds&) const = default;
+};
+
+CameraSpeeds readCameraSpeeds(const core::Config& config);
+
 struct CameraPose {
     math::Vec3 eye{0.0f};
     math::Vec3 target{0, 0, -1};
@@ -44,10 +57,14 @@ public:
 
     CameraPose pose() const;
 
+    const CameraSpeeds& speeds() const { return speeds_; }
+    void setSpeeds(const CameraSpeeds& speeds);  // applies immediately
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     CameraMode mode_ = CameraMode::Orbit;
+    CameraSpeeds speeds_;
 };
 
 } // namespace camera

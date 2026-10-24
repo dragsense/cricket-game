@@ -17,6 +17,12 @@ void World::setTransform(entt::entity e, const math::Transform& t) {
     tc.dirty = true;
 }
 
+void World::despawn(render::Renderer& renderer, entt::entity e) {
+    if (!registry_.valid(e)) return;
+    if (const auto* r = registry_.try_get<Renderable>(e)) renderer.destroyObject(r->object);
+    registry_.destroy(e);
+}
+
 void World::syncToRenderer(render::Renderer& renderer) {
     auto view = registry_.view<TransformComponent, const Renderable>();
     for (auto [e, tc, r] : view.each()) {

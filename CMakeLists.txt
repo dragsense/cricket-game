@@ -35,9 +35,10 @@ add_library(cricket_core STATIC
     src/core/config.cpp
     src/core/input.cpp
     src/core/app.cpp
+    src/core/file_watcher.cpp
 )
 target_include_directories(cricket_core PUBLIC src)
-target_link_libraries(cricket_core PUBLIC cricket_math spdlog::spdlog nlohmann_json::nlohmann_json)
+target_link_libraries(cricket_core PUBLIC cricket_math spdlog::spdlog nlohmann_json::nlohmann_json PRIVATE efsw-static)
 cricket_warnings(cricket_core)
 
 # ---- rig: ozz-animation skeletons built from config ---------------------------
@@ -66,10 +67,12 @@ add_executable(CricketGame
     src/agents/fielder.cpp
     src/game/fielder_visual.cpp
     src/debug/skeleton_debug.cpp
-    src/debug/fielder_panel.cpp
+    src/debug/axis_gizmo.cpp
 )
 target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
 cricket_warnings(CricketGame)
+# Debug builds read config/ straight from the source tree and hot-reload it.
+target_compile_definitions(CricketGame PRIVATE $<$<CONFIG:Debug>:CRICKET_DEV_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config">)
 if(WIN32)
     set_target_properties(CricketGame PROPERTIES WIN32_EXECUTABLE $<CONFIG:Release>)
 endif()

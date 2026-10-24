@@ -1,4 +1,4 @@
-﻿#include "game/test_scene.h"
+#include "game/test_scene.h"
 
 namespace game {
 
@@ -56,6 +56,12 @@ std::vector<Vec3> fieldingCirclePoints(float radius, float halfPitch, float spac
 
 TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
     TestScene scene;
+    // Every scene entity goes through add(), so the scene can be rebuilt on config reload.
+    auto add = [&](const render::MeshData& mesh, const MaterialDesc& mat, const math::Transform& t, bool shadows) {
+        entt::entity e = w.spawn(r, mesh, mat, t, shadows);
+        scene.entities.push_back(e);
+        return e;
+    };
     scene.pitchLength = c.getFloat("pitch.length", 20.12f);
     float halfPitch = 0.5f * scene.pitchLength;
 
@@ -63,19 +69,19 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
     float boundary = c.getFloat("field.boundaryRadius", 70.0f);
     float runOff = c.getFloat("field.runOffWidth", 6.0f);
     MaterialDesc grass = readMaterial(c, "field.grass", {{0.27f, 0.52f, 0.18f}, 0.9f, 0.0f, 5.0f, 0.12f});
-    w.spawn(r, render::makeDisc(boundary, 192), grass, at(Vec3(0.0f)), false);
+    add(render::makeDisc(boundary, 192), grass, at(Vec3(0.0f)), false);
 
     MaterialDesc runOffMat = readMaterial(c, "field.runOff", {{0.22f, 0.44f, 0.16f}, 0.95f, 0.0f, 0.0f, 0.0f});
-    w.spawn(r, render::makeRing(boundary, boundary + runOff, 192), runOffMat, at(Vec3(0.0f)), false);
+    add(render::makeRing(boundary, boundary + runOff, 192), runOffMat, at(Vec3(0.0f)), false);
 
     float surroundRadius = c.getFloat("field.surroundRadius", 300.0f);
     MaterialDesc surround = readMaterial(c, "field.surround", {{0.35f, 0.37f, 0.33f}, 0.95f, 0.0f, 0.0f, 0.0f});
-    w.spawn(r, render::makeRing(boundary + runOff, surroundRadius, 192), surround, at(Vec3(0.0f)), false);
+    add(render::makeRing(boundary + runOff, surroundRadius, 192), surround, at(Vec3(0.0f)), false);
 
     // Boundary rope lying on the grass.
     float ropeR = c.getFloat("field.ropeRadius", 0.05f);
     MaterialDesc rope = readMaterial(c, "field.rope", {{0.95f, 0.95f, 0.95f}, 0.6f, 0.0f, 0.0f, 0.0f});
-    w.spawn(r, render::makeTorus(boundary, ropeR, 256, 8), rope, at(Vec3(0, ropeR, 0)), true);
+    add(render::makeTorus(boundary, ropeR, 256, 8), rope, at(Vec3(0, ropeR, 0)), true);
 
     // 30-yard fielding circle: painted discs, merged into one mesh.
     MaterialDesc paint = readMaterial(c, "crease", {{0.96f, 0.96f, 0.96f}, 0.7f, 0.0f, 0.0f, 0.0f});
@@ -86,14 +92,14 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
         render::MeshData markers;
         for (Vec3 p : fieldingCirclePoints(radius, halfPitch, spacing))
             render::appendMesh(markers, dot, at(p + Vec3(0, kPaintY, 0)));
-        w.spawn(r, markers, paint, at(Vec3(0.0f)), false);
+        add(markers, paint, at(Vec3(0.0f)), false);
     }
 
     // --- Pitch: 20.12 m (22 yards) between the stumps, 3.05 m wide, along Z. ---
     float pitchWidth = c.getFloat("pitch.width", 3.05f);
     float pitchOverrun = c.getFloat("pitch.overrun", 1.22f);  // prepared surface beyond each set of stumps
     MaterialDesc pitchMat = readMaterial(c, "pitch", {{0.78f, 0.70f, 0.50f}, 0.85f, 0.0f, 0.0f, 0.0f});
-    w.spawn(r, render::makePlane(pitchWidth, scene.pitchLength + 2.0f * pitchOverrun), pitchMat,
+    add(render::makePlane(pitchWidth, scene.pitchLength + 2.0f * pitchOverrun), pitchMat,
             at(Vec3(0, kPitchY, 0)), false);
 
     // --- Creases (Law 7): bowling, popping and return creases at both ends, one mesh. ---
@@ -118,7 +124,7 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
             render::appendMesh(lines, returnLine, at(Vec3(returnX, kPaintY, returnCentreZ)));
             render::appendMesh(lines, returnLine, at(Vec3(-returnX, kPaintY, returnCentreZ)));
         }
-        w.spawn(r, lines, paint, at(Vec3(0.0f)), false);
+        add(lines, paint, at(Vec3(0.0f)), false);
     }
 
     // --- Wickets (Law 8): three stumps and two bails at each end. ---
@@ -139,10 +145,10 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
     for (int end = 0; end < 2; ++end) {
         float z = (end == 0 ? 1.0f : -1.0f) * halfPitch;
         for (int s = -1; s <= 1; ++s)
-            w.spawn(r, stumpMesh, wood, at(Vec3(static_cast<float>(s) * spacing, kPitchY, z)), true);
+            add(stumpMesh, wood, at(Vec3(static_cast<float>(s) * spacing, kPitchY, z)), true);
         for (int b = 0; b < 2; ++b) {
             float centreX = (b == 0 ? -0.5f : 0.5f) * spacing;  // each bail spans middle to outer stump
-            w.spawn(r, bailMesh, bailWood, at(Vec3(centreX - 0.5f * bailLen, kPitchY + bailY, z), alongX), true);
+            add(bailMesh, bailWood, at(Vec3(centreX - 0.5f * bailLen, kPitchY + bailY, z), alongX), true);
         }
     }
 
@@ -155,7 +161,7 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
         Vec3 pos = c.getVec3("ball.restPosition", Vec3(0.15f, 0.0f, 5.0f));
         // The shader's seam is the object's x = 0 circle, so with no rotation
         // it stands upright along the pitch, as when bowled.
-        scene.ball = w.spawn(r, render::makeSphere(radius, 48, 24), leather,
+        scene.ball = add(render::makeSphere(radius, 48, 24), leather,
                              at(pos + Vec3(0, kPitchY + radius, 0)), true);
     }
 
@@ -170,18 +176,23 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
         {1.2f, 0, -halfPitch - 1.0f},  // non-striker end
         {18.0f, 0, -6.0f},             // a fielder
     };
-    for (Vec3 p : spots) w.spawn(r, humanMesh, kit, at(p), true);
+    for (Vec3 p : spots) add(humanMesh, kit, at(p), true);
 
     // --- 1 m reference cube. ---
     MaterialDesc grey = readMaterial(c, "referenceCube", {{0.6f, 0.6f, 0.62f}, 0.5f, 0.0f, 0.0f, 0.0f});
-    w.spawn(r, render::makeBox(Vec3(1.0f)), grey, at(Vec3(4.0f, 0.5f, 0.0f)), true);
+    add(render::makeBox(Vec3(1.0f)), grey, at(Vec3(4.0f, 0.5f, 0.0f)), true);
 
     // --- Probe that follows the fixed-step simulation (interpolated). ---
     MaterialDesc probeMat = readMaterial(c, "probe", {{0.8f, 0.1f, 0.1f}, 0.35f, 0.0f, 0.0f, 0.0f});
-    scene.probe = w.spawn(r, render::makeSphere(0.25f, 24, 12), probeMat, at(Vec3(0.0f)), true);
+    scene.probe = add(render::makeSphere(0.25f, 24, 12), probeMat, at(Vec3(0.0f)), true);
     w.registry().emplace<FollowsProbe>(scene.probe);
 
     return scene;
+}
+
+void destroyTestScene(World& w, render::Renderer& r, TestScene& scene) {
+    for (entt::entity e : scene.entities) w.despawn(r, e);
+    scene = TestScene{};
 }
 
 } // namespace game

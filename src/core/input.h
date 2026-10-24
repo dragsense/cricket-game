@@ -53,7 +53,7 @@ struct InputState {
 
 enum class Action : uint8_t {
     MoveForward, MoveBack, MoveLeft, MoveRight, MoveUp, MoveDown, MoveFast,
-    ToggleCamera, ToggleOverlay, ToggleDebugDraw, Quit,
+    ToggleCamera, ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
     Count
 };
 

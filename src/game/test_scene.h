@@ -11,9 +11,12 @@ namespace game {
 struct TestScene {
     entt::entity probe = entt::null;  // follows the sim probe
     entt::entity ball = entt::null;   // static for now; ball physics is M2
+    std::vector<entt::entity> entities;  // everything the scene created
     float pitchLength = 20.12f;       // stump to stump
 };
 
 TestScene buildTestScene(World& world, render::Renderer& renderer, const core::Config& scene);
+// Removes everything buildTestScene created (used when config/scene.json changes).
+void destroyTestScene(World& world, render::Renderer& renderer, TestScene& scene);
 
 } // namespace game

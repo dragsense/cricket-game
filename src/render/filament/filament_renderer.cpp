@@ -133,6 +133,7 @@ public:
     void setObjectTransform(ObjectId id, const math::Mat4& local) override;
     void setObjectParent(ObjectId child, ObjectId parent) override;
     void setObjectVisible(ObjectId id, bool visible) override;
+    void destroyObject(ObjectId id) override;
     ObjectId loadModel(const std::string& path) override;
 
     void setLighting(const LightingDesc& lighting) override;
@@ -425,7 +426,7 @@ ObjectId FilamentRenderer::createObject(const MeshData& mesh, const MaterialDesc
 }
 
 void FilamentRenderer::setObjectTransform(ObjectId id, const math::Mat4& local) {
-    if (id >= objects_.size()) return;
+    if (id >= objects_.size() || objects_[id].root.isNull()) return;
     auto& tm = engine_->getTransformManager();
     tm.setTransform(tm.getInstance(objects_[id].root), toMat4f(local));
 }
@@ -439,11 +440,24 @@ void FilamentRenderer::setObjectParent(ObjectId child, ObjectId parent) {
 }
 
 void FilamentRenderer::setObjectVisible(ObjectId id, bool visible) {
-    if (id >= objects_.size() || objects_[id].visible == visible) return;
+    if (id >= objects_.size() || objects_[id].root.isNull() || objects_[id].visible == visible) return;
     Object& o = objects_[id];
     o.visible = visible;
     if (visible) scene_->addEntities(o.entities.data(), o.entities.size());
     else scene_->removeEntities(o.entities.data(), o.entities.size());
+}
+
+void FilamentRenderer::destroyObject(ObjectId id) {
+    if (id >= objects_.size() || objects_[id].root.isNull() || objects_[id].asset) return;
+    Object& o = objects_[id];
+    if (o.visible) scene_->remove(o.root);
+    engine_->getRenderableManager().destroy(o.root);
+    engine_->getTransformManager().destroy(o.root);
+    utils::EntityManager::get().destroy(o.root);
+    engine_->destroy(o.vb);
+    engine_->destroy(o.ib);
+    engine_->destroy(o.mi);
+    o = Object{};  // empty slot: root is null
 }
 
 ObjectId FilamentRenderer::loadModel(const std::string& path) {
@@ -553,6 +567,7 @@ void FilamentRenderer::shutdown() {
     imgui_.shutdown();
 
     for (Object& o : objects_) {
+        if (o.root.isNull()) continue;  // destroyed earlier
         if (o.asset) {
             scene_->removeEntities(o.entities.data(), o.entities.size());
             gltfLoader_->destroyAsset(o.asset);

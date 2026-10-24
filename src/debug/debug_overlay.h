@@ -1,6 +1,7 @@
 #pragma once
 // Dear ImGui debug overlay: frame stats and runtime toggles.
 
+#include "camera/debug_camera.h"
 #include "core/app.h"
 
 namespace debug {
@@ -11,8 +12,11 @@ struct DebugSettings {
     bool debugDraw = true;
     bool showGrid = true;
     bool showProbe = true;
+    bool fielderSkeleton = false;  // bones, joints, axes, centre of mass
     bool showDemoWindow = false;
     int cameraMode = 0;  // 0 = orbit, 1 = free-fly
+    camera::CameraSpeeds cameraSpeeds;
+    camera::CameraSpeeds defaultCameraSpeeds;  // from config, for the Reset button
 };
 
 struct OverlayInfo {

@@ -6,9 +6,9 @@
 #include "core/app.h"
 #include "core/config.h"
 #include "core/events.h"
+#include "core/file_watcher.h"
 #include "core/input.h"
 #include "debug/debug_overlay.h"
-#include "debug/fielder_panel.h"
 #include "game/fielder_visual.h"
 #include "game/test_scene.h"
 #include "game/world.h"
@@ -25,6 +25,8 @@ struct AppConfigs {
     core::Config input;   // config/input.json
     core::Config scene;   // config/scene.json
     core::Config fielderSkeleton;  // config/fielder_skeleton.json
+    std::string dir = "config";    // where the files above were loaded from
+    bool liveReload = false;       // dev builds: watch `dir` and re-apply changes
 };
 
 class CricketApp final : public core::App {
@@ -41,6 +43,10 @@ protected:
 private:
     void drawDebugGeometry(float alpha);
     void updateFielder(float alpha);
+    // Re-reads the named config files (e.g. "scene.json") and re-applies them
+    // to the running game. A file that fails to parse keeps its previous values.
+    void reloadConfig(const std::vector<std::string>& files);
+    void applyEngineConfig();
 
     AppConfigs cfg_;
     platform::Window window_;
@@ -49,12 +55,12 @@ private:
     core::ActionMap actions_;
     core::EventQueue events_;
     camera::DebugCamera camera_;
+    core::FileWatcher configWatcher_;
+    std::vector<std::string> changedConfigs_;  // reused each frame
     match::SimWorld sim_;
     World world_;
     TestScene scene_;
     FielderVisual fielderVisual_;
-    debug::FielderPanelState fielderPanel_;
-    bool fielderBodyShown_ = true;
     rig::Pose fielderPose_;                  // interpolated, render side
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;

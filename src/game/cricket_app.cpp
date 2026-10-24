@@ -1,6 +1,8 @@
 #include "game/cricket_app.h"
 
 #include "core/log.h"
+#include "debug/axis_gizmo.h"
+#include "debug/skeleton_debug.h"
 #include "platform/imgui_platform.h"
 
 #include <imgui.h>
@@ -91,16 +93,58 @@ bool CricketApp::init() {
     if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef)) return false;
     const agents::Fielder& fielder = sim_.fielder();
     fielderVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.fielderSkeleton);
-    fielderPanel_.height = fielder.rig().height();
     fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
 
     debugSettings_.shadows = e.getBool("render.shadows", true);
     debugSettings_.debugDraw = e.getBool("debug.debugDraw", true);
     debugSettings_.showOverlay = e.getBool("debug.showOverlay", true);
+    debugSettings_.cameraSpeeds = camera_.speeds();
+    debugSettings_.defaultCameraSpeeds = camera_.speeds();
     appliedSettings_ = debugSettings_;
     appliedSettings_.shadows = !debugSettings_.shadows;  // force the first apply
     appliedSettings_.showProbe = !debugSettings_.showProbe;
+
+    if (cfg_.liveReload) configWatcher_.watch(cfg_.dir);
     return true;
+}
+
+void CricketApp::applyEngineConfig() {
+    const core::Config& e = cfg_.engine;
+    renderer_->setLighting(readLighting(e));
+    camera::CameraSpeeds speeds = camera::readCameraSpeeds(e);
+    debugSettings_.cameraSpeeds = speeds;  // applied by renderFrame's change check
+    debugSettings_.defaultCameraSpeeds = speeds;
+    debugSettings_.shadows = e.getBool("render.shadows", debugSettings_.shadows);
+    debugSettings_.debugDraw = e.getBool("debug.debugDraw", debugSettings_.debugDraw);
+}
+
+void CricketApp::reloadConfig(const std::vector<std::string>& files) {
+    for (const std::string& name : files) {
+        core::Config fresh;
+        if (!fresh.load(cfg_.dir + "/" + name)) {
+            LOG_WARN("reload: {} has errors, keeping the previous values", name);
+            continue;  // e.g. saved mid-edit with a JSON typo
+        }
+        if (name == "engine.json") {
+            cfg_.engine = std::move(fresh);
+            applyEngineConfig();
+        } else if (name == "input.json") {
+            cfg_.input = std::move(fresh);
+            actions_.load(cfg_.input);
+        } else if (name == "scene.json") {
+            cfg_.scene = std::move(fresh);
+            destroyTestScene(world_, *renderer_, scene_);
+            scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
+            appliedSettings_.showProbe = !debugSettings_.showProbe;  // re-apply probe visibility
+        } else if (name == "fielder_skeleton.json") {
+            cfg_.fielderSkeleton = std::move(fresh);
+            LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
+            continue;
+        } else {
+            continue;  // not a file this app uses
+        }
+        LOG_INFO("reload: applied {}", name);
+    }
 }
 
 void CricketApp::shutdown() {
@@ -140,6 +184,14 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::ToggleOverlay)) debugSettings_.showOverlay = !debugSettings_.showOverlay;
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
     if (actions_.pressed(input_, core::Action::ToggleCamera)) debugSettings_.cameraMode ^= 1;
+
+    // Live config: saved files are re-applied to the running game; F5 forces all.
+    changedConfigs_.clear();
+    if (actions_.pressed(input_, core::Action::ReloadConfig))
+        changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json"};
+    else if (cfg_.liveReload)
+        configWatcher_.poll(changedConfigs_);
+    if (!changedConfigs_.empty()) reloadConfig(changedConfigs_);
     return running;
 }
 
@@ -165,6 +217,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     // --- Apply toggles that changed ---
     if (debugSettings_.shadows != appliedSettings_.shadows) renderer_->setShadowsEnabled(debugSettings_.shadows);
     if (debugSettings_.debugDraw != appliedSettings_.debugDraw) renderer_->setDebugDrawEnabled(debugSettings_.debugDraw);
+    if (!(debugSettings_.cameraSpeeds == appliedSettings_.cameraSpeeds)) camera_.setSpeeds(debugSettings_.cameraSpeeds);
     if (debugSettings_.showProbe != appliedSettings_.showProbe) {
         sim_.setProbeEnabled(debugSettings_.showProbe);
         renderer_->setObjectVisible(world_.registry().get<Renderable>(scene_.probe).object, debugSettings_.showProbe);
@@ -190,12 +243,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     info.debugLinesDropped = renderer_->debugDraw().droppedLines();
     info.backend = backendName_.c_str();
     debug::drawOverlay(debugSettings_, info);
-    const agents::Fielder& fielder = sim_.fielder();
-    if (debug::drawFielderPanel(fielderPanel_, fielder.def(), fielder.rig(), fielder.pose())) {
-        // Applied between sim ticks; rebuilding allocates, which is fine for a debug slider.
-        sim_.fielder().setHeight(fielderPanel_.height);
-        fielderModels_.assign(static_cast<size_t>(sim_.fielder().rig().numJoints()), math::Mat4(1.0f));
-    }
+    debug::drawAxisGizmo(pose.eye, pose.target, pose.up);
     ImGui::Render();
 
     renderer_->render(ImGui::GetDrawData());
@@ -212,10 +260,6 @@ void CricketApp::updateFielder(float alpha) {
     const agents::Fielder& fielder = sim_.fielder();
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
-    if (fielderPanel_.showBody != fielderBodyShown_) {
-        fielderBodyShown_ = fielderPanel_.showBody;
-        fielderVisual_.setVisible(*renderer_, world_, fielderBodyShown_);
-    }
     fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.root());
 }
 
@@ -230,7 +274,8 @@ void CricketApp::drawDebugGeometry(float alpha) {
     dd.box(math::Vec3(0, 0.36f, -halfLen), math::Vec3(0.115f, 0.36f, 0.02f), render::colors::kYellow);
 
     const agents::Fielder& fielder = sim_.fielder();
-    debug::drawSkeleton(dd, fielder.def(), fielder.rig(), fielderModels_, fielder.root(), fielderPanel_.draw);
+    if (debugSettings_.fielderSkeleton)
+        debug::drawSkeleton(dd, fielder.def(), fielder.rig(), fielderModels_, fielder.root(), debug::SkeletonDrawFlags{});
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

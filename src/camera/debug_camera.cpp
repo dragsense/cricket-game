@@ -4,6 +4,8 @@
 
 #include <camutils/Manipulator.h>
 
+#include <algorithm>
+
 namespace camera {
 
 using Manip = filament::camutils::Manipulator<float>;
@@ -17,6 +19,17 @@ struct DebugCamera::Impl {
     std::unique_ptr<Manip> flyFast;
     Manip* activeFly = nullptr;
     int speedSteps = 80;
+    // Each manipulator's settings. camutils settings are fixed after build, so a
+    // speed change rebuilds the manipulator and restores its pose via a bookmark.
+    Manip::Config orbitCfg{}, flyCfg{}, flyFastCfg{};
+
+    static std::unique_ptr<Manip> rebuild(const std::unique_ptr<Manip>& old, const Manip::Config& cfg, Mode mode) {
+        Manip::Builder b;
+        b.details = cfg;
+        std::unique_ptr<Manip> m(b.build(mode));
+        if (old) m->jumpToBookmark(old->getCurrentBookmark());
+        return m;
+    }
 
     int width = 1, height = 1;
     // Virtual cursor fed to grabUpdate. Built from relative deltas so it keeps
@@ -27,6 +40,16 @@ struct DebugCamera::Impl {
 
     Manip* active(CameraMode m) { return m == CameraMode::Orbit ? orbit.get() : activeFly; }
 };
+
+CameraSpeeds readCameraSpeeds(const core::Config& c) {
+    CameraSpeeds s;
+    s.orbitRotateDeg = c.getFloat("camera.orbit.rotateDegPerPixel", s.orbitRotateDeg);
+    s.orbitZoomStep = c.getFloat("camera.orbit.zoomStep", s.orbitZoomStep);
+    s.flyLookDeg = c.getFloat("camera.freeFly.lookDegPerPixel", s.flyLookDeg);
+    s.flyMoveSpeed = c.getFloat("camera.freeFly.maxSpeed", s.flyMoveSpeed);
+    s.flyFastMultiplier = c.getFloat("camera.freeFly.fastMultiplier", s.flyFastMultiplier);
+    return s;
+}
 
 DebugCamera::DebugCamera() : impl_(std::make_unique<Impl>()) {}
 DebugCamera::~DebugCamera() = default;
@@ -41,47 +64,76 @@ void DebugCamera::configure(const core::Config& c, int width, int height) {
     float fov = c.getFloat("camera.fovY", 50.0f);
     float farPlane = c.getFloat("camera.far", 2000.0f);
 
-    s.orbit.reset(Manip::Builder()
-                      .viewport(width, height)
-                      .targetPosition(target.x, target.y, target.z)
-                      .orbitHomePosition(home.x, home.y, home.z)
-                      .zoomSpeed(c.getFloat("camera.orbit.zoomSpeed", 0.05f))
-                      .fovDegrees(fov)
-                      .farPlane(farPlane)
-                      .build(Mode::ORBIT));
+    speeds_ = readCameraSpeeds(c);
+
+    Manip::Builder ob;
+    ob.viewport(width, height)
+        .targetPosition(target.x, target.y, target.z)
+        .orbitHomePosition(home.x, home.y, home.z)
+        .zoomSpeed(1.0f)  // 1 m per scroll unit; update() scales the scroll by view distance
+        .fovDegrees(fov)
+        .farPlane(farPlane);
+    s.orbitCfg = ob.details;
 
     math::Vec3 start = c.getVec3("camera.freeFly.start", {0, 1.7f, 16});
     float pitch = math::radians(c.getFloat("camera.freeFly.pitch", -5.0f));
     float yaw = math::radians(c.getFloat("camera.freeFly.yaw", 0.0f));
-    float maxSpeed = c.getFloat("camera.freeFly.maxSpeed", 12.0f);
-    float fast = c.getFloat("camera.freeFly.fastMultiplier", 5.0f);
     s.speedSteps = c.getInt("camera.freeFly.speedSteps", 80);
 
-    auto buildFly = [&](float speed) {
-        Manip* m = Manip::Builder()
-                       .viewport(width, height)
-                       .flightStartPosition(start.x, start.y, start.z)
-                       .flightStartOrientation(pitch, yaw)
-                       .flightMaxMoveSpeed(speed)
-                       .flightSpeedSteps(s.speedSteps)
-                       .flightMoveDamping(c.getFloat("camera.freeFly.damping", 15.0f))
-                       .fovDegrees(fov)
-                       .farPlane(farPlane)
-                       .build(Mode::FREE_FLIGHT);
-        // Speed is pow(maxSpeed, wheel position in [-1, 1]); start at the top
-        // so the configured max speed is the default.
-        m->scroll(0, 0, static_cast<float>(s.speedSteps));
-        return m;
-    };
-    s.fly.reset(buildFly(maxSpeed));
-    s.flyFast.reset(buildFly(maxSpeed * fast));
-    s.activeFly = s.fly.get();
+    Manip::Builder fb;
+    fb.viewport(width, height)
+        .flightStartPosition(start.x, start.y, start.z)
+        .flightStartOrientation(pitch, yaw)
+        .flightSpeedSteps(s.speedSteps)
+        .flightMoveDamping(c.getFloat("camera.freeFly.damping", 15.0f))
+        .fovDegrees(fov)
+        .farPlane(farPlane);
+    s.flyCfg = fb.details;
+    s.flyFastCfg = fb.details;
+
+    s.orbit.reset();
+    s.fly.reset();
+    s.flyFast.reset();
+    setSpeeds(speeds_);  // builds all three manipulators
+}
+
+void DebugCamera::setSpeeds(const CameraSpeeds& sp) {
+    Impl& s = *impl_;
+    speeds_ = sp;
+    float orbitRad = math::radians(sp.orbitRotateDeg);
+    float lookRad = math::radians(sp.flyLookDeg);
+
+    s.orbitCfg.orbitSpeed = {orbitRad, orbitRad};
+    s.flyCfg.flightPanSpeed = {lookRad, lookRad};
+    s.flyFastCfg.flightPanSpeed = {lookRad, lookRad};
+    s.flyCfg.flightMaxSpeed = std::max(1.01f, sp.flyMoveSpeed);
+    s.flyFastCfg.flightMaxSpeed = std::max(1.01f, sp.flyMoveSpeed * sp.flyFastMultiplier);
+
+    // Release any held keys or drag on the manipulators being replaced; update()
+    // re-sends key presses on the next frame.
+    if (Manip* old = s.active(mode_); old && s.grabbing) old->grabEnd();
+    s.grabbing = false;
+    std::fill(std::begin(s.keyState), std::end(s.keyState), false);
+
+    bool fastActive = s.activeFly && s.activeFly == s.flyFast.get();
+    s.orbit = Impl::rebuild(s.orbit, s.orbitCfg, Mode::ORBIT);
+    s.fly = Impl::rebuild(s.fly, s.flyCfg, Mode::FREE_FLIGHT);
+    s.flyFast = Impl::rebuild(s.flyFast, s.flyFastCfg, Mode::FREE_FLIGHT);
+    s.activeFly = fastActive ? s.flyFast.get() : s.fly.get();
+    // Free-flight speed is pow(maxSpeed, wheel position in [-1, 1]); put the
+    // wheel at the top so maxSpeed is the actual speed.
+    s.fly->scroll(0, 0, static_cast<float>(s.speedSteps));
+    s.flyFast->scroll(0, 0, static_cast<float>(s.speedSteps));
 }
 
 void DebugCamera::setViewport(int width, int height) {
     Impl& s = *impl_;
     s.width = width;
     s.height = height;
+    for (Manip::Config* cfg : {&s.orbitCfg, &s.flyCfg, &s.flyFastCfg}) {
+        cfg->viewport[0] = width;
+        cfg->viewport[1] = height;
+    }
     for (Manip* m : {s.orbit.get(), s.fly.get(), s.flyFast.get()})
         if (m) m->setViewport(width, height);
 }
@@ -138,9 +190,21 @@ bool DebugCamera::update(const core::InputState& in, const core::ActionMap& acti
     }
 
     if (!in.uiWantsMouse && in.wheel != 0.0f) {
-        // Orbit: zoom. Free-fly: adjust the base speed. Negative wheel = zoom out.
-        float delta = mode_ == CameraMode::Orbit ? -in.wheel : in.wheel;
-        m->scroll(static_cast<int>(in.mouseX), static_cast<int>(s.height - in.mouseY), delta);
+        int sx = static_cast<int>(in.mouseX), sy = static_cast<int>(s.height - in.mouseY);
+        if (mode_ == CameraMode::Orbit) {
+            // camutils zooms a fixed distance per notch, which crawls when far
+            // away. Scale the step by the distance to the ground point being
+            // looked at, so each notch is a constant fraction of the view.
+            filament::math::float3 eye, target, up;
+            m->getLookAt(&eye, &target, &up);
+            math::Vec3 gaze = math::safeNormalize(math::Vec3(target.x - eye.x, target.y - eye.y, target.z - eye.z),
+                                                  math::Vec3(0, -1, 0));
+            float viewDist = gaze.y < -0.05f ? eye.y / -gaze.y : math::length(math::Vec3(eye.x, eye.y, eye.z));
+            float metres = speeds_.orbitZoomStep * math::clamp(viewDist, 1.0f, 1000.0f);
+            m->scroll(sx, sy, -in.wheel * metres);  // zoomSpeed is 1 m/unit; wheel up = zoom in
+        } else {
+            m->scroll(sx, sy, in.wheel);   // free-fly: wheel adjusts the base speed
+        }
     }
 
     // Keyboard movement (free-flight; orbit ignores these keys).

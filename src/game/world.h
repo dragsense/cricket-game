@@ -34,6 +34,9 @@ public:
 
     void setTransform(entt::entity e, const math::Transform& t);
 
+    // Destroys the entity and its renderer object.
+    void despawn(render::Renderer& renderer, entt::entity e);
+
     // Pushes dirty transforms to the renderer. No allocations.
     void syncToRenderer(render::Renderer& renderer);
 

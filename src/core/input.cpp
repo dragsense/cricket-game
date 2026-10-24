@@ -26,7 +26,7 @@ constexpr NamedKey kNamedKeys[] = {
 
 constexpr const char* kActionNames[] = {
     "MoveForward", "MoveBack", "MoveLeft", "MoveRight", "MoveUp", "MoveDown", "MoveFast",
-    "ToggleCamera", "ToggleOverlay", "ToggleDebugDraw", "Quit",
+    "ToggleCamera", "ToggleOverlay", "ToggleDebugDraw", "ReloadConfig", "Quit",
 };
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == static_cast<int>(Action::Count));
 
@@ -80,6 +80,7 @@ ActionMap::ActionMap() {
     bind(Action::ToggleCamera, Key::C);
     bind(Action::ToggleOverlay, Key::F1);
     bind(Action::ToggleDebugDraw, Key::F2);
+    bind(Action::ReloadConfig, Key::F5);
     bind(Action::Quit, Key::Escape);
 }
 

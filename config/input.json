@@ -12,6 +12,7 @@
     "ToggleCamera": ["C"],
     "ToggleOverlay": ["F1"],
     "ToggleDebugDraw": ["F2"],
+    "ReloadConfig": ["F5"],
     "Quit": ["Escape"]
   }
 }

@@ -84,6 +84,8 @@ public:
     virtual void setObjectTransform(ObjectId id, const math::Mat4& local) = 0;
     virtual void setObjectParent(ObjectId child, ObjectId parent) = 0;  // kInvalidObject = root
     virtual void setObjectVisible(ObjectId id, bool visible) = 0;
+    // Frees an object created by createObject (ids are not reused). Load/reload time only.
+    virtual void destroyObject(ObjectId id) = 0;
 
     // Loads a glTF/GLB model (via gltfio) and returns its root object, or
     // kInvalidObject on failure. Load-time only.

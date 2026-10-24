@@ -11,6 +11,8 @@ set(SPDLOG_VERSION   "v1.15.3")
 set(ENTT_VERSION     "v3.15.0")
 set(DOCTEST_VERSION  "v2.5.2")
 set(OZZ_VERSION      "0.16.0")
+set(EFSW_VERSION     "1.4.1")            # file watcher: live config reload in dev builds
+# Dev tool (not linked): watchexec (winget install watchexec.watchexec) drives `run watch`.
 # Planned, not integrated yet:
 #   Milestone 1: ImGuizmo (draggable IK targets, Step 1.2)
 #   Later:       Jolt Physics (player body collisions)
@@ -87,7 +89,13 @@ set(ozz_build_postfix OFF CACHE BOOL "" FORCE)
 set(ozz_build_msvc_rt_dll ON CACHE BOOL "" FORCE)
 cricket_dependency(ozz_animation https://github.com/guillaumeblanc/ozz-animation.git ${OZZ_VERSION})
 
-FetchContent_MakeAvailable(SDL3 glm imgui nlohmann_json spdlog EnTT doctest ozz_animation)
+# --- efsw (cross-platform file watcher; static lib only) ---
+set(BUILD_TEST_APP OFF CACHE BOOL "" FORCE)
+set(EFSW_INSTALL OFF CACHE BOOL "" FORCE)
+set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+cricket_dependency(efsw https://github.com/SpartanJ/efsw.git ${EFSW_VERSION})
+
+FetchContent_MakeAvailable(SDL3 glm imgui nlohmann_json spdlog EnTT doctest ozz_animation efsw)
 
 add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
