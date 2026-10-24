@@ -187,10 +187,12 @@ bool CricketApp::pumpEvents() {
     }
 
     if (actions_.pressed(input_, core::Action::Quit)) running = false;
+    if (actions_.pressed(input_, core::Action::ToggleMouseLook)) mouseLook_ = !mouseLook_;
+    window_.setRelativeMouse(mouseLook_);
     if (actions_.pressed(input_, core::Action::ToggleOverlay)) debugSettings_.showOverlay = !debugSettings_.showOverlay;
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
 
-    // Fielder walk: W turns toward the camera's heading and walks forward;
+    // Fielder movement: W turns toward the camera's heading and walks forward;
     // A/D sidestep and S backs up without turning (character space, +X left).
     auto axis = [&](core::Action pos, core::Action neg) {
         return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
@@ -201,6 +203,11 @@ bool CricketApp::pumpEvents() {
     const math::Vec2 move(axis(core::Action::StepLeft, core::Action::StepRight),
                           axis(core::Action::StepForward, core::Action::StepBack));
     sim_.fielder().setMoveInput(move, actions_.down(input_, core::Action::StepForward), std::atan2(ahead.x, ahead.z));
+
+    // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).
+    sim_.fielder().setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
+                           : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
+                                                                      : motion::Gait::Walk);
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
@@ -221,6 +228,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
 
     // --- Cameras (render-side, real frame time); the orbit follows the fielder ---
     camera_.setFollowPoint(sim_.fielder().interpolatedRoot(alpha).position);
+    camera_.setMouseLook(mouseLook_);
     camera_.update(input_, static_cast<float>(frameSeconds));
     camera::CameraPose pose = camera_.pose();
     render::CameraDesc cam;

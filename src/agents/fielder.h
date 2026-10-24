@@ -3,7 +3,7 @@
 // only by fixed sim ticks; keeps the previous and current pose so rendering
 // can interpolate. Each tick: start from the standing pose, walk (move and
 // turn the root, step the feet on the gait), reposition the body over the
-// foot targets (late update), add pelvis bob, sway and lean, solve two-bone
+// foot targets (late update), add pelvis bob, sway, lean and twist, solve two-bone
 // IK for the legs, keep the feet flat, swing the arms opposite the legs,
 // steady the head, then clamp every joint to its limits.
 
@@ -40,7 +40,7 @@ struct IkSettings {
 class Fielder {
 public:
     // Builds the skeleton at `height` metres, loads joint limits and IK settings
-    // (config/fielder_joints.json) and walk settings (config/locomotion.json),
+    // (config/fielder_joints.json) and walk/run settings (config/locomotion.json),
     // and stands it at the spawn point.
     bool init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion);
     // Re-reads config/locomotion.json without moving the fielder.
@@ -59,6 +59,10 @@ public:
         face_ = face;
         faceYaw_ = faceYaw;
     }
+    // Pace (config/locomotion.json "walk", "jog", "run"). The speed eases to
+    // the new pace and the gait shape blends with the actual speed.
+    void setGait(motion::Gait gait) { gait_ = gait; }
+    motion::Gait gait() const { return gait_; }
 
     const rig::SkeletonDef& def() const { return def_; }
     const rig::Rig& rig() const { return rig_; }
@@ -78,9 +82,10 @@ private:
     void swingArms(float dt);
     void stabiliseHead(float dt);
     void solveIk();
+    motion::GaitStyle gaitStyle() const;
 
     struct Joints {
-        int pelvis = -1, chest = -1, head = -1;
+        int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1;
         ik::TwoBoneChain legL, legR, armL, armR;
     };
 
@@ -91,7 +96,13 @@ private:
     IkSettings ik_;
     motion::RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
-    motion::WalkSettings walkSettings_;
+    float ballDistance_ = 0.1f;  // ankle to ball of the foot (m), from the skeleton
+    void blendShape();
+
+    motion::WalkSettings walkSettings_, jogSettings_, runSettings_;  // jog starts from walk, run from jog
+    motion::WalkSettings control_;  // chosen pace: target speeds, acceleration, turn rate
+    motion::WalkSettings shape_;    // gait shape blended by the actual speed
+    motion::Gait gait_ = motion::Gait::Walk;
     motion::WalkController walker_;
     motion::FootStepper stepper_;
     math::Vec2 moveInput_{0.0f};

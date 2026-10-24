@@ -427,6 +427,35 @@ foot). Sources: ([Wikipedia gait cycle](https://en.wikipedia.org/wiki/Bipedal_ga
 - Arms: `elbow_run_deg` 90; amplitude grows with speed; shoulder flexion range about
   60–90° in a sprint.
 
+### What Step 1.6 implements (first pass, `config/locomotion.json` "run")
+Three paces: walk (default), jog (hold Ctrl, 3 m/s) and run (hold Shift, 5 m/s).
+The gait shape blends walk → jog → run by the actual speed, so there is no mode switch
+(as the notes above ask). The numbers below are for the run preset. The jog preset sits
+between walk and run (1.0 m steps, flight 20 % of the swing, stance about 40 %, heel
+recovery 0.22 m). The walk now has foot roll too: heel strike with the toes about 10°
+up, then flat, then the heel rises and the foot rolls to about 18° plantarflexion at
+toe-off (section 4.1). Sprint and the crossover come later.
+- **Timing:** step 1.5 m at 5 m/s (H = 1.8), about 200 steps/min. No double support.
+  Each foot swings for one step period. The last 40 % of each swing is flight, so
+  contact is about 0.18 s (about 30 % of the stride), matching the table above.
+- **Stance foot (foot roll):** flat at landing and mid-stance. Over the second half of
+  the other foot's swing the heel rises and the foot rolls over its ball (the ankle rises
+  by ball distance × sin(pitch); the toes bend up and stay on the ground) to about 35°
+  plantarflexion. In the flight window the toes push off and leave the ground.
+- **Swing foot:** pointed after toe-off, then levels to about 5° toes-up for a
+  midfoot landing. The arc apex comes early (38 % of the swing) and is about 0.36 m
+  high. This is the heel recovery toward the buttock, which gives the jogging knee
+  flexion of about 90°. The foot lands about half a contact length ahead of the hip, so
+  it passes under the hip at mid-stance.
+- **Width:** feet land nearer the midline but still apart: 75 % (jog) and 65 % (run)
+  of standing width.
+- **Pelvis and trunk:** the bob is flipped (lowest at mid-stance, 7 cm when jogging, 6 cm when
+  running). Lean is about 5–7° at steady speed, plus more while accelerating (capped at 20°). The pelvis
+  turns about ±6° toward the forward leg, and the chest turns back past neutral against
+  it.
+- **Arms:** elbows near 85–90°, and an 80° shoulder swing (hands from about chin height
+  to behind the hip), opposite the legs.
+
 ---
 
 ## 6. Jumping

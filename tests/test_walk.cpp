@@ -94,3 +94,50 @@ TEST_CASE("gait stepping alternates feet, keeps the planted foot fixed, then set
     CHECK(math::distance(st.foot(Foot::Left), restL) < s.settleDistance);
     CHECK(math::distance(st.foot(Foot::Right), restR) < s.settleDistance);
 }
+
+TEST_CASE("gait blend interpolates every setting") {
+    WalkSettings a, b;
+    b.speed = 5.0f;
+    b.flightFraction = 0.4f;
+    const WalkSettings m = blendGait(a, b, 0.5f);
+    CHECK(m.speed == doctest::Approx(0.5f * (a.speed + 5.0f)));
+    CHECK(m.flightFraction == doctest::Approx(0.2f));
+    CHECK(m.stepK == doctest::Approx(a.stepK));
+}
+
+TEST_CASE("running has a flight phase and lands both feet on stop") {
+    WalkSettings s;
+    s.speed = s.refSpeed = 4.0f;
+    s.stepK = 0.69f;
+    s.swingFraction = 1.0f;
+    s.flightFraction = 0.3f;
+    s.flightLift = 0.05f;
+    s.minSwing = 0.2f;
+    const GaitTiming g = gaitTiming(s.speed, 1.8f, s);
+    CHECK(g.flight > 0.0f);
+    CHECK(g.stance / (2.0f * g.period) < 0.5f);  // less contact than walking
+
+    GaitStyle style;
+    style.flightLift = s.flightLift;
+    style.heelRise = 0.5f;
+    style.toeOffPitch = 0.5f;
+    FootStepper st;
+    st.reset(Vec3(0.1f, 0, 0), Vec3(-0.1f, 0, 0));
+    math::Transform root;
+    int airborne = 0;
+    for (int i = 0; i < 480; ++i) {
+        math::Transform next = root;
+        next.position.z += s.speed * kDt;
+        st.rebase(root, next);
+        root = next;
+        st.tickGait(kDt, Vec3(0, 0, s.speed), g, s.stepHeight, s.settleDistance, style);
+        if (st.foot(Foot::Left).y > 0.01f && st.foot(Foot::Right).y > 0.01f) ++airborne;
+    }
+    CHECK(airborne > 0);
+
+    for (int i = 0; i < 480; ++i) st.tickGait(kDt, Vec3(0.0f), gaitTiming(0.0f, 1.8f, s), s.stepHeight, s.settleDistance, style);
+    CHECK_FALSE(st.stepping());
+    CHECK(st.foot(Foot::Left).y == doctest::Approx(0.0f));
+    CHECK(st.foot(Foot::Right).y == doctest::Approx(0.0f));
+    CHECK(std::fabs(st.footPitch(Foot::Left)) < 0.1f);  // landed level
+}

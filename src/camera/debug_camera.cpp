@@ -91,10 +91,10 @@ void DebugCamera::update(const core::InputState& in, float dt) {
     Impl& s = *impl_;
     Manip* m = s.orbit.get();
 
-    // Mouse: right button rotates, middle button pans.
-    bool rotate = in.down(core::MouseButton::Right);
-    bool pan = in.down(core::MouseButton::Middle);
-    bool wantGrab = (rotate || pan) && (s.grabbing || !in.uiWantsMouse);
+    // Mouse: mouse-look or the right button rotates, the middle button pans.
+    bool rotate = mouseLook_ || in.down(core::MouseButton::Right);
+    bool pan = !rotate && in.down(core::MouseButton::Middle);
+    bool wantGrab = (rotate || pan) && (s.grabbing || mouseLook_ || !in.uiWantsMouse);
     if (wantGrab && !s.grabbing) {
         // camutils expects a bottom-left origin, like Filament viewports.
         s.cursorX = in.mouseX;

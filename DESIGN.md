@@ -247,8 +247,46 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
 - The IK demo was removed after Step 1.3 (the user's choice); feet are driven by
   `motion::FootStepper` (Step 1.4, WASD via `Fielder::setStepInput`). ImGuizmo was not added (the user's choice).
 
-### Motion (M1+): not started
-Balance, locomotion and procedural actions built on rig and IK.
+### Motion (M1): repositioning, stepping, walk, jog, run built
+- `motion::repositionBody` (`src/motion/body_reposition.*`): every tick after the foot
+  targets are set, the pelvis eases toward standing height above the stance-weighted
+  feet, and each hip-to-ankle distance is clamped to [min, max] × leg length
+  (`config/fielder_joints.json` "reposition").
+- `motion::WalkController` (`src/motion/walk_controller.*`): camera-relative WASD →
+  desired velocity in character space, eased start and stop, limited turn rate, slowing
+  on sharp turns. W turns to the camera heading; A/D sidestep and S backs up without
+  turning. `gaitTiming` gives step length (k · H · (v/v_ref)^0.42), swing, stance and
+  flight time.
+- **Paces:** `motion::Gait` Walk / Jog / Run, from `config/locomotion.json` "walk",
+  "jog" (inherits walk) and "run" (inherits jog). Input: walk by default, Ctrl jogs,
+  Shift runs. Sidesteps and backing up cap at the jog. The chosen pace sets the target
+  speeds; the gait *shape* is `motion::blendGait` of the presets by the actual speed
+  (against each pace's speed in the direction of travel), so pace changes never snap.
+- `motion::FootStepper` (`src/motion/foot_stepper.*`): feet are world-locked while
+  planted (`rebase` when the root moves). Gait mode places each swing foot ahead of its
+  stance spot by the velocity (it passes under the hip mid-stance), alternates feet on
+  the gait timing, side-shuffles without crossing, and settles to stance on stop.
+  `motion::GaitStyle`:
+  - foot roll for every gait: heel strike (toes up), flat, heel rise over the ball (toe
+    bend keeps the toes down), toe-off;
+  - flight phase for jog and run (the toes push off before the swing foot lands);
+  - arc apex time (early = heel recovery);
+  - step width.
+  The 1.4 single-step mode (`tick`) stays, tested.
+- `agents::Fielder::tick` order:
+  1. rest pose;
+  2. walk (move and turn the root, step the feet);
+  3. body repositioning;
+  4. pelvis bob (flipped when running), sway, lean (speed, acceleration, turns), pelvis
+     twist with chest counter-rotation;
+  5. leg IK and limits;
+  6. feet at the stepper's pitch, plus toe bend;
+  7. arm swing opposite the legs (elbows near 90° when running);
+  8. head stabilisation (upright, leads turns);
+  9. limits.
+  No allocations.
+- Jumping was dropped from M1 (the user's choice). It comes back with the fielding
+  actions that need it (M3: catches, dives).
 
 ### Ball physics (M2): not started
 Our own code: flight with drag, bounce off pitch and outfield, rolling. Fixed-step.
@@ -278,9 +316,9 @@ RmlUi for menus and HUD. ImGui stays debug-only.
 Status and checklists live in [PROGRESS.md](PROGRESS.md).
 
 - **M0 (done):** this skeleton.
-- **M1:** procedural fielder rig: ozz-animation skeleton, ozz two-bone/aim IK, our
-  swing-twist limits, body repositioning, stepping, walk, run, jump (no ImGuizmo, no
-  demos).
+- **M1 (done):** procedural fielder rig: ozz-animation skeleton, ozz two-bone/aim IK,
+  our swing-twist limits, body repositioning, stepping, walk, jog, run (no jump, no
+  ImGuizmo, no demos).
 - **M2:** basic ball physics (ours): flight with drag, bounce off the pitch and outfield,
   and rolling. Fielders need a ball to chase.
 - **M3:** fielding: chase, intercept, pick-up, throw and catch, using M1 + M2.

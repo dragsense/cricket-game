@@ -32,6 +32,71 @@
     // Head stays upright and leads turns (W toward a new heading).
     "headStabilise": 0.8,   // 0..1, share of body lean and sway the head cancels
     "headLeadDeg": 30,      // max head turn ahead of the body
-    "headRate": 6.0         // 1/s, head turn smoothing
+    "headRate": 6.0,        // 1/s, head turn smoothing
+    // Foot roll: heel strike (toes up), flat, heel rise over the ball, toe-off.
+    "landPitchDeg": -10,    // toes up at heel strike
+    "heelRise": 0.4,        // stance heel rises over the last 40 % of the other foot's swing
+    "toeOffPitchDeg": 18    // plantarflexion at toe-off (15-20 deg)
+  },
+  // Pace presets (Ctrl: jog, Shift: run). The gait shape blends
+  // walk -> jog -> run by the actual speed. docs/BIOMECHANICS.md section 5.
+  // Keys left out use the previous preset ("jog" from "walk", "run" from "jog").
+  "jog": {
+    "speed": 3.0,            // m/s
+    "backSpeed": 1.8,        // m/s backpedal
+    "sideSpeed": 1.8,        // m/s side shuffle
+    "acceleration": 3.5,
+    "deceleration": 5.0,
+    "turnRateDeg": 220,
+    "stepK": 0.556,          // 1.0 m step at 3 m/s (H = 1.8): 180 steps/min
+    "refSpeed": 3.0,
+    "swingFraction": 1.0,    // no double support
+    "flightFraction": 0.2,   // stance ~40 % of the stride
+    "flightLift": 0.03,
+    "heelRise": 0.5,
+    "toeOffPitchDeg": 25,
+    "landPitchDeg": -8,      // rearfoot/midfoot strike
+    "swingPeakAt": 0.42,     // early apex: heel recovery
+    "minSwing": 0.2,
+    "maxSwing": 0.5,
+    "stepHeight": 0.22,      // heel recovery height
+    "widthScale": 0.75,      // feet land a little nearer the midline than standing
+    "bob": 0.07,             // lowest mid-stance (flipped from walking)
+    "sway": 0.012,
+    "pelvisTwistDeg": 5,
+    "chestCounter": 1.4,
+    "leanPerSpeedDeg": 1.7,  // ~5 deg at 3 m/s
+    "leanPerAccelDeg": 4.0,
+    "maxLeanDeg": 20,
+    "armSwingDeg": 55,
+    "armBackBiasDeg": 0,
+    "elbowBiasDeg": 80,      // elbows near 90 deg
+    "elbowSwingDeg": 12,
+    "armRate": 10.0
+  },
+  "run": {
+    "speed": 5.0,            // m/s (sprint to ~9 m/s comes later)
+    // No backSpeed / sideSpeed: backing up and sidesteps stay at jog pace and shape.
+    "acceleration": 4.0,
+    "turnRateDeg": 240,
+    "stepK": 0.833,          // 1.5 m step at 5 m/s: 200 steps/min
+    "refSpeed": 5.0,
+    "flightFraction": 0.4,   // stance ~30 % of the stride
+    "flightLift": 0.05,
+    "toeOffPitchDeg": 35,
+    "landPitchDeg": -3,      // midfoot
+    "swingPeakAt": 0.38,
+    "stepHeight": 0.36,      // heel higher toward the buttock
+    "widthScale": 0.65,      // feet near, not on, the midline
+    "bob": 0.06,             // less oscillation as speed rises
+    "sway": 0.008,
+    "pelvisTwistDeg": 6,
+    "chestCounter": 1.6,
+    "leanPerSpeedDeg": 1.4,  // ~7 deg at 5 m/s
+    "armSwingDeg": 80,       // hands from about chin height to behind the hip
+    "armBackBiasDeg": -5,
+    "elbowBiasDeg": 88,
+    "elbowSwingDeg": 10,
+    "armRate": 12.0
   }
 }

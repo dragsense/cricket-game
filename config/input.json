@@ -6,10 +6,16 @@
     "ToggleDebugDraw": ["F2"],
     "ReloadConfig": ["F5"],
     "Quit": ["Escape"],
-    // Fielder walk: W forward (turns to the camera heading), S back, A/D sidestep.
+    // Fielder: W forward (turns to the camera heading), S back, A/D sidestep.
     "StepForward": ["W"],
     "StepBack": ["S"],
     "StepLeft": ["A"],
-    "StepRight": ["D"]
+    "StepRight": ["D"],
+    // Pace: walk by default; hold Shift to run, Ctrl to jog.
+    "Run": ["LeftShift", "RightShift"],
+    "Jog": ["LeftCtrl", "RightCtrl"],
+    // Mouse-look (on at start): the mouse turns the camera, cursor hidden.
+    // Tab frees the cursor for the debug UI (then right-drag rotates).
+    "ToggleMouseLook": ["Tab"]
   }
 }

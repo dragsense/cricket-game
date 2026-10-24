@@ -123,3 +123,25 @@ Dated log. Format: decision, reason, alternatives rejected.
   cameras (M8), not as a manual fly camera.
 - **Rejected:** keeping free-fly on separate keys: it clashed with gameplay input and
   isn't needed to check the fielder.
+
+## 2026-10-25: Paces walk / jog / run with a speed-blended gait shape (M1)
+- **Decision:** three presets in `config/locomotion.json` ("jog" inherits "walk", "run"
+  inherits "jog"). The input picks the pace (walk by default, Ctrl jog, Shift run),
+  which sets the target speed. The gait shape is blended between presets by the actual
+  speed. Sidesteps and backing up cap at the jog.
+- **Reason:** follows docs/BIOMECHANICS.md section 5: no mode switch, so nothing snaps.
+  Real players backpedal and shuffle; they do not sprint backwards or sideways.
+- **Rejected:**
+  - A Debug-window run checkbox (removed).
+  - Double-tap Shift to run (the user preferred Ctrl jog / Shift run).
+
+## 2026-10-25: Mouse-look orbit camera (M1)
+- **Decision:** the mouse turns the orbit camera without a button (SDL relative mouse
+  mode, cursor hidden). Tab frees the cursor for the debug UI, where right-drag rotates.
+- **Reason:** the user asked for third-person-style camera control while moving the
+  fielder.
+
+## 2026-10-25: Jump dropped from M1
+- **Decision:** Step 1.7 (jump) is removed from M1. Jumps return with the fielding
+  actions that need them (M3).
+- **Reason:** the user's choice.

@@ -1,9 +1,14 @@
 # Progress
 
-## Current milestone: M1 Procedural Fielder Body and Basic Locomotion — IN PROGRESS
+## Current milestone: M2 Basic ball flight (drag), bounce, roll — NOT STARTED
+
+Start it with the `start-milestone` skill.
+
+## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
 
 Goal: a single fielder with an ozz skeleton that stands, walks, runs and jumps with fully
-procedural motion. Out of scope: game logic, teams, ball interaction, skinned mesh. The
+procedural motion. Jumping was dropped (user's choice; it returns with catches and
+dives in M3). Out of scope: game logic, teams, ball interaction, skinned mesh. The
 M0 ground, pitch and ball stay as they are. Work one step at a time; stop for a visual
 check after each step.
 
@@ -12,7 +17,8 @@ check after each step.
   Awaiting user review.
 - [x] **1.1 Skeleton and body** (built, 2 test suites passing; awaiting the user's visual
   check). Finger bones added (15 per hand, Mixamo-compatible names): 52 bones.
-- [ ] **1.1b Textured Mixamo body**: the user supplies `assets/models/fielder.glb`
+- [ ] **1.1b Textured Mixamo body** (deferred: waiting for the user's model; carried
+  forward): the user supplies `assets/models/fielder.glb`
   (Mixamo FBX → Blender → glb). Skinned through gltfio, bone-name mapping in config,
   per-bone retarget correction; capsules kept as a debug toggle.: ozz RawSkeleton built at runtime from
   `config/fielder_skeleton.json` (height ratios); per-bone capsule/box visual kept
@@ -38,7 +44,7 @@ check after each step.
   (user's choice: only the orbit camera is user-controlled; scripted camera paths come
   with M8), freeing WASD/QE/Shift/C. No debug draw (user policy). Since 1.5, WASD walks
   instead of single-stepping.
-- [ ] **1.5 Walk** (core pass built, untested by eye; not committed by the user's choice):
+- [x] **1.5 Walk** (committed `7c63405`; arm swing and head awaiting a visual check):
   `motion::WalkController` (camera-relative WASD → desired velocity; eased start and
   stop, limited turn rate, slows on sharp turns); `motion::gaitTiming` (step = 0.41 H ×
   (v/1.35)^0.42, 60 % stance); `FootStepper::tickGait` places each swing foot ahead of
@@ -56,13 +62,25 @@ check after each step.
   never cross; the crossover comes with running, 1.6), per docs/BIOMECHANICS.md 4.7.
   The orbit camera now follows the fielder (`DebugCamera::setFollowPoint`).
   `test_walk.cpp` not yet run (watch builds skip tests).
-- [ ] **1.6 Run**: speed-driven blend, flight phase, sprint up to realistic speed.
-- [ ] **1.7 Jump**: crouch, push, ballistic flight, tuck, absorbing landing, recovery;
-  standing and running jumps.
+- [x] **1.6 Run** (awaiting the user's visual check): paces walk / jog / run, picked by
+  input (`config/input.json`): walk by default, hold Shift to run, hold Ctrl to jog
+  (user's choice; Shift wins if both). The debug "Fielder run" checkbox
+  is removed. `config/locomotion.json` has "walk", "jog" (3 m/s, from walk) and "run"
+  (5 m/s, from jog). The chosen pace sets the target speed. The gait shape
+  (`motion::blendGait`) blends walk -> jog -> run by the actual speed, so pace changes
+  never snap. `motion::GaitStyle` (FootStepper): foot roll for every gait (heel strike
+  toes-up, flat, heel rise over the ball with toe bend, toe-off), flight phase, early
+  heel-recovery arc apex, step width (running feet nearer the midline but apart). The
+  fielder adds pelvis twist, chest counter-rotation and a flipped bob when running.
+  Backing up and sidesteps cap at the jog (user's choice): the run preset has no
+  back/side speeds, and the shape blend measures speed in the direction of travel.
+  `test_walk.cpp` adds blend and flight-phase tests.
+  Camera: mouse-look on by default (the mouse turns the orbit camera, cursor hidden via
+  relative mouse mode); Tab frees the cursor for the debug UI, where right-drag rotates. Later: sprint (to 9 m/s), crossover, turn-and-run (M3).
 - [ ] Cross-cutting: config hot-reload key; slow motion (0.1–1x) and pause in ImGui;
   unit tests for joint limits, swing-twist and repositioning.
 
-## Previous milestone: M0 Foundation — DONE (2026-10-24), awaiting user review
+## Earlier milestone: M0 Foundation — DONE (2026-10-24), awaiting user review
 
 Scope:
 - Windows build with one command, and a setup script.
@@ -76,7 +94,6 @@ Scope:
 - Math helpers with tests.
 - README.
 
-Next milestone: **M1 Rig and IK**. Start it with the `start-milestone` skill.
 
 ## Checklist (M0)
 - [x] CMake + Ninja + MSVC presets; `scripts/build.ps1`, `scripts/setup_windows.ps1`
@@ -103,7 +120,7 @@ Next milestone: **M1 Rig and IK**. Start it with the `start-milestone` skill.
 | # | Milestone | Status |
 |---|---|---|
 | M0 | Foundation: window, render, cameras, debug tools | done |
-| M1 | Procedural fielder body and basic locomotion: ozz skeleton, IK, joint limits, stepping, walk, run, jump | in progress |
+| M1 | Procedural fielder body and basic locomotion: ozz skeleton, IK, joint limits, stepping, walk, jog, run | done |
 | M2 | Basic ball flight (drag), bounce, roll | not started |
 | M3 | Fielding: chase, intercept, pick-up, throw, catch | not started |
 | M4 | Wicketkeeper | not started |

@@ -5,8 +5,9 @@
 // the character turns toward it at a limited rate, slowing its forward walk on
 // sharp turns. Gait timing
 // gives step length and swing/stance durations for a speed, from
-// docs/BIOMECHANICS.md section 4 (step = k * H * (v / v_ref)^0.42).
-// Tunables in config/locomotion.json "walk". Pure math, no allocations.
+// docs/BIOMECHANICS.md section 4 (step = k * H * (v / v_ref)^0.42). Running
+// uses the same settings with a flight phase (section 5).
+// Tunables in config/locomotion.json "walk", "jog" and "run". Pure math, no allocations.
 
 #include "math/math.h"
 
@@ -41,13 +42,32 @@ struct WalkSettings {
     float headStabilise = 0.8f;  // 0..1, share of body lean and sway the head cancels
     float headLead = 0.52f;      // max head turn toward a new heading ahead of the body (rad)
     float headRate = 6.0f;       // 1/s, head turn smoothing
+    // Running (all 0 / neutral for walking). Use swingFraction 1 with a
+    // flight phase (no double support).
+    float flightFraction = 0.0f; // share of each swing with both feet off the ground
+    float flightLift = 0.0f;     // m the toes leave the ground at push-off
+    float heelRise = 0.0f;       // share of the other foot's swing the stance heel rises over
+    float toeOffPitch = 0.0f;    // rad, foot plantarflexion at toe-off
+    float landPitch = 0.0f;      // rad, foot pitch at landing (negative = toes up)
+    float swingPeakAt = 0.5f;    // swing time share of the arc apex (earlier = heel recovery)
+    float widthScale = 1.0f;     // share of standing width the feet land at
+    float pelvisTwist = 0.0f;    // rad, pelvis turn toward the forward leg
+    float chestCounter = 0.0f;   // chest turn against the pelvis, share of pelvisTwist
 };
+
+// Movement pace chosen by the player; the body's gait shape follows the
+// actual speed (blended), so changing pace never snaps.
+enum class Gait { Walk, Jog, Run };
+
+// Field-by-field blend of two gait settings, t in [0, 1].
+WalkSettings blendGait(const WalkSettings& a, const WalkSettings& b, float t);
 
 struct GaitTiming {
     float stepLength = 0.0f;  // m
     float period = 0.0f;      // s per step (one foot strike to the next)
     float swing = 0.0f;       // s a foot is in the air
     float stance = 0.0f;      // s a foot is on the ground per stride
+    float flight = 0.0f;      // s both feet are off the ground per step (running)
 };
 
 GaitTiming gaitTiming(float speed, float height, const WalkSettings& s);
@@ -63,6 +83,8 @@ public:
 
     float yaw() const { return yaw_; }
     float speed() const { return math::length(local_); }
+    // Velocity in character space (x = left, y = forward).
+    math::Vec2 localVelocity() const { return local_; }
     // Speed being asked for (eases toward it); kept while stopping so the last
     // steps keep the walk's rhythm. Drives gait timing, so steps are full size
     // from the first one.

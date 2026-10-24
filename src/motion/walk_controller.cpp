@@ -15,6 +15,48 @@ float wrapAngle(float a) {
 
 } // namespace
 
+WalkSettings blendGait(const WalkSettings& a, const WalkSettings& b, float t) {
+    WalkSettings r;
+    r.speed = math::lerp(a.speed, b.speed, t);
+    r.backSpeed = math::lerp(a.backSpeed, b.backSpeed, t);
+    r.sideSpeed = math::lerp(a.sideSpeed, b.sideSpeed, t);
+    r.acceleration = math::lerp(a.acceleration, b.acceleration, t);
+    r.deceleration = math::lerp(a.deceleration, b.deceleration, t);
+    r.turnRate = math::lerp(a.turnRate, b.turnRate, t);
+    r.stepK = math::lerp(a.stepK, b.stepK, t);
+    r.refSpeed = math::lerp(a.refSpeed, b.refSpeed, t);
+    r.swingFraction = math::lerp(a.swingFraction, b.swingFraction, t);
+    r.minSwing = math::lerp(a.minSwing, b.minSwing, t);
+    r.maxSwing = math::lerp(a.maxSwing, b.maxSwing, t);
+    r.stepHeight = math::lerp(a.stepHeight, b.stepHeight, t);
+    r.settleDistance = math::lerp(a.settleDistance, b.settleDistance, t);
+    r.bob = math::lerp(a.bob, b.bob, t);
+    r.sway = math::lerp(a.sway, b.sway, t);
+    r.leanPerSpeed = math::lerp(a.leanPerSpeed, b.leanPerSpeed, t);
+    r.leanPerAccel = math::lerp(a.leanPerAccel, b.leanPerAccel, t);
+    r.turnLean = math::lerp(a.turnLean, b.turnLean, t);
+    r.maxLean = math::lerp(a.maxLean, b.maxLean, t);
+    r.leanRate = math::lerp(a.leanRate, b.leanRate, t);
+    r.armSwing = math::lerp(a.armSwing, b.armSwing, t);
+    r.armBackBias = math::lerp(a.armBackBias, b.armBackBias, t);
+    r.elbowBias = math::lerp(a.elbowBias, b.elbowBias, t);
+    r.elbowSwing = math::lerp(a.elbowSwing, b.elbowSwing, t);
+    r.armRate = math::lerp(a.armRate, b.armRate, t);
+    r.headStabilise = math::lerp(a.headStabilise, b.headStabilise, t);
+    r.headLead = math::lerp(a.headLead, b.headLead, t);
+    r.headRate = math::lerp(a.headRate, b.headRate, t);
+    r.flightFraction = math::lerp(a.flightFraction, b.flightFraction, t);
+    r.flightLift = math::lerp(a.flightLift, b.flightLift, t);
+    r.heelRise = math::lerp(a.heelRise, b.heelRise, t);
+    r.toeOffPitch = math::lerp(a.toeOffPitch, b.toeOffPitch, t);
+    r.landPitch = math::lerp(a.landPitch, b.landPitch, t);
+    r.swingPeakAt = math::lerp(a.swingPeakAt, b.swingPeakAt, t);
+    r.widthScale = math::lerp(a.widthScale, b.widthScale, t);
+    r.pelvisTwist = math::lerp(a.pelvisTwist, b.pelvisTwist, t);
+    r.chestCounter = math::lerp(a.chestCounter, b.chestCounter, t);
+    return r;
+}
+
 GaitTiming gaitTiming(float speed, float height, const WalkSettings& s) {
     const float v = std::max(speed, kMinGaitSpeed);
     GaitTiming g;
@@ -22,7 +64,8 @@ GaitTiming gaitTiming(float speed, float height, const WalkSettings& s) {
     const float fraction = math::clamp(s.swingFraction, 0.1f, 1.0f);
     g.swing = math::clamp(fraction * g.stepLength / v, s.minSwing, s.maxSwing);
     g.period = g.swing / fraction;
-    g.stance = 2.0f * g.period - g.swing;
+    g.flight = math::clamp(s.flightFraction, 0.0f, 0.9f) * g.swing;
+    g.stance = 2.0f * g.period - g.swing - g.flight;
     return g;
 }
 

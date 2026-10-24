@@ -49,12 +49,16 @@ public:
     // Ground point the orbit follows (e.g. the player's root); the orbit
     // keeps its configured offset above it. Rotate and zoom stay relative.
     void setFollowPoint(math::Vec3 point) { follow_ = point; }
+    // Mouse-look: mouse motion rotates without a button (pair with the
+    // window's relative mouse mode).
+    void setMouseLook(bool on) { mouseLook_ = on; }
 
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     CameraSpeeds speeds_;
     math::Vec3 follow_{0.0f};
+    bool mouseLook_ = false;
 };
 
 } // namespace camera

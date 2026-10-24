@@ -33,9 +33,10 @@ void drawOverlay(DebugSettings& s, const OverlayInfo& info) {
     ImGui::Checkbox("Interpolation probe", &s.showProbe);
     ImGui::Checkbox("ImGui demo", &s.showDemoWindow);
 
+
     ImGui::Separator();
     ImGui::TextUnformatted("Camera (orbit)");
-    ImGui::TextDisabled("RMB drag: rotate  MMB drag: pan  wheel: zoom");
+    ImGui::TextDisabled("Mouse: rotate (Tab frees cursor, then RMB drag)  MMB: pan  wheel: zoom");
 
     if (ImGui::CollapsingHeader("Camera speed", ImGuiTreeNodeFlags_DefaultOpen)) {
         camera::CameraSpeeds& c = s.cameraSpeeds;

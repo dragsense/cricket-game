@@ -54,6 +54,8 @@ struct InputState {
 enum class Action : uint8_t {
     ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
     StepForward, StepBack, StepLeft, StepRight,
+    Run, Jog,  // hold to run / jog; otherwise walk
+    ToggleMouseLook,
     Count
 };
 
