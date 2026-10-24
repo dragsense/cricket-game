@@ -40,6 +40,14 @@ target_include_directories(cricket_core PUBLIC src)
 target_link_libraries(cricket_core PUBLIC cricket_math spdlog::spdlog nlohmann_json::nlohmann_json)
 cricket_warnings(cricket_core)
 
+# ---- rig: ozz-animation skeletons built from config ---------------------------
+add_library(cricket_rig STATIC
+    src/rig/skeleton_def.cpp
+    src/rig/rig.cpp
+)
+target_link_libraries(cricket_rig PUBLIC cricket_core PRIVATE ozz_animation ozz_animation_offline)
+cricket_warnings(cricket_rig)
+
 # ---- game executable --------------------------------------------------------
 add_executable(CricketGame
     src/main.cpp
@@ -55,8 +63,12 @@ add_executable(CricketGame
     src/camera/debug_camera.cpp
     src/debug/debug_overlay.cpp
     src/match/sim_world.cpp
+    src/agents/fielder.cpp
+    src/game/fielder_visual.cpp
+    src/debug/skeleton_debug.cpp
+    src/debug/fielder_panel.cpp
 )
-target_link_libraries(CricketGame PRIVATE cricket_core SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
+target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
 cricket_warnings(CricketGame)
 if(WIN32)
     set_target_properties(CricketGame PROPERTIES WIN32_EXECUTABLE $<CONFIG:Release>)
@@ -87,4 +99,10 @@ if(CRICKET_BUILD_TESTS)
     target_link_libraries(math_tests PRIVATE cricket_math doctest::doctest)
     cricket_warnings(math_tests)
     add_test(NAME math_tests COMMAND math_tests)
+
+    add_executable(rig_tests tests/test_main.cpp tests/test_rig.cpp)
+    target_link_libraries(rig_tests PRIVATE cricket_rig doctest::doctest)
+    target_compile_definitions(rig_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
+    cricket_warnings(rig_tests)
+    add_test(NAME rig_tests COMMAND rig_tests)
 endif()

@@ -98,6 +98,18 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:**
   - `FETCHCONTENT_UPDATES_DISCONNECTED`: did not prevent the re-clones.
   - Archive URLs: re-extraction still touches timestamps.
+## 2026-10-24: Fielder skeleton built at runtime from height ratios (M1)
+- **Decision:** ozz-animation 0.16.0 (runtime plus offline `RawSkeleton` and
+  `SkeletonBuilder`) builds the skeleton from `config/fielder_skeleton.json`. The config
+  stores ratios of height, not metres. All rest rotations are identity, so the rest pose
+  is the standing pose, and the joint axes match the character axes.
+- **Reason:** one height value rescales the body. Identical joint frames keep joint
+  limits and IK axes simple and uniform.
+- **Rejected:**
+  - Loading the skeleton from glTF: there is no body mesh yet; it comes later.
+  - Bone-aligned frames (+Y along the bone): different per-bone limit axes for no gain
+    now.
+
 ## 2026-10-24: Milestone order: ball physics before fielding
 - **Decision:** M1 rig and IK, M2 basic ball flight and bounce, M3 fielding.
 - **Reason:** fielders need a ball to chase and catch.

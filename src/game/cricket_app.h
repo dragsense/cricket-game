@@ -8,6 +8,8 @@
 #include "core/events.h"
 #include "core/input.h"
 #include "debug/debug_overlay.h"
+#include "debug/fielder_panel.h"
+#include "game/fielder_visual.h"
 #include "game/test_scene.h"
 #include "game/world.h"
 #include "match/sim_world.h"
@@ -22,6 +24,7 @@ struct AppConfigs {
     core::Config engine;  // config/engine.json
     core::Config input;   // config/input.json
     core::Config scene;   // config/scene.json
+    core::Config fielderSkeleton;  // config/fielder_skeleton.json
 };
 
 class CricketApp final : public core::App {
@@ -37,6 +40,7 @@ protected:
 
 private:
     void drawDebugGeometry(float alpha);
+    void updateFielder(float alpha);
 
     AppConfigs cfg_;
     platform::Window window_;
@@ -48,6 +52,11 @@ private:
     match::SimWorld sim_;
     World world_;
     TestScene scene_;
+    FielderVisual fielderVisual_;
+    debug::FielderPanelState fielderPanel_;
+    bool fielderBodyShown_ = true;
+    rig::Pose fielderPose_;                  // interpolated, render side
+    std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
     debug::DebugSettings appliedSettings_;  // last values pushed to the renderer
     std::string backendName_;

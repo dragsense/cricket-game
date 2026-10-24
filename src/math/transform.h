@@ -40,6 +40,16 @@ inline Transform inverse(const Transform& t) {
     return r;
 }
 
+// Rigid matrix (rotation + translation, uniform scale) to a Transform.
+inline Transform toTransform(const Mat4& m) {
+    Transform r;
+    r.position = Vec3(m[3]);
+    float s = glm::length(Vec3(m[0]));
+    r.scale = Vec3(s);
+    r.rotation = glm::normalize(glm::quat_cast(Mat3(m) * (1.0f / s)));
+    return r;
+}
+
 inline Transform lerp(const Transform& a, const Transform& b, float t) {
     return {lerp(a.position, b.position, t), glm::slerp(a.rotation, b.rotation, t), lerp(a.scale, b.scale, t)};
 }

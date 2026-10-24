@@ -99,6 +99,9 @@ inline Quat nlerp(Quat a, Quat b, float t) {
 }
 
 // Angle in radians of the rotation taking `a` to `b`, in [0, pi].
+// Euler angles in radians (rotation about X, Y, Z), for display only.
+inline Vec3 eulerAngles(Quat q) { return glm::eulerAngles(q); }
+
 inline float angleBetween(Quat a, Quat b) {
     float c = std::fabs(dot(glm::normalize(a), glm::normalize(b)));
     return 2.0f * std::acos(c > 1.0f ? 1.0f : c);

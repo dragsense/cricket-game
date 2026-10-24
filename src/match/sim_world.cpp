@@ -12,9 +12,12 @@ void SimWorld::configure(const core::Config& config) {
     previous_ = current_;
 }
 
+bool SimWorld::initFielder(const rig::SkeletonDef& def) { return fielder_.init(def, def.height); }
+
 void SimWorld::tick(double dt) {
     previous_ = current_;
     time_ += dt;
+    fielder_.tick(dt);
     if (!probeEnabled_) return;
 
     float a = static_cast<float>(time_) * pathSpeed_;

@@ -10,9 +10,9 @@ set(JSON_VERSION     "v3.12.0")
 set(SPDLOG_VERSION   "v1.15.3")
 set(ENTT_VERSION     "v3.15.0")
 set(DOCTEST_VERSION  "v2.5.2")
+set(OZZ_VERSION      "0.16.0")
 # Planned, not integrated yet:
-#   Milestone 1: ozz-animation (skeletons, two-bone/aim IK, blending, skinning),
-#                ImGuizmo (draggable IK targets)
+#   Milestone 1: ImGuizmo (draggable IK targets, Step 1.2)
 #   Later:       Jolt Physics (player body collisions)
 # Model loading uses Filament's gltfio (ships with the Filament SDK).
 
@@ -74,7 +74,20 @@ cricket_dependency(doctest https://github.com/doctest/doctest.git ${DOCTEST_VERS
 # --- EnTT (entity-component system for game objects) ---
 cricket_dependency(EnTT https://github.com/skypjack/entt.git ${ENTT_VERSION})
 
-FetchContent_MakeAvailable(SDL3 glm imgui nlohmann_json spdlog EnTT doctest)
+# --- ozz-animation (runtime skeletons, local-to-model, two-bone/aim IK) ---
+# Runtime + offline (RawSkeleton/SkeletonBuilder) libraries only. DLL CRT to
+# match the rest of the build.
+set(ozz_build_tools OFF CACHE BOOL "" FORCE)
+set(ozz_build_fbx OFF CACHE BOOL "" FORCE)
+set(ozz_build_gltf OFF CACHE BOOL "" FORCE)
+set(ozz_build_samples OFF CACHE BOOL "" FORCE)
+set(ozz_build_howtos OFF CACHE BOOL "" FORCE)
+set(ozz_build_tests OFF CACHE BOOL "" FORCE)
+set(ozz_build_postfix OFF CACHE BOOL "" FORCE)
+set(ozz_build_msvc_rt_dll ON CACHE BOOL "" FORCE)
+cricket_dependency(ozz_animation https://github.com/guillaumeblanc/ozz-animation.git ${OZZ_VERSION})
+
+FetchContent_MakeAvailable(SDL3 glm imgui nlohmann_json spdlog EnTT doctest ozz_animation)
 
 add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp

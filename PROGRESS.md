@@ -10,7 +10,8 @@ check after each step.
 - [x] **1.0 Biomechanics research** → [docs/BIOMECHANICS.md](docs/BIOMECHANICS.md)
   (proportions, ROM, balance, walk, run, jump, movement quality, fielding preview).
   Awaiting user review.
-- [ ] **1.1 Skeleton and body**: ozz RawSkeleton built at runtime from
+- [x] **1.1 Skeleton and body** (built, 2 test suites passing; awaiting the user's visual
+  check): ozz RawSkeleton built at runtime from
   `config/fielder_skeleton.json` (height ratios); per-bone capsule/box visual kept
   separate; debug bones, joints and axes; ImGui height slider and bone readouts;
   neutral standing pose.

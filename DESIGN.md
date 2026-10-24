@@ -196,8 +196,30 @@ Cricket dimensions:
 
 Small parts are merged with `render::appendMesh` to keep draw calls low.
 
-### Rig (M1): not started
-ozz-animation runtime skeleton, loaded from the player glTF. Body sizes come from config.
+### Rig (M1): skeleton built (Step 1.1)
+- `rig::SkeletonDef` (`src/rig/skeleton_def.*`) parses `config/fielder_skeleton.json`.
+  Every offset is a **ratio of standing height** (Drillis & Contini / Winter ratios,
+  de Leva 1996 masses; tables and derivations in
+  [docs/BIOMECHANICS.md](docs/BIOMECHANICS.md) section 1). Left-side bones are defined
+  once and mirrored to `_r`.
+- `rig::Rig` (`src/rig/rig.*`) builds an ozz `RawSkeleton` at a given height, runs
+  `SkeletonBuilder`, and converts AoS `rig::Pose` locals to model matrices with
+  `LocalToModelJob`. Joint indices are ozz's depth-first order; ozz types stay in
+  `rig.cpp`.
+- 22 bones: pelvis (root), spine_01, spine_02, chest, neck, head; per side clavicle,
+  upper_arm, forearm, hand, thigh, shin, foot, toe.
+- **Rest pose = neutral standing pose**, with identity local rotations. Every joint
+  frame is aligned with character space (+Y up, +Z forward, +X = character's left), so
+  joint-limit axes are the same for every bone. Key landmarks at H: hip 0.530, knee
+  0.285, ankle 0.039, shoulder 0.818; leg length (thigh + shin) 0.491 H.
+- `agents::Fielder` owns the rig, the previous and current pose, and the root
+  transform. It is ticked in the sim; rendering interpolates the locals.
+- Body visual: `game::FielderVisual` creates one capsule or box per bone (shape in
+  config). Meshes are in height-ratio units, scaled by the height at draw time, so the
+  height slider needs no new meshes. A skinned glTF replaces this layer later.
+- Debug: `debug::drawSkeleton` (bones, joints, axes, centre of mass with its ground
+  projection) and the ImGui "Fielder" panel (height slider, toggles, bone list with
+  local rotations).
 
 ### IK (M1): not started
 ozz two-bone and aim IK. Our own FABRIK chains and swing-twist joint limits (published

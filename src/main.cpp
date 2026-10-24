@@ -18,6 +18,7 @@ int main(int /*argc*/, char** /*argv*/) {
     configs.engine.load("config/engine.json");
     configs.input.load("config/input.json");
     configs.scene.load("config/scene.json");
+    configs.fielderSkeleton.load("config/fielder_skeleton.json");
 
     game::CricketApp app(std::move(configs));
     return app.run();

@@ -7,6 +7,7 @@
 // Every tick copies `current` into `previous`; the renderer blends the two
 // with the loop's alpha.
 
+#include "agents/fielder.h"
 #include "math/math.h"
 
 namespace core {
@@ -24,6 +25,11 @@ public:
     void configure(const core::Config& config);
     void tick(double dt);
 
+    // Creates the fielder from its skeleton description. Load-time only.
+    bool initFielder(const rig::SkeletonDef& def);
+    agents::Fielder& fielder() { return fielder_; }
+    const agents::Fielder& fielder() const { return fielder_; }
+
     // Interpolated probe transform for rendering.
     math::Transform probeTransform(float alpha) const {
         return math::lerp(previous_.transform, current_.transform, alpha);
@@ -34,6 +40,7 @@ public:
 
 private:
     ProbeState previous_, current_;
+    agents::Fielder fielder_;
     double time_ = 0;
     bool probeEnabled_ = true;
     float pathRadius_ = 12.0f;  // metres

@@ -87,6 +87,13 @@ bool CricketApp::init() {
 
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
 
+    rig::SkeletonDef skeletonDef;
+    if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef)) return false;
+    const agents::Fielder& fielder = sim_.fielder();
+    fielderVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.fielderSkeleton);
+    fielderPanel_.height = fielder.rig().height();
+    fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
+
     debugSettings_.shadows = e.getBool("render.shadows", true);
     debugSettings_.debugDraw = e.getBool("debug.debugDraw", true);
     debugSettings_.showOverlay = e.getBool("debug.showOverlay", true);
@@ -167,6 +174,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     // --- Interpolated sim state -> entities -> renderer scene ---
     math::Transform probe = sim_.probeTransform(alpha);
     for (auto e : world_.registry().view<FollowsProbe>()) world_.setTransform(e, probe);
+    updateFielder(alpha);
     world_.syncToRenderer(*renderer_);
 
     if (debugSettings_.debugDraw) drawDebugGeometry(alpha);
@@ -182,6 +190,12 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     info.debugLinesDropped = renderer_->debugDraw().droppedLines();
     info.backend = backendName_.c_str();
     debug::drawOverlay(debugSettings_, info);
+    const agents::Fielder& fielder = sim_.fielder();
+    if (debug::drawFielderPanel(fielderPanel_, fielder.def(), fielder.rig(), fielder.pose())) {
+        // Applied between sim ticks; rebuilding allocates, which is fine for a debug slider.
+        sim_.fielder().setHeight(fielderPanel_.height);
+        fielderModels_.assign(static_cast<size_t>(sim_.fielder().rig().numJoints()), math::Mat4(1.0f));
+    }
     ImGui::Render();
 
     renderer_->render(ImGui::GetDrawData());
@@ -194,6 +208,17 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     }
 }
 
+void CricketApp::updateFielder(float alpha) {
+    const agents::Fielder& fielder = sim_.fielder();
+    fielder.interpolatedPose(alpha, fielderPose_);
+    if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
+    if (fielderPanel_.showBody != fielderBodyShown_) {
+        fielderBodyShown_ = fielderPanel_.showBody;
+        fielderVisual_.setVisible(*renderer_, world_, fielderBodyShown_);
+    }
+    fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.root());
+}
+
 void CricketApp::drawDebugGeometry(float alpha) {
     render::DebugDraw& dd = renderer_->debugDraw();
     if (debugSettings_.showGrid) dd.grid(math::Vec3(0, 0.02f, 0), 30.0f, 5.0f, render::rgba(255, 255, 255, 60));
@@ -203,6 +228,9 @@ void CricketApp::drawDebugGeometry(float alpha) {
     float halfLen = 0.5f * scene_.pitchLength;
     dd.box(math::Vec3(0, 0.36f, halfLen), math::Vec3(0.115f, 0.36f, 0.02f), render::colors::kYellow);
     dd.box(math::Vec3(0, 0.36f, -halfLen), math::Vec3(0.115f, 0.36f, 0.02f), render::colors::kYellow);
+
+    const agents::Fielder& fielder = sim_.fielder();
+    debug::drawSkeleton(dd, fielder.def(), fielder.rig(), fielderModels_, fielder.root(), fielderPanel_.draw);
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

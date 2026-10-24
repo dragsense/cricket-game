@@ -1,0 +1,60 @@
+// Fielder skeleton. Every length is a fraction of standing height H (no metres),
+// from Drillis & Contini / Winter ratios: see docs/BIOMECHANICS.md section 1.
+// Axes (character space): +Y up, +Z forward, +X = character's LEFT.
+// All rest rotations are identity, so the rest pose IS the neutral standing pose
+// and every bone's local axes are aligned with the character's axes.
+//
+// Bones with "mirror": true are defined once for the left side (+X) and
+// generated as <name>_l and <name>_r (X negated). A mirrored bone's parent
+// gets the same suffix if the parent is mirrored too.
+//
+// "offset": joint position relative to the parent joint (ratio of H).
+// "mass":   % of body mass (de Leva 1996, trunk split upper/mid/lower).
+// "visual": shape rigidly attached to the bone, in the bone's local frame
+//           (ratio of H). capsule: "from"/"to" endpoints (default: joint ->
+//           first child), "radius". box: "center", "size".
+//           The visual is display only; a skinned glTF replaces it later.
+{
+  "height": 1.80,
+  "heightRange": [1.50, 2.10],
+  "spawn": { "position": [3.0, 0.0, 0.0], "yawDeg": 40.0 },
+
+  "materials": {
+    "kit":  { "color": [0.92, 0.91, 0.86], "roughness": 0.85 },
+    "skin": { "color": [0.55, 0.38, 0.28], "roughness": 0.6 },
+    "shoe": { "color": [0.95, 0.95, 0.95], "roughness": 0.5 }
+  },
+
+  "bones": [
+    { "name": "pelvis",   "parent": "",        "offset": [0.0, 0.545, 0.0], "mass": 11.17,
+      "visual": { "shape": "capsule", "material": "kit", "from": [-0.045, -0.01, 0.0], "to": [0.045, -0.01, 0.0], "radius": 0.06 } },
+    { "name": "spine_01", "parent": "pelvis",   "offset": [0.0, 0.04, 0.0], "mass": 8.00,
+      "visual": { "shape": "capsule", "material": "kit", "radius": 0.062 } },
+    { "name": "spine_02", "parent": "spine_01", "offset": [0.0, 0.09, 0.0], "mass": 8.33,
+      "visual": { "shape": "capsule", "material": "kit", "radius": 0.066 } },
+    { "name": "chest",    "parent": "spine_02", "offset": [0.0, 0.09, 0.0], "mass": 15.96,
+      "visual": { "shape": "capsule", "material": "kit", "from": [-0.06, 0.02, 0.0], "to": [0.06, 0.02, 0.0], "radius": 0.065 } },
+    { "name": "neck",     "parent": "chest",    "offset": [0.0, 0.065, 0.0], "mass": 0.0,
+      "visual": { "shape": "capsule", "material": "skin", "radius": 0.03 } },
+    { "name": "head",     "parent": "neck",     "offset": [0.0, 0.05, 0.0], "mass": 6.94, "tip": [0.0, 0.12, 0.0],
+      "visual": { "shape": "capsule", "material": "skin", "from": [0.0, 0.0, 0.01], "to": [0.0, 0.065, 0.01], "radius": 0.055 } },
+
+    { "name": "clavicle",  "parent": "chest",     "mirror": true, "offset": [0.015, 0.035, 0.0], "mass": 0.0,
+      "visual": { "shape": "capsule", "material": "kit", "radius": 0.025 } },
+    { "name": "upper_arm", "parent": "clavicle",  "mirror": true, "offset": [0.115, 0.015, -0.01], "mass": 2.71,
+      "visual": { "shape": "capsule", "material": "kit", "radius": 0.03 } },
+    { "name": "forearm",   "parent": "upper_arm", "mirror": true, "offset": [0.0, -0.186, 0.0], "mass": 1.62,
+      "visual": { "shape": "capsule", "material": "skin", "radius": 0.024 } },
+    { "name": "hand",      "parent": "forearm",   "mirror": true, "offset": [0.0, -0.146, 0.0], "mass": 0.61, "tip": [0.0, -0.06, 0.0],
+      "visual": { "shape": "box", "material": "skin", "center": [0.0, -0.04, 0.0], "size": [0.016, 0.08, 0.05] } },
+
+    { "name": "thigh", "parent": "pelvis", "mirror": true, "offset": [0.048, -0.015, 0.0], "mass": 14.16,
+      "visual": { "shape": "capsule", "material": "kit", "radius": 0.04 } },
+    { "name": "shin",  "parent": "thigh",  "mirror": true, "offset": [0.0, -0.245, 0.0], "mass": 4.33,
+      "visual": { "shape": "capsule", "material": "kit", "radius": 0.03 } },
+    { "name": "foot",  "parent": "shin",   "mirror": true, "offset": [0.0, -0.246, 0.0], "mass": 1.10,
+      "visual": { "shape": "box", "material": "shoe", "center": [0.0, -0.024, 0.032], "size": [0.055, 0.03, 0.145] } },
+    { "name": "toe",   "parent": "foot",   "mirror": true, "offset": [0.0, -0.03, 0.105], "mass": 0.27, "tip": [0.0, 0.0, 0.045],
+      "visual": { "shape": "box", "material": "shoe", "center": [0.0, -0.002, 0.022], "size": [0.05, 0.014, 0.045] } }
+  ]
+}
