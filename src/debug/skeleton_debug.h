@@ -13,7 +13,7 @@ namespace debug {
 struct SkeletonDrawFlags {
     bool bones = true;
     bool joints = true;
-    bool axes = false;
+    bool axes = true;  // X red, Y green, Z blue
     bool centreOfMass = true;
 };
 

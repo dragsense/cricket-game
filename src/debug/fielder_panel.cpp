@@ -25,6 +25,15 @@ bool drawFielderPanel(FielderPanelState& s, const rig::SkeletonDef& def, const r
     ImGui::Checkbox("Axes", &s.draw.axes);
     ImGui::SameLine();
     ImGui::Checkbox("CoM", &s.draw.centreOfMass);
+    if (s.draw.axes) {
+        ImGui::TextUnformatted("Joint axes:");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.9f, 0.24f, 0.24f, 1), "X (left)");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.24f, 0.82f, 0.31f, 1), "Y (up)");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.27f, 0.47f, 0.94f, 1), "Z (forward)");
+    }
 
     ImGui::SeparatorText("Local rotation (deg, X Y Z)");
     if (ImGui::BeginTable("bones", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {

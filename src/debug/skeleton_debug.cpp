@@ -39,12 +39,10 @@ void drawSkeleton(render::DebugDraw& dd, const rig::SkeletonDef& def, const rig:
             if (rig.parent(j) >= 0) dd.line(jointWorld(models, root, rig.parent(j)), p, kBoneColor);
             if (isLeaf(rig, j)) dd.line(p, tipWorld(def, rig, models, root, j), kBoneColor);
         }
-        if (flags.joints) {
-            // Small bones (fingers) get proportionally small spheres.
-            float bone = rig.parent(j) >= 0 ? math::distance(p, jointWorld(models, root, rig.parent(j))) : kJointRadius;
-            dd.sphere(p, std::min(kJointRadius, 0.3f * bone), kJointColor, 8);
-        }
-        if (flags.axes) dd.axes(root * math::toTransform(models[static_cast<size_t>(j)]), kAxisSize);
+        // Small bones (fingers) get proportionally small spheres and axes.
+        float bone = rig.parent(j) >= 0 ? math::distance(p, jointWorld(models, root, rig.parent(j))) : kAxisSize;
+        if (flags.joints) dd.sphere(p, std::min(kJointRadius, 0.3f * bone), kJointColor, 8);
+        if (flags.axes) dd.axes(root * math::toTransform(models[static_cast<size_t>(j)]), std::min(kAxisSize, 0.8f * bone));
     }
     if (flags.centreOfMass) {
         math::Vec3 com = centreOfMass(def, rig, models, root);
