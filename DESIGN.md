@@ -36,6 +36,7 @@ All versions are pinned in [cmake/dependencies.cmake](cmake/dependencies.cmake).
 | ozz-animation | skeletons, two-bone/aim IK, blending, skinning, clip playback | M1 |
 | ImGuizmo | dragging IK targets in the viewport | M1 |
 | Jolt Physics | player body collisions | later |
+| RmlUi | game menus / HUD | later |
 
 Anything else: ask first.
 
@@ -64,6 +65,38 @@ debug      ImGui overlay
 physics    Jolt integration (later)
 ui         game UI (later)
 game       CricketApp: wires everything; EnTT World; test scene
+```
+
+## Folder layout
+
+```
+CMakeLists.txt, CMakePresets.json
+cmake/dependencies.cmake   all pinned library versions
+cmake/Filament.cmake       prebuilt Filament import + matc material compile
+scripts/                   setup_windows.ps1, build.ps1
+third_party/filament/      prebuilt SDK (git-ignored)
+config/                    engine.json, input.json, scene.json
+assets/materials/          Filament .mat sources
+src/main.cpp
+src/core math platform render camera debug game match
+src/rig ik motion agents ai physics ui      (empty until their milestone)
+tests/                     doctest
+```
+
+## Data flow (sim → render)
+
+```
+SDL events ─► platform::Window ─► core::InputState ─► core::ActionMap
+                                        │
+             ┌──────────────────────────┴───────────────┐
+             ▼ fixed 120 Hz                             ▼ per rendered frame
+   match::SimWorld::tick(dt)                  camera::DebugCamera::update
+   (previous ← current; advance)                         │
+             │ interpolate(alpha)                        │
+             ▼                                           ▼
+   game::World (EnTT) TransformComponent ──► render::Renderer (interface)
+             └── syncToRenderer (dirty only)    └── FilamentRenderer: TransformManager,
+                                                    scene view + ImGui view → swap chain
 ```
 
 ## Main loop and timing
@@ -145,7 +178,38 @@ path with an in-code fallback. Values are cached at init, never looked up in the
 Only `src/platform` touches SDL or OS APIs. `platform::Window` exposes the native handle
 the renderer needs (HWND on Windows; ANativeWindow / CAMetalLayer later).
 
+## Systems
+
+One section per system, filled in as each is built.
+
+### Rig (M1): not started
+ozz-animation runtime skeleton, loaded from the player glTF. Body sizes come from config.
+
+### IK (M1): not started
+ozz two-bone and aim IK. Our own FABRIK chains and swing-twist joint limits (published
+algorithms), driven by targets that can be dragged with ImGuizmo.
+
+### Motion (M1+): not started
+Balance, locomotion and procedural actions built on rig and IK.
+
+### Ball physics (M2): not started
+Our own code: flight with drag, bounce off pitch and outfield, rolling. Fixed-step.
+
+### Agents / AI (M3+): not started
+Player bodies (agents) driven by fielding, bowling and batting decisions (ai).
+
+### Match (M7): not started
+Rules, scoring, innings. `match::SimWorld` is currently a placeholder probe.
+
+### Broadcast cameras (M8): not started
+Game cameras imitating TV coverage. Debug cameras stay on camutils.
+
+### Game UI (M9): not started
+RmlUi for menus and HUD. ImGui stays debug-only.
+
 ## Milestones
+
+Status and checklists live in [PROGRESS.md](PROGRESS.md).
 
 - **M0 (done):** this skeleton.
 - **M1:** procedural fielder rig: ozz-animation skeleton, ozz two-bone/aim IK, our

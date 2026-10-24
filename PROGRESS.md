@@ -1,0 +1,60 @@
+# Progress
+
+## Current milestone: M0 Foundation — DONE (2026-10-24), awaiting user review
+
+Scope:
+- Windows build with one command, and a setup script.
+- SDL3 window (1600x900, resizable, vsync) with Filament PBR, at real scale.
+- Field, 22-yard pitch, sun with shadows, sky/IBL lighting, stumps and capsules.
+- camutils orbit and free-fly cameras.
+- Debug lines, spheres and axes.
+- ImGui overlay showing fps, frame time and ticks, with toggles.
+- 120 Hz fixed timestep with interpolation.
+- EnTT entities linked to Filament renderables.
+- Math helpers with tests.
+- README.
+
+Next milestone: **M1 Rig and IK**. Start it with the `start-milestone` skill.
+
+## Checklist (M0)
+- [x] CMake + Ninja + MSVC presets; `scripts/build.ps1`, `scripts/setup_windows.ps1`
+- [x] Dependencies pinned in `cmake/dependencies.cmake`
+- [x] SDL3 window and input → `core::InputState` / `ActionMap` (config/input.json)
+- [x] Filament renderer behind `render::Renderer` (scene + UI views)
+- [x] Test scene at real scale, with sun shadows and SH sky lighting
+- [x] camutils orbit and free-fly cameras (`C` switches)
+- [x] `render::DebugDraw` (lines, circles, spheres, axes, boxes, grid)
+- [x] ImGui overlay (fps, frame ms, ticks/s, shadows/debug toggles)
+- [x] Fixed-timestep loop (`core::App`) with interpolated `SimWorld` probe
+- [x] EnTT `game::World` → Filament TransformManager
+- [x] GLM wrapper + doctest (56 assertions passing)
+- [x] Debug and release build warning-free, game runs
+- [ ] User visual check of cameras and scene (pending)
+
+## Roadmap
+| # | Milestone | Status |
+|---|---|---|
+| M0 | Foundation: window, render, cameras, debug tools | done |
+| M1 | Rig and IK: ozz-animation skeleton, two-bone/aim IK, FABRIK, swing-twist joint limits, ImGuizmo targets | not started |
+| M2 | Basic ball flight (drag), bounce, roll | not started |
+| M3 | Fielding: chase, intercept, pick-up, throw, catch | not started |
+| M4 | Wicketkeeper | not started |
+| M5 | Bowling | not started |
+| M6 | Batting | not started |
+| M7 | Match rules | not started |
+| M8 | Broadcast cameras | not started |
+| M9 | Game UI (RmlUi) | not started |
+| M10 | Mobile (Android, then iOS on a Mac) | not started |
+
+Before M1, decide the player body mesh (MakeHuman CC0 or Blender → glTF).
+
+## Known issues / pending
+- **Namespace migration:** M0 code uses bare layer namespaces (`core`, `render`, …).
+  The convention is now `cricket::<layer>`. This needs approval, as a mechanical rename.
+- **filagui** is not shipped in the prebuilt Filament release, so a small custom ImGui
+  backend is used (`src/render/filament/imgui_filament.cpp`). See DECISIONS.md.
+- **IBL:** the skybox is a flat colour, with no specular reflection cubemap yet. This is
+  fine for rough materials, and can be revisited if visuals need it.
+- **Render uploads:** debug-line and ImGui uploads malloc a staging copy per frame. This
+  is render-side, not sim; move to ring buffers if profiling shows a cost.
+- **Unchecked by eye:** camera feel and vsync behaviour on the OpenGL backend.
