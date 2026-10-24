@@ -186,7 +186,15 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::Quit)) running = false;
     if (actions_.pressed(input_, core::Action::ToggleOverlay)) debugSettings_.showOverlay = !debugSettings_.showOverlay;
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
-    if (actions_.pressed(input_, core::Action::ToggleCamera)) debugSettings_.cameraMode ^= 1;
+
+    // Fielder steps, in character space (+X is the fielder's left).
+    auto axis = [&](core::Action pos, core::Action neg) {
+        return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
+    };
+    math::Vec2 step(axis(core::Action::StepLeft, core::Action::StepRight),
+                    axis(core::Action::StepForward, core::Action::StepBack));
+    if (math::length2(step) > 1.0f) step /= math::length(step);  // diagonals
+    sim_.fielder().setStepInput(step);
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
@@ -199,7 +207,6 @@ bool CricketApp::pumpEvents() {
 }
 
 void CricketApp::fixedUpdate(double dt) {
-    sim_.fielder().setIkDemo(debugSettings_.ikDemo);
     sim_.tick(dt);
 }
 
@@ -207,9 +214,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
 
     // --- Cameras (render-side, real frame time) ---
-    camera_.setMode(debugSettings_.cameraMode == 0 ? camera::CameraMode::Orbit : camera::CameraMode::FreeFly);
-    bool captureMouse = camera_.update(input_, actions_, static_cast<float>(frameSeconds));
-    window_.setRelativeMouse(captureMouse);
+    camera_.update(input_, static_cast<float>(frameSeconds));
     camera::CameraPose pose = camera_.pose();
     render::CameraDesc cam;
     cam.eye = pose.eye;

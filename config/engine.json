@@ -44,16 +44,6 @@
       "home": [22.0, 12.0, 26.0],
       "rotateDegPerPixel": 0.5,     // live-tunable in the Debug panel ("Camera speed")
       "zoomStep": 0.15              // fraction of the view distance per wheel notch
-    },
-    "freeFly": {
-      "start": [0.0, 1.7, 16.0],    // behind the stumps at eye height
-      "pitch": -5.0,
-      "yaw": 0.0,
-      "lookDegPerPixel": 0.3,
-      "maxSpeed": 20.0,             // m/s
-      "fastMultiplier": 4.0,
-      "damping": 15.0,
-      "speedSteps": 80
     }
   },
   "debug": {

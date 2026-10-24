@@ -57,6 +57,14 @@ add_library(cricket_ik STATIC
 target_link_libraries(cricket_ik PUBLIC cricket_rig PRIVATE ozz_animation)
 cricket_warnings(cricket_ik)
 
+# ---- motion: procedural body motion (own code) ------------------------------------
+add_library(cricket_motion STATIC
+    src/motion/body_reposition.cpp
+    src/motion/foot_stepper.cpp
+)
+target_link_libraries(cricket_motion PUBLIC cricket_core)
+cricket_warnings(cricket_motion)
+
 # ---- game executable --------------------------------------------------------
 add_executable(CricketGame
     src/main.cpp
@@ -77,7 +85,7 @@ add_executable(CricketGame
     src/debug/skeleton_debug.cpp
     src/debug/axis_gizmo.cpp
 )
-target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig cricket_ik SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
+target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig cricket_ik cricket_motion SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
 cricket_warnings(CricketGame)
 # Debug builds read config/ straight from the source tree and hot-reload it.
 target_compile_definitions(CricketGame PRIVATE $<$<CONFIG:Debug>:CRICKET_DEV_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config">)
@@ -122,4 +130,9 @@ if(CRICKET_BUILD_TESTS)
     target_compile_definitions(ik_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
     cricket_warnings(ik_tests)
     add_test(NAME ik_tests COMMAND ik_tests)
+
+    add_executable(motion_tests tests/test_main.cpp tests/test_reposition.cpp tests/test_stepping.cpp)
+    target_link_libraries(motion_tests PRIVATE cricket_motion doctest::doctest)
+    cricket_warnings(motion_tests)
+    add_test(NAME motion_tests COMMAND motion_tests)
 endif()

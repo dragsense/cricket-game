@@ -221,8 +221,8 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
   config). Meshes are in height-ratio units, scaled by the height at draw time, so the
   height slider needs no new meshes. A skinned glTF replaces this layer later.
 - Debug: `debug::drawSkeleton` (bones, joints, axes, centre of mass with its ground
-  projection) and the ImGui "Fielder" panel (height slider, toggles, bone list with
-  local rotations).
+  projection), toggled from the main Debug window (the separate "Fielder" panel was
+  removed).
 
 ### IK (M1): joint limits and limb IK built (Step 1.2)
 - `ik::JointLimits` (`src/ik/joint_limits.*`, our own code): per-joint limits from
@@ -237,16 +237,15 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
   `IKAimJob`. The mid axis opens the joint: the knee uses −X and the elbow +X. Poles
   are set so the knees point forward and the elbows back and out.
 - `agents::Fielder::tick` order:
-  1. rest pose and pelvis offset;
-  2. chest aim, then limits;
-  3. head aim, then two-bone IK for legs and arms;
+  1. rest pose, then body repositioning over the foot targets (`motion::repositionBody`);
+  2. (chest and head aim: not driven yet);
+  3. two-bone IK for the legs (arms: not driven yet);
   4. limits;
   5. feet flattened to character space;
   6. limits.
   No allocations.
-- Debug: the "IK demo" checkbox in the Debug window sweeps all targets through and
-  beyond reach. The targets are drawn when "Fielder skeleton" is on. ImGuizmo was not
-  added (the user's choice).
+- The IK demo was removed after Step 1.3 (the user's choice); feet are driven by
+  `motion::FootStepper` (Step 1.4, WASD via `Fielder::setStepInput`). ImGuizmo was not added (the user's choice).
 
 ### Motion (M1+): not started
 Balance, locomotion and procedural actions built on rig and IK.
@@ -266,13 +265,22 @@ Game cameras imitating TV coverage. Debug cameras stay on camutils.
 ### Game UI (M9): not started
 RmlUi for menus and HUD. ImGui stays debug-only.
 
+### Debug UI and demos (policy)
+- No demo scripts or demo code (target sweeps, showcase paths, test drivers in the game)
+  unless the user asks for them. Features are verified with unit tests and real
+  gameplay code.
+- No new checkboxes, toggles, panels or readouts in the debug UI unless the user asks.
+  The existing toggles stay in the single main Debug window, default off; anything the
+  user requests goes there too.
+
 ## Milestones
 
 Status and checklists live in [PROGRESS.md](PROGRESS.md).
 
 - **M0 (done):** this skeleton.
 - **M1:** procedural fielder rig: ozz-animation skeleton, ozz two-bone/aim IK, our
-  FABRIK + swing-twist limits, ImGuizmo target dragging, debug-drawn bones.
+  swing-twist limits, body repositioning, stepping, walk, run, jump (no ImGuizmo, no
+  demos).
 - **M2:** basic ball physics (ours): flight with drag, bounce off the pitch and outfield,
   and rolling. Fielders need a ball to chase.
 - **M3:** fielding: chase, intercept, pick-up, throw and catch, using M1 + M2.

@@ -5,7 +5,7 @@ A 3D cricket game with fully procedural character motion, built on a small custo
 same codebase. See [DESIGN.md](DESIGN.md) for the architecture.
 
 **Current state: Milestone 0** — window, Filament PBR rendering of a cricket field at real
-scale, sun shadows + sky lighting, orbit and free-fly debug cameras, debug line renderer,
+scale, sun shadows + sky lighting, orbit debug camera, debug line renderer,
 ImGui stats overlay, fixed-timestep simulation loop, math wrapper with unit tests.
 
 ## 1. Install the tools (once)
@@ -75,11 +75,8 @@ ctest --preset debug
 
 | Input | Action |
 |---|---|
-| `C` | switch between orbit and free-fly camera |
 | Orbit: right-drag / middle-drag / wheel | rotate / pan / zoom |
-| Free-fly: hold right mouse | look around |
-| Free-fly: `W A S D`, `Q`/`E` | move, down/up |
-| Free-fly: `Shift` / wheel | fast / change base speed |
+| `W A S D` | fielder steps (hold to keep stepping) |
 | `F1` | toggle the debug overlay |
 | `F2` | toggle debug drawing |
 | `Esc` | quit |

@@ -12,9 +12,7 @@ struct DebugSettings {
     bool debugDraw = true;
     bool showGrid = false;
     bool showProbe = false;
-    bool ikDemo = false;           // fielder IK targets sweep through every joint's range
     bool showDemoWindow = false;
-    int cameraMode = 0;  // 0 = orbit, 1 = free-fly
     camera::CameraSpeeds cameraSpeeds;
     camera::CameraSpeeds defaultCameraSpeeds;  // from config, for the Reset button
 };

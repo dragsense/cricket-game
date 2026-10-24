@@ -25,8 +25,8 @@ constexpr NamedKey kNamedKeys[] = {
 };
 
 constexpr const char* kActionNames[] = {
-    "MoveForward", "MoveBack", "MoveLeft", "MoveRight", "MoveUp", "MoveDown", "MoveFast",
-    "ToggleCamera", "ToggleOverlay", "ToggleDebugDraw", "ReloadConfig", "Quit",
+    "ToggleOverlay", "ToggleDebugDraw", "ReloadConfig", "Quit",
+    "StepForward", "StepBack", "StepLeft", "StepRight",
 };
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == static_cast<int>(Action::Count));
 
@@ -70,18 +70,14 @@ ActionMap::ActionMap() {
         bindings_[static_cast<int>(a)][0] = k0;
         bindings_[static_cast<int>(a)][1] = k1;
     };
-    bind(Action::MoveForward, Key::W, Key::Up);
-    bind(Action::MoveBack, Key::S, Key::Down);
-    bind(Action::MoveLeft, Key::A, Key::Left);
-    bind(Action::MoveRight, Key::D, Key::Right);
-    bind(Action::MoveUp, Key::E);
-    bind(Action::MoveDown, Key::Q);
-    bind(Action::MoveFast, Key::LeftShift, Key::RightShift);
-    bind(Action::ToggleCamera, Key::C);
     bind(Action::ToggleOverlay, Key::F1);
     bind(Action::ToggleDebugDraw, Key::F2);
     bind(Action::ReloadConfig, Key::F5);
     bind(Action::Quit, Key::Escape);
+    bind(Action::StepForward, Key::W);
+    bind(Action::StepBack, Key::S);
+    bind(Action::StepLeft, Key::A);
+    bind(Action::StepRight, Key::D);
 }
 
 void ActionMap::load(const Config& config) {

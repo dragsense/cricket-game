@@ -2,8 +2,6 @@
 
 #include "core/config.h"
 
-#include <cmath>
-
 namespace agents {
 
 namespace {
@@ -29,12 +27,16 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     ik_.soften = joints.getFloat("ik.soften", ik_.soften);
     ik_.chestAimWeight = joints.getFloat("ik.chestAimWeight", ik_.chestAimWeight);
     ik_.headAimWeight = joints.getFloat("ik.headAimWeight", ik_.headAimWeight);
-    demo_.period = joints.getFloat("ikDemo.period", demo_.period);
-    demo_.handReach = joints.getFloat("ikDemo.handReach", demo_.handReach);
-    demo_.footLift = joints.getFloat("ikDemo.footLift", demo_.footLift);
-    demo_.footSwing = joints.getFloat("ikDemo.footSwing", demo_.footSwing);
-    demo_.pelvisDrop = joints.getFloat("ikDemo.pelvisDrop", demo_.pelvisDrop);
-    demo_.lookRadius = joints.getFloat("ikDemo.lookRadius", demo_.lookRadius);
+    reposition_.standReach = joints.getFloat("reposition.standReach", reposition_.standReach);
+    reposition_.minReach = joints.getFloat("reposition.minReach", reposition_.minReach);
+    reposition_.maxReach = joints.getFloat("reposition.maxReach", reposition_.maxReach);
+    reposition_.followRate = joints.getFloat("reposition.followRate", reposition_.followRate);
+    stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
+    steps_.stepLength = joints.getFloat("stepping.stepLength", steps_.stepLength);
+    steps_.backStepLength = joints.getFloat("stepping.backStepLength", steps_.backStepLength);
+    steps_.sideStepLength = joints.getFloat("stepping.sideStepLength", steps_.sideStepLength);
+    steps_.stepDuration = joints.getFloat("stepping.stepDuration", steps_.stepDuration);
+    steps_.stepHeight = joints.getFloat("stepping.stepHeight", steps_.stepHeight);
     return setHeight(height);
 }
 
@@ -57,70 +59,50 @@ bool Fielder::setHeight(float height) {
     current_ = rig_.restPose();
     previous_ = current_;
     models_.assign(static_cast<size_t>(rig_.numJoints()), math::Mat4(1.0f));
+    pelvis_ = current_.locals[static_cast<size_t>(joints_.pelvis)].position;  // pelvis is the root joint
+    plantFeet();
     return true;
 }
 
+void Fielder::plantFeet() {
+    // Feet planted where they stand in the rest pose (character space).
+    rig_.localToModel(rig_.restPose(), models_);
+    stepper_.reset(modelPos(models_, joints_.legL.end), modelPos(models_, joints_.legR.end));
+}
+
 void Fielder::tick(double dt) {
+    if (joints_.pelvis < 0) return;  // not built yet (SimWorld ticks once while configuring)
     previous_.locals = current_.locals;  // same size: no allocation
     current_.locals = rig_.restPose().locals;
-    if (!ikDemo_) return;  // neutral standing pose
-
-    demoTime_ += dt;
-    updateDemoTargets();
+    stepper_.tick(static_cast<float>(dt), stepInput_, steps_);
+    targets_.footL = root_.transformPoint(stepper_.foot(motion::Foot::Left));
+    targets_.footR = root_.transformPoint(stepper_.foot(motion::Foot::Right));
+    repositionBody(static_cast<float>(dt));
     solveIk();
 }
 
-void Fielder::updateDemoTargets() {
-    // Rest positions in model space.
+void Fielder::repositionBody(float dt) {
+    // Hip offsets from the rest pose; the pelvis is the root joint, so its
+    // local position is in character space.
     rig_.localToModel(rig_.restPose(), models_);
-    const float ph = static_cast<float>(math::kTwoPi * demoTime_ / demo_.period);
-    auto world = [&](math::Vec3 p) { return root_.transformPoint(p); };
+    const math::Vec3 restPelvis = modelPos(models_, joints_.pelvis);
+    const math::Transform toModel = math::inverse(root_);
+    motion::LegSupport left{modelPos(models_, joints_.legL.start) - restPelvis, toModel.transformPoint(targets_.footL)};
+    motion::LegSupport right{modelPos(models_, joints_.legR.start) - restPelvis, toModel.transformPoint(targets_.footR)};
 
-    // Pelvis: from slightly above full leg length (legs must not overstretch)
-    // down into a deep crouch.
-    float crouch = 0.5f - 0.5f * std::cos(ph);
-    targets_.pelvisOffset = math::Vec3(0.0f, demo_.pelvisDrop * (0.25f - 1.25f * crouch), 0.0f);
-
-    math::Vec3 footL = modelPos(models_, joints_.legL.end);
-    math::Vec3 footR = modelPos(models_, joints_.legR.end);
-    targets_.footL = world(footL + math::Vec3(0.0f, demo_.footLift * std::max(0.0f, std::sin(ph)),
-                                              demo_.footSwing * std::cos(ph)));
-    targets_.footR = world(footR + math::Vec3(0.0f, demo_.footLift * std::max(0.0f, -std::sin(ph)),
-                                              -demo_.footSwing * std::cos(ph)));
-
-    // Hands sweep spheres around each shoulder, reaching past arm length.
-    auto handPath = [&](int shoulder, float side, float phase) {
-        math::Vec3 d(side * 0.8f * std::sin(phase), -std::cos(phase), std::sin(2.0f * phase));
-        return world(modelPos(models_, shoulder) + math::safeNormalize(d, -math::kUp) * demo_.handReach);
-    };
-    targets_.handL = handPath(joints_.armL.start, 1.0f, ph);
-    targets_.handR = handPath(joints_.armR.start, -1.0f, ph + math::kHalfPi);
-
-    // Look target circles all the way round (behind too, to test neck limits).
-    math::Vec3 head = modelPos(models_, joints_.head);
-    targets_.lookAt = world(head + demo_.lookRadius * math::Vec3(std::sin(0.5f * ph), 0.3f * std::sin(ph),
-                                                                 std::cos(0.5f * ph)));
+    // The lower foot carries the body; even weight when both are level.
+    float stance = math::clamp(0.5f + 0.5f * (left.foot.y - right.foot.y) / stanceBlendHeight_, 0.0f, 1.0f);
+    pelvis_ = motion::repositionBody(pelvis_, left, right, rig_.legLength(), stance, reposition_, dt);
+    current_.locals[static_cast<size_t>(joints_.pelvis)].position = pelvis_;
 }
 
 void Fielder::solveIk() {
     const math::Transform toModel = math::inverse(root_);
     auto model = [&](math::Vec3 w) { return toModel.transformPoint(w); };
-    const math::Vec3 up = math::kUp;
 
-    current_.locals[static_cast<size_t>(joints_.pelvis)].position += targets_.pelvisOffset;
-
-    // Chest takes part of the look rotation, then the head finishes it.
     rig_.localToModel(current_, models_);
-    ik::solveAim(joints_.chest, models_, model(targets_.lookAt), math::kForward, up, up, ik_.chestAimWeight, current_);
-    limits_.apply(current_);
-    rig_.localToModel(current_, models_);
-    ik::solveAim(joints_.head, models_, model(targets_.lookAt), math::kForward, up, up, ik_.headAimWeight, current_);
-
     ik::solveTwoBone(joints_.legL, models_, model(targets_.footL), ik_.kneePole, ik_.soften, current_);
     ik::solveTwoBone(joints_.legR, models_, model(targets_.footR), ik_.kneePole, ik_.soften, current_);
-    math::Vec3 elbowPoleR(-ik_.elbowPole.x, ik_.elbowPole.y, ik_.elbowPole.z);
-    ik::solveTwoBone(joints_.armL, models_, model(targets_.handL), ik_.elbowPole, ik_.soften, current_);
-    ik::solveTwoBone(joints_.armR, models_, model(targets_.handR), elbowPoleR, ik_.soften, current_);
     limits_.apply(current_);
 
     // Feet stay flat (rest orientation in character space) whatever the shin does.

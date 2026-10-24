@@ -18,14 +18,26 @@ check after each step.
   `config/fielder_skeleton.json` (height ratios); per-bone capsule/box visual kept
   separate; debug bones, joints and axes; ImGui height slider and bone readouts;
   neutral standing pose.
-- [x] **1.2 Joint limits and IK** (unit-tested; awaiting the user's visual check via the
-  Debug window "IK demo"; ImGuizmo dropped at the user's request): `config/fielder_joints.json` (hinge and
+- [x] **1.2 Joint limits and IK** (unit-tested; the IK demo was removed after 1.3; ImGuizmo dropped at the user's request): `config/fielder_joints.json` (hinge and
   swing-twist); our own swing-twist clamp after every solve; ozz IKTwoBoneJob for the
   legs and arms with pole targets; IKAimJob for the head and chest; ImGuizmo targets.
-- [ ] **1.3 Body repositioning**: port of the user's RepositionBody, with the stance
-  foot as a parameter and leg length from the skeleton (or a better approach).
-- [ ] **1.4 Foot planting and stepping**: locked feet, a step trigger from the ideal
-  position, a swing arc from config, one swing foot at a time, debug draw.
+- [x] **1.3 Body repositioning** (built, `motion_tests`; awaiting the user's visual
+  check): `motion::repositionBody` runs every tick after the foot targets are set (a
+  "late update"; no toggle). It generalises the user's RepositionBody: the pelvis eases
+  toward standing height above the stance-weighted feet, then each hip-to-ankle distance
+  is clamped to [min, max] × leg length (from the skeleton), stance leg last. Stance
+  weight comes from foot heights (the lower foot carries the body) until 1.4 sets it.
+  Tunables in `config/fielder_joints.json` "reposition". The IK demo is removed; arm
+  and aim IK stay in `ik::` but are not driven until an action needs them.
+- [x] **1.4 Foot planting and stepping** (built, `motion_tests`; awaiting the user's
+  visual check): `motion::FootStepper` keeps both feet locked; `W A S D` request a
+  step (character space; held = keep stepping, alternating feet).
+  The next spot is relative to the planted foot (stance width + step from
+  `config/fielder_joints.json` "stepping"); one foot swings at a time on a smoothstep
+  arc with a sine lift; the body follows via 1.3. Free-fly camera removed
+  (user's choice: only the orbit camera is user-controlled; scripted camera paths come
+  with M8), freeing WASD/QE/Shift/C. No debug draw (user policy). The character root stays fixed
+  until 1.5.
 - [ ] **1.5 Walk**: desired-velocity controller (WASD, gamepad, walk-to-point), gait
   from `config/locomotion.json`, pelvis bob and sway, lean, arm swing, head
   stabilisation, smooth start, stop and turn.
@@ -90,6 +102,9 @@ Next milestone: **M1 Rig and IK**. Start it with the `start-milestone` skill.
 Before M1, decide the player body mesh (MakeHuman CC0 or Blender → glTF).
 
 ## Known issues / pending
+- **Camera freeze (unconfirmed):** the screen went gray and the camera stuck while holding
+  the arrow keys and dragging the camera. Suspected cause: a debug-assert dialog hidden
+  behind the window. If it recurs, get the assert text (Alt+Tab).
 - **Namespace migration:** M0 code uses bare layer namespaces (`core`, `render`, …).
   The convention is now `cricket::<layer>`. This needs approval, as a mechanical rename.
 - **filagui** is not shipped in the prebuilt Filament release, so a small custom ImGui

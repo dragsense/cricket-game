@@ -113,3 +113,13 @@ Dated log. Format: decision, reason, alternatives rejected.
 ## 2026-10-24: Milestone order: ball physics before fielding
 - **Decision:** M1 rig and IK, M2 basic ball flight and bounce, M3 fielding.
 - **Reason:** fielders need a ball to chase and catch.
+
+## 2026-10-24: Orbit is the only user-controlled camera
+- **Decision:** the free-fly camera, its keys (WASD/QE/Shift, `C`) and its Debug window
+  settings are removed. The user controls only the orbit camera; WASD steps the
+  fielder.
+- **Reason:** keys stay free for gameplay. Moving cameras in cricket follow defined shots
+  (show a player, sweep the ground), so they come as scripted paths with the broadcast
+  cameras (M8), not as a manual fly camera.
+- **Rejected:** keeping free-fly on separate keys: it clashed with gameplay input and
+  isn't needed to check the fielder.

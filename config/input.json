@@ -2,17 +2,14 @@
 // LeftShift, RightShift, LeftCtrl, LeftAlt, Up/Down/Left/Right, F1-F12.
 {
   "bindings": {
-    "MoveForward": ["W", "Up"],
-    "MoveBack": ["S", "Down"],
-    "MoveLeft": ["A", "Left"],
-    "MoveRight": ["D", "Right"],
-    "MoveUp": ["E"],
-    "MoveDown": ["Q"],
-    "MoveFast": ["LeftShift", "RightShift"],
-    "ToggleCamera": ["C"],
     "ToggleOverlay": ["F1"],
     "ToggleDebugDraw": ["F2"],
     "ReloadConfig": ["F5"],
-    "Quit": ["Escape"]
+    "Quit": ["Escape"],
+    // Fielder steps (hold to keep stepping, alternating feet).
+    "StepForward": ["W"],
+    "StepBack": ["S"],
+    "StepLeft": ["A"],
+    "StepRight": ["D"]
   }
 }

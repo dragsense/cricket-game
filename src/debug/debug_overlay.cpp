@@ -31,28 +31,17 @@ void drawOverlay(DebugSettings& s, const OverlayInfo& info) {
     ImGui::Checkbox("Grid", &s.showGrid);
     ImGui::EndDisabled();
     ImGui::Checkbox("Interpolation probe", &s.showProbe);
-    ImGui::Checkbox("IK demo", &s.ikDemo);
     ImGui::Checkbox("ImGui demo", &s.showDemoWindow);
 
     ImGui::Separator();
-    ImGui::TextUnformatted("Camera (C to switch)");
-    ImGui::RadioButton("Orbit", &s.cameraMode, 0);
-    ImGui::SameLine();
-    ImGui::RadioButton("Free-fly", &s.cameraMode, 1);
-    ImGui::TextDisabled(s.cameraMode == 0 ? "RMB drag: rotate  MMB drag: pan  wheel: zoom"
-                                           : "RMB hold: look  WASD/QE: move  Shift: fast");
+    ImGui::TextUnformatted("Camera (orbit)");
+    ImGui::TextDisabled("RMB drag: rotate  MMB drag: pan  wheel: zoom");
 
     if (ImGui::CollapsingHeader("Camera speed", ImGuiTreeNodeFlags_DefaultOpen)) {
         camera::CameraSpeeds& c = s.cameraSpeeds;
         ImGui::PushItemWidth(160);
-        if (s.cameraMode == 0) {
-            ImGui::SliderFloat("Rotate (deg/px)", &c.orbitRotateDeg, 0.05f, 2.0f, "%.2f");
-            ImGui::SliderFloat("Zoom per notch", &c.orbitZoomStep, 0.02f, 0.5f, "%.2f");
-        } else {
-            ImGui::SliderFloat("Look (deg/px)", &c.flyLookDeg, 0.05f, 1.5f, "%.2f");
-            ImGui::SliderFloat("Move (m/s)", &c.flyMoveSpeed, 2.0f, 100.0f, "%.0f");
-            ImGui::SliderFloat("Shift multiplier", &c.flyFastMultiplier, 1.0f, 10.0f, "%.1fx");
-        }
+        ImGui::SliderFloat("Rotate (deg/px)", &c.orbitRotateDeg, 0.05f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Zoom per notch", &c.orbitZoomStep, 0.02f, 0.5f, "%.2f");
         ImGui::PopItemWidth();
         if (ImGui::SmallButton("Reset to config")) c = s.defaultCameraSpeeds;
         ImGui::TextDisabled("Save favourites in config/engine.json \"camera\"");

@@ -1,7 +1,7 @@
 #pragma once
 // Platform-independent input state and action mapping. src/platform fills an
 // InputState from SDL events; game code asks the ActionMap about actions
-// ("MoveForward") rather than physical keys.
+// ("StepForward") rather than physical keys.
 
 #include <cstdint>
 #include <string_view>
@@ -52,13 +52,13 @@ struct InputState {
 };
 
 enum class Action : uint8_t {
-    MoveForward, MoveBack, MoveLeft, MoveRight, MoveUp, MoveDown, MoveFast,
-    ToggleCamera, ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
+    ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
+    StepForward, StepBack, StepLeft, StepRight,
     Count
 };
 
 // Two bindings per action, loaded from config/input.json:
-//   { "bindings": { "MoveForward": ["W", "Up"], ... } }
+//   { "bindings": { "StepForward": ["W"], ... } }
 class ActionMap {
 public:
     ActionMap();  // sensible defaults

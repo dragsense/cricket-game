@@ -73,14 +73,23 @@
     "headAimWeight": 1.0
   },
 
-  // Debug "IK demo" (Debug window checkbox): targets move along these paths so
-  // every joint is driven to and past its limits. Metres, seconds.
-  "ikDemo": {
-    "period": 6.0,
-    "handReach": 0.9,       // radius of the hand circles (beyond arm length on purpose)
-    "footLift": 0.35,
-    "footSwing": 0.5,
-    "pelvisDrop": 0.35,     // crouch depth; also lifts above full leg length
-    "lookRadius": 3.0
+  // Body repositioning (runs every tick after the foot targets are set).
+  // Reaches are hip-to-ankle distances as a fraction of leg length (thigh + shin).
+  "reposition": {
+    "standReach": 0.95,       // comfortable standing height
+    "minReach": 0.5,          // deepest crouch
+    "maxReach": 0.98,         // legs never lock fully straight
+    "followRate": 10.0,       // 1/s, how fast the body settles over the feet
+    "stanceBlendHeight": 0.1  // m; a foot this much higher than the other carries no weight
+  },
+
+  // Foot planting and stepping (WASD). Metres, seconds. A step lands
+  // relative to the planted foot: stance width to the side plus the step.
+  "stepping": {
+    "stepLength": 0.6,       // forward, ahead of the planted foot
+    "backStepLength": 0.35,
+    "sideStepLength": 0.3,
+    "stepDuration": 0.4,     // per swing
+    "stepHeight": 0.08       // swing arc apex
   }
 }
