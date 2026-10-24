@@ -1,0 +1,30 @@
+// Standard lit PBR material with a constant colour, plus optional mowing
+// stripes (bands along world X) for the outfield.
+material {
+    name : lit,
+    shadingModel : lit,
+    parameters : [
+        { type : float3, name : baseColor },
+        { type : float,  name : roughness },
+        { type : float,  name : metallic },
+        { type : float,  name : stripeWidth },
+        { type : float,  name : stripeStrength }
+    ],
+    requires : [ tangents ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec3 color = materialParams.baseColor;
+        if (materialParams.stripeWidth > 0.0) {
+            vec3 p = getUserWorldPosition();
+            float band = floor(p.x / materialParams.stripeWidth);
+            float s = mod(band, 2.0) < 1.0 ? 1.0 : -1.0;
+            color *= 1.0 + s * materialParams.stripeStrength;
+        }
+        material.baseColor = vec4(color, 1.0);
+        material.roughness = materialParams.roughness;
+        material.metallic = materialParams.metallic;
+    }
+}

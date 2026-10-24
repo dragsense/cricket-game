@@ -1,0 +1,24 @@
+// Dear ImGui geometry: textured, vertex-coloured, premultiplied blending.
+// Rendered in a separate view without post-processing, so colours pass through.
+material {
+    name : ui,
+    shadingModel : unlit,
+    parameters : [
+        { type : sampler2d, name : albedo }
+    ],
+    requires : [ uv0, color ],
+    blending : transparent,
+    culling : none,
+    depthCulling : false,
+    depthWrite : false
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec2 uv = getUV0();
+        uv.y = 1.0 - uv.y;  // ImGui's texture origin is top-left
+        vec4 c = getColor() * texture(materialParams_albedo, uv);
+        material.baseColor = vec4(c.rgb * c.a, c.a);
+    }
+}

@@ -1,0 +1,19 @@
+// Unlit vertex-coloured lines for the debug draw. Alpha-blended so grids can
+// be faint. Colours are divided by the camera exposure so they show at their
+// authored brightness regardless of the physical sun/exposure settings.
+material {
+    name : debug_line,
+    shadingModel : unlit,
+    requires : [ color ],
+    blending : transparent,
+    culling : none,
+    depthWrite : false
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec4 c = getColor();
+        material.baseColor = vec4(c.rgb * c.a / getExposure(), c.a);
+    }
+}

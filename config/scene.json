@@ -1,0 +1,33 @@
+// Test scene dimensions (Laws of Cricket where applicable). Colours are sRGB.
+{
+  "field": {
+    "radius": 70.0,
+    "surroundSize": 400.0,
+    "grass": { "color": [0.27, 0.52, 0.18], "roughness": 0.9, "stripeWidth": 5.0, "stripeStrength": 0.12 },
+    "surround": { "color": [0.20, 0.40, 0.15], "roughness": 0.95 }
+  },
+  "pitch": {
+    "length": 20.12,     // 22 yards, stumps to stumps
+    "width": 3.05,       // 10 ft
+    "overrun": 1.22,
+    "color": [0.78, 0.70, 0.50],
+    "roughness": 0.85
+  },
+  "crease": {
+    "lineWidth": 0.05,
+    "poppingDistance": 1.22,  // 4 ft in front of the stumps
+    "poppingLength": 3.66,
+    "bowlingLength": 2.64,
+    "color": [0.96, 0.96, 0.96]
+  },
+  "stumps": {
+    "height": 0.711,       // 28 in
+    "radius": 0.0175,
+    "wicketWidth": 0.2286, // 9 in
+    "color": [0.93, 0.88, 0.75],
+    "roughness": 0.45
+  },
+  "human": { "height": 1.80, "radius": 0.22, "color": [0.92, 0.92, 0.90] },
+  "referenceCube": { "color": [0.60, 0.60, 0.62] },
+  "probe": { "color": [0.85, 0.10, 0.10], "roughness": 0.35 }
+}

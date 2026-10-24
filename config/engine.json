@@ -1,0 +1,57 @@
+// Engine tunables. Units: metres, seconds, degrees unless noted.
+{
+  "window": {
+    "title": "Cricket (Milestone 0)",
+    "width": 1600,
+    "height": 900,
+    "resizable": true,
+    "vsync": true
+  },
+  "sim": {
+    "tickHz": 120,
+    "maxStepsPerFrame": 8,
+    // Test probe that circles the pitch to show fixed-step interpolation.
+    "probe": { "radius": 12.0, "angularSpeed": 0.5, "height": 1.0 }
+  },
+  "render": {
+    "backend": "opengl",          // "opengl" or "vulkan"
+    "assetDir": "assets",
+    "shadows": true,
+    "shadowMapSize": 2048,
+    "shadowCascades": 4,
+    "shadowFar": 150.0,
+    "debugLineCapacity": 65536
+  },
+  "lighting": {
+    "sunDirection": [-0.45, -0.8, -0.35],   // direction the light travels
+    "sunColor": [1.0, 0.96, 0.9],
+    "sunIlluminance": 110000.0,             // lux (clear midday sun)
+    "skyColor": [0.30, 0.50, 0.90],         // linear RGB, zenith
+    "horizonColor": [0.70, 0.80, 0.92],
+    "groundColor": [0.18, 0.26, 0.12],      // grass bounce
+    "iblIntensity": 30000.0
+  },
+  "camera": {
+    "fovY": 50.0,
+    "near": 0.1,
+    "far": 2000.0,
+    "orbit": {
+      "target": [0.0, 0.5, 0.0],
+      "home": [22.0, 12.0, 26.0],
+      "zoomSpeed": 0.05
+    },
+    "freeFly": {
+      "start": [0.0, 1.7, 16.0],    // behind the stumps at eye height
+      "pitch": -5.0,
+      "yaw": 0.0,
+      "maxSpeed": 12.0,             // m/s
+      "fastMultiplier": 5.0,
+      "damping": 15.0,
+      "speedSteps": 80
+    }
+  },
+  "debug": {
+    "showOverlay": true,
+    "debugDraw": true
+  }
+}
