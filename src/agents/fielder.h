@@ -41,7 +41,7 @@ struct IkSettings {
 // Hand-driven reaching (config/fielder_joints.json "reach").
 struct ReachSettings {
     float armReach = 0.97f;         // share of full arm length the hand reaches; the elbow never locks
-    float wristAboveTarget = 0.08f; // m; wrist goal above the target (the palm is on the ball)
+    float wristOffset = 0.08f;      // m; wrist goal back from the ball centre toward the shoulder (palm on the ball)
     float maxSpeed = 0.05f;         // m/s; reaching runs only below this (standing)
     // Spine stage: share of the bend and of the twist taken by spine_01,
     // spine_02 and chest (each sums to 1); iterations absorb clamping.
@@ -52,9 +52,15 @@ struct ReachSettings {
     // x = forward tilt (hip flexion; + forward), y = turn, z = side tilt.
     math::Vec3 pelvisMin{math::radians(-10.0f), math::radians(-30.0f), math::radians(-20.0f)};
     math::Vec3 pelvisMax{math::radians(80.0f), math::radians(30.0f), math::radians(20.0f)};
-    int bodyIterations = 16;  // body stage: push toward the target, slide along the legs
-    float footTolerance = 0.01f;  // m; an ankle further than this from its target counts as moved
-    int plantChecks = 6;          // bisection steps that scale the pelvis/body back to keep the feet
+    // Balance: base of support = capsule this wide (m) around the foot
+    // centres; the hips shift against the centre of mass's overhang x gain.
+    float supportRadius = 0.12f;
+    float balanceGain = 1.5f;
+    float maxHipShift = 0.3f;  // m
+    int balancePasses = 2;     // measured balance corrections after the leg IK
+    // Elbow pole before it is made perpendicular to the arm: out (+ = away
+    // from the body), down, back (- = behind), left arm; mirrored for the right.
+    math::Vec3 elbowPole{0.4f, -1.0f, -0.6f};
 };
 
 class Fielder {
@@ -93,9 +99,11 @@ public:
     }
     void clearReach() { reaching_ = false; }
     bool reaching() const { return reaching_; }
-    // Distance (m) the hand is still short of the target after the last tick;
-    // 0 when reached. Later stages (spine, pelvis, body, step) take it on.
+    // Distance (m) from the reaching hand's wrist to its goal after the last
+    // tick (measured after the joint limits); 0 when reached or not reaching.
     float reachError() const { return reachError_; }
+    // Whole-body centre of mass in world space, from the segment masses.
+    math::Vec3 centreOfMass();
 
     const rig::SkeletonDef& def() const { return def_; }
     const rig::Rig& rig() const { return rig_; }
@@ -117,13 +125,17 @@ private:
     void solveIk();
     // Reaching, split around the leg IK: spine, then pelvis and body before it
     // (the feet stay planted), clavicle and arm after the walk arm swing.
+    // Reaching, one pass per stage (each takes the error left by the ones
+    // before it): spine, pelvis, body before the leg IK; clavicle and arm last.
     void reachSpine();
-    // Pelvis rotation (scaled by `scale` in [0, 1]), then the body translation.
-    void reachHips(float scale);
-    // reachHips + leg IK, scaled back (bisection) until the joint limits keep
-    // both ankles on their planted foot targets.
-    void reachHipsWithPlantedFeet();
-    bool feetPlanted();
+    void reachPelvis();
+    void reachBody();
+    void rebalance();  // after the leg IK: measured centre of mass back over the feet
+    // Pelvis move that cancels the centre of mass's overhang beyond the feet,
+    // were the pelvis first moved by `pelvisMove` (models_ current).
+    math::Vec3 balanceOverhang(math::Vec3 pelvisMove);
+    math::Vec3 clampPelvisToLegs(math::Vec3 pelvis);  // both feet planted, no squat limit
+    math::Vec3 modelCentreOfMass();  // uses models_, which must be current
     void reachArm();
     math::Vec3 reachGoal() const;  // wrist goal, character space
     // Applies a model-space rotation to `joint` (about its own position),
@@ -144,6 +156,7 @@ private:
     IkSettings ik_;
     ReachSettings reach_;
     float armLength_ = 0.6f;  // shoulder to wrist (m), from the skeleton
+    math::Vec3 restShoulderL_{0.0f}, restShoulderR_{0.0f};  // character space, rest pose
     math::Vec3 reachTarget_{0.0f};
     bool reaching_ = false;
     bool reachLeft_ = true;  // this tick's reaching hand
@@ -171,7 +184,13 @@ private:
     IkTargets targets_;
     math::Vec3 pelvis_{0.0f};  // pelvis position in character space, kept between ticks
     rig::Pose previous_, current_;
-    rig::Pose reachBase_;  // scratch: pose after the spine stage, sized at build
+    // Segment mass model (built with the skeleton): mass share per joint, its
+    // single child (segment end) or -1, and the leaf tip in joint space.
+    std::vector<float> segmentMass_;
+    std::vector<int> segmentEnd_;
+    std::vector<math::Vec3> segmentTip_;
+    float armMassShare_ = 0.05f;     // share of the mass in one arm
+    float pelvisMassShare_ = 0.75f;  // share of the mass a pelvis move carries (not the planted lower legs)
     std::vector<math::Mat4> models_;  // scratch, sized at build
     math::Transform root_, previousRoot_;
 };

@@ -56,7 +56,8 @@ enum class Action : uint8_t {
     StepForward, StepBack, StepLeft, StepRight,
     Run, Jog,  // hold to run / jog; otherwise walk
     ToggleMouseLook,
-    ClearReach,  // drop the hand target (left click places it)
+    ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)
+    BallUp, BallDown,  // raise / lower the ball (the hand target)
     Count
 };
 

@@ -169,3 +169,14 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Reason:** the user's choice; fielding needs reaching before ball interaction.
 - **Rejected:** multi-step approach to the target (that is M4 fielding); logging only
   when out of reach.
+
+## 2026-10-25: Reach solve is one formula pass per stage (no retries)
+- **Decision:** the reach solve mirrors `repositionBody`: each stage (spine, pelvis,
+  body, clavicle, arm) runs once with a closed-form step (law-of-cosines swing, clamp,
+  body += dir × error, leg clamp, centre-of-mass overhang cancel); only fixed iteration
+  counts, as in the reposition leg clamp. Balance is measured after the leg IK.
+- **Reason:** the user's direction ("use biomechanics and math properly, fewer checks,
+  formulas like reposition"). The earlier guards (bisection, retries, special cases)
+  fixed one case and broke another.
+- **Rejected:** bisection guards on feet/balance, iterative hip-sliding helpers,
+  knees-out pole hack.

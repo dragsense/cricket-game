@@ -45,8 +45,9 @@ protected:
 private:
     void drawDebugGeometry(float alpha);
     void updateFielder(float alpha);
-    // Left click on the ground: moves the ball there and makes it the reach target.
-    void placeReachTarget();
+    // Left-drag moves the ball on a level plane at its height, E/Q raise and
+    // lower it; a moved ball becomes the fielder's reach target.
+    void updateReachBall(float dt);
     // Re-reads the named config files (e.g. "scene.json") and re-applies them
     // to the running game. A file that fails to parse keeps its previous values.
     void reloadConfig(const std::vector<std::string>& files);
@@ -68,6 +69,7 @@ private:
     rig::Pose fielderPose_;                  // interpolated, render side
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
+    math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
     float heading_ = 0.0f;    // fielder's W heading; follows the camera only while stopped
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)
     debug::DebugSettings appliedSettings_;  // last values pushed to the renderer

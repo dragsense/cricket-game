@@ -33,14 +33,17 @@ math::Vec3 repositionBody(math::Vec3 pelvis, const LegSupport& left, const LegSu
     goal.z = math::lerp(s.restZ, goal.z, s.forwardFollow);
     pelvis = math::lerp(pelvis, goal, 1.0f - std::exp(-s.followRate * dt));
 
+    // The unloaded leg only limits the reach: a tucked (lifted) foot must not
+    // push the body away; its knee just bends more. Stance leg last.
+    return clampToLegs(pelvis, w >= 0.5f ? left : right, w >= 0.5f ? right : left, legLength, s);
+}
+
+math::Vec3 clampToLegs(math::Vec3 pelvis, const LegSupport& first, const LegSupport& second, float legLength,
+                       const RepositionSettings& s) {
     const float lo = s.minReach * legLength, hi = s.maxReach * legLength, band = s.softBand * legLength;
-    const LegSupport& stance = w >= 0.5f ? right : left;
-    const LegSupport& other = w >= 0.5f ? left : right;
     for (int i = 0; i < s.iterations; ++i) {
-        // The unloaded leg only limits the reach: a tucked (lifted) foot must
-        // not push the body away; its knee just bends more.
-        pelvis = clampLeg(pelvis, other, 0.0f, hi, band);
-        pelvis = clampLeg(pelvis, stance, lo, hi, band);
+        pelvis = clampLeg(pelvis, first, 0.0f, hi, band);
+        pelvis = clampLeg(pelvis, second, lo, hi, band);
     }
     return pelvis;
 }

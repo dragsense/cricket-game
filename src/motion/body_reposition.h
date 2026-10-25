@@ -27,6 +27,12 @@ struct LegSupport {
     math::Vec3 foot{0.0f};       // foot (ankle) target
 };
 
+// The leg clamp of repositionBody on its own: moves `pelvis` so each hip is
+// within reach of its foot: `first` up to maxReach, `second` within
+// [minReach, maxReach] (x legLength, soft top), `first` then `second`, s.iterations times.
+math::Vec3 clampToLegs(math::Vec3 pelvis, const LegSupport& first, const LegSupport& second, float legLength,
+                       const RepositionSettings& s);
+
 // Returns the new pelvis position. `stanceWeight` in [0, 1]: 0 = left leg
 // carries the body, 1 = right leg. All points in the same space, +Y up.
 math::Vec3 repositionBody(math::Vec3 pelvis, const LegSupport& left, const LegSupport& right, float legLength,

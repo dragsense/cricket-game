@@ -39,18 +39,23 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   `motion::clampRotationVector` to `reach.pelvisMinDeg/MaxDeg` [-10, -30, -20] /
   [80, 30, 20] (forward tilt = hip flexion, straight knees). Test: a ground ball
   0.5 m ahead is now reached with straight legs (pelvis ~64° forward), feet unmoved.
-- [x] **2.4 Body repositioning toward the hand** (built; tests pass; awaiting the user's
-  visual check): after the spine and pelvis, `motion::bodyReachOffset` moves the body
-  toward the target by the leftover, in any direction (no squat limit, as asked); each
-  iteration pushes, then projects each hip onto its planted leg's reach sphere, so a
-  blocked hip slides forward and down (knees bend). Leg reach = min(reposition.maxReach,
-  ik.soften) × leg length. The offset is added on top of the foot repositioning
-  (`pelvis_` unchanged), so both apply. Feet guard: bent ~90°, a pelvis turn becomes hip
-  abduction and the thigh limit lifted the planted ankle ~5 cm; now
-  `reachHipsWithPlantedFeet` scales the pelvis rotation back (bisection,
-  `reach.plantChecks`) until both ankles stay within `reach.footTolerance` (1 cm).
-  Tests: 0.5 m and 0.9 m ground balls reached (pelvis 21 cm lower for 0.9 m), feet
-  planted; a 3 m ball leaves ~0.96 m error.
+- [x] **2.4 Body repositioning toward the hand** (reworked 2026-10-25 after the user's
+  visual check; tests pass; awaiting a new visual check). The first version lay the body
+  flat (no balance), missed balls (the arm was clamped after the IK and the error was
+  measured before it) and used retry guards. Now one formula pass per stage, like
+  `repositionBody`: spine and pelvis swings (clamped to limits); body += dir × leftover;
+  hips shift back against the centre of mass's overhang beyond the feet (gain, max
+  0.3 m); `motion::clampToLegs` (the leg clamp factored out of `repositionBody`, no squat
+  limit) keeps both feet planted; after the leg IK, `rebalance()` measures the real
+  centre of mass (segment masses, plus the reaching arm) and moves the pelvis to cancel
+  any overhang (`reach.balancePasses` 2; a deep squat swings the knees forward, which no
+  estimate sees). Knees follow the pelvis turn; the elbow pole is made perpendicular to
+  the shoulder-to-target line (`reach.elbowPole`), so the elbow bends away from the body
+  for ground, side and air targets. The wrist goal sits back from the ball toward the
+  shoulder (`reach.wristOffset`). `reachError()` is measured after the joint limits.
+  Ball: hold the left button to drag it at its height, E/Q raise/lower it, R clears the
+  reach. Tests: all 27 ground spots in front of and beside the feet (≤ 0.6 m) reached;
+  balls behind the heels or beyond need 2.5; far balls stay balanced.
 - [ ] **2.5 Lunge step / max reach hold** (leftover error kept for the dive)
 - [ ] **2.6 Balance and natural timing** (CoM, counter-balance arm, springs, two-hand)
 

@@ -46,7 +46,7 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reposition_.softBand = joints.getFloat("reposition.softBand", reposition_.softBand);
     stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
     reach_.armReach = joints.getFloat("reach.armReach", reach_.armReach);
-    reach_.wristAboveTarget = joints.getFloat("reach.wristAboveTarget", reach_.wristAboveTarget);
+    reach_.wristOffset = joints.getFloat("reach.wristOffset", reach_.wristOffset);
     reach_.maxSpeed = joints.getFloat("reach.maxSpeed", reach_.maxSpeed);
     // Weights are normalised so each set sums to 1.
     auto weights = [&](const char* key, math::Vec3 v) {
@@ -63,9 +63,11 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     };
     reach_.pelvisMin = degs("reach.pelvisMinDeg", reach_.pelvisMin);
     reach_.pelvisMax = degs("reach.pelvisMaxDeg", reach_.pelvisMax);
-    reach_.bodyIterations = joints.getInt("reach.bodyIterations", reach_.bodyIterations);
-    reach_.footTolerance = joints.getFloat("reach.footTolerance", reach_.footTolerance);
-    reach_.plantChecks = joints.getInt("reach.plantChecks", reach_.plantChecks);
+    reach_.supportRadius = joints.getFloat("reach.supportRadius", reach_.supportRadius);
+    reach_.balanceGain = joints.getFloat("reach.balanceGain", reach_.balanceGain);
+    reach_.maxHipShift = joints.getFloat("reach.maxHipShift", reach_.maxHipShift);
+    reach_.balancePasses = joints.getInt("reach.balancePasses", reach_.balancePasses);
+    reach_.elbowPole = joints.getVec3("reach.elbowPole", reach_.elbowPole);
     return setHeight(height);
 }
 
@@ -169,10 +171,42 @@ bool Fielder::setHeight(float height) {
 
     current_ = rig_.restPose();
     previous_ = current_;
-    reachBase_ = current_;
+
+    // Segment masses: each joint's share sits midway to its only child, at the
+    // leaf tip, or at the joint itself when it branches (pelvis, chest).
+    const int n = rig_.numJoints();
+    segmentMass_.assign(static_cast<size_t>(n), 0.0f);
+    segmentEnd_.assign(static_cast<size_t>(n), -1);
+    segmentTip_.assign(static_cast<size_t>(n), math::Vec3(0.0f));
+    std::vector<int> children(static_cast<size_t>(n), 0);
+    for (int j = 0; j < n; ++j) {
+        const rig::BoneDef& bone = def_.bones[static_cast<size_t>(rig_.boneDefIndex(j))];
+        segmentMass_[static_cast<size_t>(j)] = bone.massPercent;
+        segmentTip_[static_cast<size_t>(j)] = bone.tip * rig_.height();
+        const int p = rig_.parent(j);
+        if (p < 0) continue;
+        if (children[static_cast<size_t>(p)]++ == 0) segmentEnd_[static_cast<size_t>(p)] = j;
+        else segmentEnd_[static_cast<size_t>(p)] = -1;
+    }
+    // Share of the mass that moves with the pelvis: all but the planted lower
+    // legs and feet, and half of each thigh (it turns about the hip).
+    float total = 0.0f, planted = 0.0f;
+    for (float m : segmentMass_) total += m;
+    for (const ik::TwoBoneChain* leg : {&joints_.legL, &joints_.legR})
+        planted += 0.5f * segmentMass_[static_cast<size_t>(leg->start)] + segmentMass_[static_cast<size_t>(leg->mid)] +
+                   segmentMass_[static_cast<size_t>(leg->end)];
+    for (int toe : {joints_.toeL, joints_.toeR})
+        if (toe >= 0) planted += segmentMass_[static_cast<size_t>(toe)];
+    pelvisMassShare_ = total > 0.0f ? 1.0f - planted / total : 1.0f;
+    const ik::TwoBoneChain& arm = joints_.armL;  // both arms weigh the same
+    armMassShare_ = total > 0.0f ? (segmentMass_[static_cast<size_t>(arm.start)] + segmentMass_[static_cast<size_t>(arm.mid)] +
+                                    segmentMass_[static_cast<size_t>(arm.end)]) / total
+                                 : 0.0f;
     models_.assign(static_cast<size_t>(rig_.numJoints()), math::Mat4(1.0f));
     pelvis_ = current_.locals[static_cast<size_t>(joints_.pelvis)].position;  // pelvis is the root joint
     rig_.localToModel(current_, models_);
+    restShoulderL_ = modelPos(models_, joints_.armL.start);
+    restShoulderR_ = modelPos(models_, joints_.armR.start);
     armLength_ = math::distance(modelPos(models_, joints_.armL.start), modelPos(models_, joints_.armL.mid)) +
                  math::distance(modelPos(models_, joints_.armL.mid), modelPos(models_, joints_.armL.end));
     if (joints_.toeL >= 0) {
@@ -204,14 +238,21 @@ void Fielder::tick(double dt) {
     const bool reachNow = reaching_ && walker_.speed() < reach_.maxSpeed;
     if (reachNow) {
         reachSpine();
-        reachHipsWithPlantedFeet();  // includes the leg IK
-    } else {
-        solveIk();
+        reachPelvis();
+        reachBody();
     }
+    solveIk();
+    if (reachNow) rebalance();
     swingArms(static_cast<float>(dt));
     stabiliseHead(static_cast<float>(dt));
     if (reachNow) reachArm();
     limits_.apply(current_);
+    if (reachNow) {
+        // Measured after the limits, so a clamped arm shows as a miss.
+        rig_.localToModel(current_, models_);
+        const int hand = reachLeft_ ? joints_.armL.end : joints_.armR.end;
+        reachError_ = math::distance(modelPos(models_, hand), reachGoal());
+    }
 }
 
 void Fielder::walk(float dt) {
@@ -320,9 +361,16 @@ void Fielder::solveIk() {
     const math::Transform toModel = math::inverse(root_);
     auto model = [&](math::Vec3 w) { return toModel.transformPoint(w); };
 
+    // Knees point where the pelvis faces: the pole turns with the pelvis's
+    // twist about the vertical (not its forward tilt). With a fixed pole, a
+    // pelvis turned while bent forward would abduct the thighs past their limit.
+    math::Quat pelvisSwing, pelvisTurn;
+    math::swingTwist(current_.locals[static_cast<size_t>(joints_.pelvis)].rotation, math::kUp, pelvisSwing, pelvisTurn);
+    const math::Vec3 kneePole = pelvisTurn * ik_.kneePole;
+
     rig_.localToModel(current_, models_);
-    ik::solveTwoBone(joints_.legL, models_, model(targets_.footL), ik_.kneePole, ik_.soften, current_);
-    ik::solveTwoBone(joints_.legR, models_, model(targets_.footR), ik_.kneePole, ik_.soften, current_);
+    ik::solveTwoBone(joints_.legL, models_, model(targets_.footL), kneePole, ik_.soften, current_);
+    ik::solveTwoBone(joints_.legR, models_, model(targets_.footR), kneePole, ik_.soften, current_);
     limits_.apply(current_);
 
     // Feet keep the stepper's pitch in character space (flat when walking)
@@ -394,38 +442,39 @@ void Fielder::rotateInModel(int joint, math::Quat rotation) {
 }
 
 math::Vec3 Fielder::reachGoal() const {
-    return math::inverse(root_).transformPoint(reachTarget_) + math::kUp * reach_.wristAboveTarget;
+    // The palm meets the ball from the body's side: the wrist sits back from
+    // the ball toward the reaching shoulder (rest pose, so the goal does not
+    // move while the body solves). On the ground that is mostly above it.
+    const math::Vec3 ball = math::inverse(root_).transformPoint(reachTarget_);
+    const math::Vec3 shoulder = reachLeft_ ? restShoulderL_ : restShoulderR_;
+    return ball + math::safeNormalize(shoulder - ball, math::kUp) * reach_.wristOffset;
 }
 
 void Fielder::reachSpine() {
-    // Each stage takes only the error the stages before it could not remove:
-    // spine (2.2) here, pelvis (2.3) and body (2.4) in reachHips(), clavicle
-    // and arm in reachArm(). Proximal joints are posed before the arm IK
-    // (BIOMECHANICS 9.1-9.2).
+    // Stages run in recruitment order (BIOMECHANICS 9.1), each taking the
+    // error the ones before it left: spine, pelvis, body here; clavicle and
+    // arm in reachArm(), after the leg IK. One pass each, no retries.
+    // The hand on the ball's side reaches (rest shoulders: stable while solving).
+    const math::Vec3 ball = math::inverse(root_).transformPoint(reachTarget_);
+    reachLeft_ = math::distance(restShoulderL_, ball) <= math::distance(restShoulderR_, ball);
     const math::Vec3 target = reachGoal();
     const float armReach = reach_.armReach * armLength_;
-
-    // The nearer shoulder's hand reaches.
     rig_.localToModel(current_, models_);
-    reachLeft_ = math::distance(modelPos(models_, joints_.armL.start), target) <=
-                 math::distance(modelPos(models_, joints_.armR.start), target);
     const int shoulder = reachLeft_ ? joints_.armL.start : joints_.armR.start;
 
     // Swing the shoulder toward the target about the spine base (law of
     // cosines), split into bend and twist (about the character's up), each
     // shared over spine_01, spine_02 and chest by its weights (9.3: twist
     // mostly thoracic, bend mostly lumbar), every bone clamped to its limit.
-    if (joints_.spine[0] < 0 || joints_.spine[2] < 0) return;
+    if (joints_.spine[0] < 0 || joints_.spine[1] < 0 || joints_.spine[2] < 0) return;
     const float bendShare[3] = {reach_.spineBend.x, reach_.spineBend.y, reach_.spineBend.z};
     const float twistShare[3] = {reach_.spineTwist.x, reach_.spineTwist.y, reach_.spineTwist.z};
     for (int it = 0; it < reach_.spineIterations; ++it) {
         const motion::Swing swing = motion::swingToward(modelPos(models_, joints_.spine[0]),
                                                         modelPos(models_, shoulder), target, armReach);
-        if (swing.angle <= 0.0f) break;
         math::Quat bend, twist;
         math::swingTwist(math::fromAxisAngle(swing.axis, swing.angle), math::kUp, bend, twist);
         for (int i = 0; i < 3; ++i) {
-            if (joints_.spine[i] < 0) continue;
             const math::Quat id = math::identityQuat();
             rotateInModel(joints_.spine[i], math::slerp(id, bend, bendShare[i]) * math::slerp(id, twist, twistShare[i]));
             rig_.localToModel(current_, models_);
@@ -433,67 +482,111 @@ void Fielder::reachSpine() {
     }
 }
 
-void Fielder::reachHips(float scale) {
+void Fielder::reachPelvis() {
+    // Tilt forward (hip flexion), turn and side-tilt about the hip centre for
+    // what the spine could not reach: the same swing, clamped to the pelvis
+    // limits. The pelvis is the root joint, so its rotation is in character space.
     const math::Vec3 target = reachGoal();
     const float armReach = reach_.armReach * armLength_;
     const int shoulder = reachLeft_ ? joints_.armL.start : joints_.armR.start;
-    rig_.localToModel(current_, models_);
-
-    // Pelvis: tilt forward (hip flexion), turn and side-tilt about the hip
-    // centre for what the spine could not reach, within its limits. The
-    // pelvis is the root joint, so its local rotation is in character space.
     const motion::Swing swing =
         motion::swingToward(modelPos(models_, joints_.pelvis), modelPos(models_, shoulder), target, armReach);
-    if (swing.angle > 0.0f) {
-        math::Quat& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].rotation;
-        const math::Quat turn = motion::clampRotationVector(math::fromAxisAngle(swing.axis, swing.angle),
-                                                            reach_.pelvisMin, reach_.pelvisMax);
-        pelvis = math::normalize(math::slerp(math::identityQuat(), turn, scale) * pelvis);
-        rig_.localToModel(current_, models_);
-    }
-
-    // Body (2.4): move the body toward the target by what is still left, in
-    // any direction (no squat limit yet); a planted leg that blocks it makes
-    // the hips slide along that leg's reach (forward and down). The offset is
-    // added on top of the foot repositioning (pelvis_ is not changed), so both
-    // apply; the leg IK then bends the legs. Legs stay within the IK soften
-    // ratio so the leg IK reaches the planted foot exactly.
-    const math::Transform toModel = math::inverse(root_);
-    const math::Vec3 offset = motion::bodyReachOffset(
-        modelPos(models_, shoulder), target, armReach, modelPos(models_, joints_.legL.start),
-        modelPos(models_, joints_.legR.start), toModel.transformPoint(targets_.footL),
-        toModel.transformPoint(targets_.footR), std::min(reposition_.maxReach, ik_.soften) * rig_.legLength(),
-        reach_.bodyIterations);
-    current_.locals[static_cast<size_t>(joints_.pelvis)].position += offset;
-}
-
-bool Fielder::feetPlanted() {
+    math::Quat& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].rotation;
+    pelvis = motion::clampRotationVector(math::normalize(math::fromAxisAngle(swing.axis, swing.angle) * pelvis),
+                                         reach_.pelvisMin, reach_.pelvisMax);
     rig_.localToModel(current_, models_);
-    const math::Transform toModel = math::inverse(root_);
-    return math::distance(modelPos(models_, joints_.legL.end), toModel.transformPoint(targets_.footL)) <= reach_.footTolerance &&
-           math::distance(modelPos(models_, joints_.legR.end), toModel.transformPoint(targets_.footR)) <= reach_.footTolerance;
 }
 
-void Fielder::reachHipsWithPlantedFeet() {
-    // The hips limit the pelvis: e.g. bent forward ~90 deg, a pelvis turn
-    // becomes hip abduction, and the thigh's limit would lift the foot off its
-    // spot. Scale the pelvis rotation back until the feet hold (the body
-    // offset is recomputed after it, already limited by the legs); what is lost
-    // goes to the arm's leftover error (and the lunge step, 2.5).
-    reachBase_.locals = current_.locals;  // same size: no allocation
-    auto attempt = [&](float scale) {
-        current_.locals = reachBase_.locals;
-        reachHips(scale);
+void Fielder::reachBody() {
+    // RepositionBody driven by the hand (Step 2.4), on top of the foot
+    // repositioning (pelvis_ is not changed, so both apply): the body moves
+    // toward the target by what is left (body += dir * error), the hips shift
+    // back against the centre of mass's overhang (counterbalance, x gain, at
+    // most maxHipShift), and the reposition leg clamp keeps both planted feet
+    // within reach (no squat limit). rebalance() then corrects the balance
+    // exactly after the leg IK.
+    const math::Vec3 target = reachGoal();
+    const float armReach = reach_.armReach * armLength_;
+    const int shoulder = reachLeft_ ? joints_.armL.start : joints_.armR.start;
+    math::Vec3& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
+
+    const math::Vec3 toTarget = target - modelPos(models_, shoulder);
+    const float distance = math::length(toTarget);
+    const math::Vec3 move = toTarget * (std::max(0.0f, distance - armReach) / std::max(distance, math::kEpsilon));
+    // Counterbalance estimate: a pelvis move carries pelvisMassShare_ of the
+    // mass; balanceOverhang() gives the pelvis move that cancels the overhang.
+    math::Vec3 shift = -balanceOverhang(move) * reach_.balanceGain;
+    const float shiftLength = math::length(shift);
+    if (shiftLength > reach_.maxHipShift) shift *= reach_.maxHipShift / shiftLength;
+    pelvis = clampPelvisToLegs(pelvis + move + shift);
+}
+
+void Fielder::rebalance() {
+    // Balance (BIOMECHANICS 3, 9.5), measured rather than predicted: a deep
+    // squat swings the knees forward, which no estimate sees. Each pass takes
+    // the actual centre of mass after the leg IK, moves the pelvis to cancel
+    // its overhang beyond the feet, clamps to the legs and solves them again.
+    math::Vec3& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
+    for (int i = 0; i < reach_.balancePasses; ++i) {
+        rig_.localToModel(current_, models_);
+        pelvis = clampPelvisToLegs(pelvis - balanceOverhang(math::Vec3(0.0f)));
         solveIk();
-        return feetPlanted();
-    };
-    if (attempt(1.0f)) return;
-    float good = 0.0f, bad = 1.0f;
-    for (int i = 0; i < reach_.plantChecks; ++i) {
-        const float mid = 0.5f * (good + bad);
-        (attempt(mid) ? good : bad) = mid;
     }
-    attempt(good);
+}
+
+math::Vec3 Fielder::balanceOverhang(math::Vec3 pelvisMove) {
+    // Centre of mass (models_ current) plus the reaching arm, which is posed
+    // last: its mass will sit about midway between the shoulder and its reach
+    // point. A pelvis move shifts it by pelvisMassShare_ of the move.
+    const math::Vec3 target = reachGoal();
+    const float armReach = reach_.armReach * armLength_;
+    const ik::TwoBoneChain& arm = reachLeft_ ? joints_.armL : joints_.armR;
+    const math::Vec3 shoulder = modelPos(models_, arm.start);
+    const math::Vec3 armNow = 0.5f * (shoulder + modelPos(models_, arm.end));
+    const math::Vec3 armThen = 0.5f * (shoulder + motion::clampToReach(shoulder, target, armReach));
+    const math::Vec3 com = modelCentreOfMass() + (armThen - armNow) * armMassShare_ + pelvisMove * pelvisMassShare_;
+
+    // Base of support: capsule around the foot centres (ankle to mid-foot).
+    const math::Transform toModel = math::inverse(root_);
+    const math::Vec3 half = 0.5f * math::kForward * ballDistance_;
+    const math::Vec3 footL = toModel.transformPoint(targets_.footL) + half;
+    const math::Vec3 footR = toModel.transformPoint(targets_.footR) + half;
+    const math::Vec2 e = motion::supportExcess(math::Vec2(com.x, com.z), math::Vec2(footL.x, footL.z),
+                                               math::Vec2(footR.x, footR.z), reach_.supportRadius);
+    return math::Vec3(e.x, 0.0f, e.y) / pelvisMassShare_;
+}
+
+math::Vec3 Fielder::clampPelvisToLegs(math::Vec3 pelvis) {
+    // The reposition leg clamp with both feet planted and no squat limit;
+    // legs stay within the IK soften ratio so the ankles reach their targets.
+    motion::RepositionSettings legs = reposition_;
+    legs.minReach = 0.0f;
+    legs.maxReach = std::min(reposition_.maxReach, ik_.soften);
+    const math::Transform toModel = math::inverse(root_);
+    const math::Vec3 now = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
+    const motion::LegSupport left{modelPos(models_, joints_.legL.start) - now, toModel.transformPoint(targets_.footL)};
+    const motion::LegSupport right{modelPos(models_, joints_.legR.start) - now, toModel.transformPoint(targets_.footR)};
+    return motion::clampToLegs(pelvis, left, right, rig_.legLength(), legs);
+}
+
+math::Vec3 Fielder::modelCentreOfMass() {
+    math::Vec3 sum(0.0f);
+    float total = 0.0f;
+    for (size_t j = 0; j < segmentMass_.size(); ++j) {
+        const float m = segmentMass_[j];
+        const math::Vec3 at = math::Vec3(models_[j][3]);
+        const int end = segmentEnd_[j];
+        const math::Vec3 p = end >= 0 ? 0.5f * (at + math::Vec3(models_[static_cast<size_t>(end)][3]))
+                                      : math::Vec3(models_[j] * math::Vec4(0.5f * segmentTip_[j], 1.0f));
+        sum += p * m;
+        total += m;
+    }
+    return total > 0.0f ? sum / total : math::Vec3(0.0f);
+}
+
+math::Vec3 Fielder::centreOfMass() {
+    rig_.localToModel(current_, models_);
+    return root_.transformPoint(modelCentreOfMass());
 }
 
 void Fielder::reachArm() {
@@ -507,22 +600,23 @@ void Fielder::reachArm() {
     if (clavicle >= 0) {
         const motion::Swing swing =
             motion::swingToward(modelPos(models_, clavicle), modelPos(models_, arm.start), target, armReach);
-        if (swing.angle > 0.0f) rotateInModel(clavicle, math::fromAxisAngle(swing.axis, swing.angle));
+        rotateInModel(clavicle, math::fromAxisAngle(swing.axis, swing.angle));
     }
 
     // Arm: from the rest pose (no walk swing), two-bone IK toward the target,
-    // never further than armReach so the elbow stays bent. Elbows point back
-    // and out, mirrored for the right arm (+X is left).
+    // never further than armReach so the elbow stays bent. The elbow points
+    // out, down and back (reach.elbowPole, mirrored for the right arm; +X is
+    // left), made perpendicular to the shoulder-to-target line so it bends
+    // away from the body whatever the target's direction.
     const rig::Pose& rest = rig_.restPose();
     current_.locals[static_cast<size_t>(arm.start)].rotation = rest.locals[static_cast<size_t>(arm.start)].rotation;
     current_.locals[static_cast<size_t>(arm.mid)].rotation = rest.locals[static_cast<size_t>(arm.mid)].rotation;
     rig_.localToModel(current_, models_);
     const math::Vec3 shoulder = modelPos(models_, arm.start);
-    const math::Vec3 pole = reachLeft_ ? ik_.elbowPole : math::Vec3(-ik_.elbowPole.x, ik_.elbowPole.y, ik_.elbowPole.z);
+    const math::Vec3 dir = math::safeNormalize(target - shoulder, -math::kUp);
+    const math::Vec3 side(reachLeft_ ? reach_.elbowPole.x : -reach_.elbowPole.x, reach_.elbowPole.y, reach_.elbowPole.z);
+    const math::Vec3 pole = math::safeNormalize(side - dir * math::dot(side, dir), side);
     ik::solveTwoBone(arm, models_, motion::clampToReach(shoulder, target, armReach), pole, ik_.soften, current_);
-
-    // Leftover for the next stage (lunge step, 2.5); later the dive trigger.
-    reachError_ = std::max(0.0f, math::distance(shoulder, target) - armReach);
 }
 
 void Fielder::interpolatedPose(float alpha, rig::Pose& out) const {

@@ -90,6 +90,8 @@ bool CricketApp::init() {
     sim_.configure(e);
 
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
+    ballPos_ = cfg_.scene.getVec3("ball.restPosition", math::Vec3(0.15f, 0.0f, 5.0f));
+    ballPos_.y = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
 
     rig::SkeletonDef skeletonDef;
     if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef, cfg_.fielderJoints, cfg_.locomotion)) return false;
@@ -215,8 +217,6 @@ bool CricketApp::pumpEvents() {
                            : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
                                                                       : motion::Gait::Walk);
 
-    // Reaching: left click places the ball (the hand target); R clears it.
-    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && !mouseLook_) placeReachTarget();
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
@@ -235,6 +235,8 @@ void CricketApp::fixedUpdate(double dt) {
 
 void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
+
+    updateReachBall(static_cast<float>(frameSeconds));
 
     // --- Cameras (render-side, real frame time); the orbit follows the fielder ---
     camera_.setFollowPoint(sim_.fielder().interpolatedRoot(alpha).position);
@@ -292,28 +294,44 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     }
 }
 
-void CricketApp::placeReachTarget() {
-    // Ray through the cursor from the camera (vertical FOV, window aspect),
-    // hit with the ground plane y = 0.
-    const float w = static_cast<float>(window_.width()), h = static_cast<float>(window_.height());
-    if (w <= 0.0f || h <= 0.0f) return;
-    const camera::CameraPose view = camera_.pose();
-    const math::Vec3 forward = math::normalize(view.target - view.eye);
-    const math::Vec3 right = math::normalize(math::cross(forward, view.up));
-    const math::Vec3 up = math::cross(right, forward);
-    const float tanHalf = std::tan(0.5f * math::radians(cfg_.engine.getFloat("camera.fovY", 50.0f)));
-    const float x = (2.0f * input_.mouseX / w - 1.0f) * tanHalf * (w / h);
-    const float y = (1.0f - 2.0f * input_.mouseY / h) * tanHalf;
-    const math::Vec3 ray = math::normalize(forward + right * x + up * y);
-    if (ray.y > -1e-3f) return;  // at or above the horizon
-    const math::Vec3 hit = view.eye + ray * (-view.eye.y / ray.y);
-
-    // The ball rests on the ground at the hit point.
+void CricketApp::updateReachBall(float dt) {
     const float radius = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
+    bool moved = false;
+
+    // E / Q: raise or lower the ball (never below the ground).
+    const float lift = (actions_.down(input_, core::Action::BallUp) ? 1.0f : 0.0f) -
+                       (actions_.down(input_, core::Action::BallDown) ? 1.0f : 0.0f);
+    if (lift != 0.0f) {
+        ballPos_.y = std::max(radius, ballPos_.y + lift * cfg_.input.getFloat("ballLiftSpeed", 1.0f) * dt);
+        moved = true;
+    }
+
+    // Left-drag: ray through the cursor from the camera (vertical FOV, window
+    // aspect), hit with the level plane through the ball.
+    const float w = static_cast<float>(window_.width()), h = static_cast<float>(window_.height());
+    if (input_.down(core::MouseButton::Left) && !input_.uiWantsMouse && !mouseLook_ && w > 0.0f && h > 0.0f) {
+        const camera::CameraPose view = camera_.pose();
+        const math::Vec3 forward = math::normalize(view.target - view.eye);
+        const math::Vec3 right = math::normalize(math::cross(forward, view.up));
+        const math::Vec3 up = math::cross(right, forward);
+        const float tanHalf = std::tan(0.5f * math::radians(cfg_.engine.getFloat("camera.fovY", 50.0f)));
+        const float x = (2.0f * input_.mouseX / w - 1.0f) * tanHalf * (w / h);
+        const float y = (1.0f - 2.0f * input_.mouseY / h) * tanHalf;
+        const math::Vec3 ray = math::normalize(forward + right * x + up * y);
+        const float t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
+        if (t > 0.0f) {
+            const math::Vec3 hit = view.eye + ray * t;
+            ballPos_.x = hit.x;
+            ballPos_.z = hit.z;
+            moved = true;
+        }
+    }
+
+    if (!moved) return;
     math::Transform ball;
-    ball.position = math::Vec3(hit.x, radius, hit.z);
+    ball.position = ballPos_;
     world_.setTransform(scene_.ball, ball);
-    sim_.fielder().setReachTarget(ball.position);
+    sim_.fielder().setReachTarget(ballPos_);
 }
 
 void CricketApp::updateFielder(float alpha) {

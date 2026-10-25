@@ -56,6 +56,7 @@ TEST_CASE("reaching for a ball on the ground ahead bends the spine forward") {
     const math::Vec3 chestUp = boneUp(fielder, fielder.rig().findJoint("chest"));
     MESSAGE("chest up . ahead = ", math::dot(chestUp, ahead), "  reach error ", fielder.reachError());
     CHECK(math::dot(chestUp, ahead) > 0.3f);  // leaning toward the ball
+    CHECK(fielder.reachError() < 0.02f);
 }
 
 TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet planted") {
@@ -80,7 +81,7 @@ TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet plante
     CHECK(math::distance(ankle, footL) < 0.015f);
 }
 
-TEST_CASE("a ground ball further away lowers the body; the feet stay planted") {
+TEST_CASE("a ground ball too far for planted feet: lower, balanced, feet planted") {
     agents::Fielder fielder;
     REQUIRE(makeFielder(fielder));
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
@@ -92,8 +93,49 @@ TEST_CASE("a ground ball further away lowers the body; the feet stay planted") {
     const float reachY = fielder.pose().locals[0].position.y;
     MESSAGE("pelvis y ", standY, " -> ", reachY, "  reach error ", fielder.reachError());
     CHECK(reachY < standY - 0.05f);
-    CHECK(fielder.reachError() < 0.01f);
+    // 0.9 m past the ankles is beyond a planted, balanced reach (that is the
+    // lunge step, 2.5): partly reached, feet planted, centre of mass over the feet.
+    CHECK(fielder.reachError() > 0.0f);
     CHECK(math::distance(fielder.targets().footL, footL) < 1e-4f);
+    const math::Transform toModel = math::inverse(fielder.root());
+    CHECK(toModel.transformPoint(fielder.centreOfMass()).z < 0.25f);
+}
+
+TEST_CASE("a ground ball beside the foot is reached") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    const math::Transform& root = fielder.root();
+    const math::Vec3 left = root.transformDirection(math::kRight);  // +X is left
+    const math::Vec3 ahead = root.transformDirection(math::kForward);
+    fielder.setReachTarget(root.position + left * 0.25f + ahead * 0.1f + math::Vec3(0, 0.036f, 0));
+    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    MESSAGE("beside foot: reach error ", fielder.reachError());
+    CHECK(fielder.reachError() < 0.02f);
+}
+
+TEST_CASE("ground balls near the feet: reach sweep") {
+    // Every ground spot in front of and beside the feet, within ~0.6 m, is
+    // reached with the feet planted. Further ones need the lunge step and ones
+    // behind the heels a turn or step (2.5).
+    int misses = 0, total = 0;
+    for (int ix = -3; ix <= 3; ++ix) {
+        for (int iz = 0; iz <= 4; ++iz) {
+            const float x = 0.15f * static_cast<float>(ix), z = 0.15f * static_cast<float>(iz);
+            if (x * x + z * z > 0.6f * 0.6f) continue;
+            agents::Fielder fielder;
+            REQUIRE(makeFielder(fielder));
+            const math::Transform root = fielder.root();
+            fielder.setReachTarget(root.transformPoint(math::Vec3(x, 0.036f, z)));
+            for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+            ++total;
+            if (fielder.reachError() > 0.02f) {
+                ++misses;
+                MESSAGE("miss at x ", x, " z ", z, ": error ", fielder.reachError());
+            }
+        }
+    }
+    MESSAGE(misses, " of ", total, " spots missed");
+    CHECK(misses == 0);
 }
 
 TEST_CASE("a ball far out of reach leaves an error (the dive case later)") {
@@ -104,6 +146,15 @@ TEST_CASE("a ball far out of reach leaves an error (the dive case later)") {
     for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
     MESSAGE("reach error ", fielder.reachError());
     CHECK(fielder.reachError() > 0.5f);
+
+    // Out of reach, the body still must not fall: centre of mass over the feet.
+    const math::Transform toModel = math::inverse(fielder.root());
+    const math::Vec3 com = toModel.transformPoint(fielder.centreOfMass());
+    const math::Vec3 footL = toModel.transformPoint(fielder.targets().footL);
+    const math::Vec3 footR = toModel.transformPoint(fielder.targets().footR);
+    const math::Vec3 pelvis = fielder.pose().locals[0].position;
+    MESSAGE("com z ", com.z, "  feet z ", footL.z, " ", footR.z, "  pelvis ", pelvis.x, " ", pelvis.y, " ", pelvis.z);
+    CHECK(com.z < std::max(footL.z, footR.z) + 0.25f);
 }
 
 TEST_CASE("reaching for a ball to the side and behind twists the chest toward it") {

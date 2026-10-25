@@ -37,24 +37,13 @@ math::Quat clampRotationVector(math::Quat q, math::Vec3 min, math::Vec3 max) {
     return angle < math::kEpsilon ? math::identityQuat() : math::fromAxisAngle(c / angle, angle);
 }
 
-math::Vec3 bodyReachOffset(math::Vec3 shoulder, math::Vec3 target, float reach, math::Vec3 hipL, math::Vec3 hipR,
-                           math::Vec3 footL, math::Vec3 footR, float maxLeg, int iterations) {
-    math::Vec3 offset(0.0f);
-    auto project = [&](math::Vec3 hip, math::Vec3 foot) {
-        const math::Vec3 rel = hip + offset - foot;
-        const float len = math::length(rel);
-        if (len > maxLeg) offset += rel * (maxLeg / len - 1.0f);
-    };
-    for (int i = 0; i < iterations; ++i) {
-        const math::Vec3 toTarget = target - (shoulder + offset);
-        const float len = math::length(toTarget);
-        const float error = len - reach;
-        if (error <= kReachEpsilon) break;
-        offset += toTarget * (error / len);
-        project(hipL, footL);
-        project(hipR, footR);
-    }
-    return offset;
+math::Vec2 supportExcess(math::Vec2 com, math::Vec2 a, math::Vec2 b, float radius) {
+    const math::Vec2 ab = b - a;
+    const float len2 = math::dot(ab, ab);
+    const float t = len2 > math::kEpsilon ? math::clamp(math::dot(com - a, ab) / len2, 0.0f, 1.0f) : 0.0f;
+    const math::Vec2 d = com - (a + ab * t);
+    const float len = math::length(d);
+    return len <= radius ? math::Vec2(0.0f) : d * ((len - radius) / len);
 }
 
 math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach) {

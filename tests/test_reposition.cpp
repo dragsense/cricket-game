@@ -20,6 +20,19 @@ LegSupport leg(float side, Vec3 foot) { return {Vec3(side * 0.1f, -0.05f, 0.0f),
 
 } // namespace
 
+TEST_CASE("clampToLegs keeps both hips within leg reach, no squat limit at minReach 0") {
+    motion::RepositionSettings s;
+    s.minReach = 0.0f;
+    s.softBand = 0.0f;
+    const motion::LegSupport left{{0.1f, 0, 0}, {0.1f, 0, 0}}, right{{-0.1f, 0, 0}, {-0.1f, 0, 0}};
+    const math::Vec3 far = motion::clampToLegs({0, 0.8f, 0.6f}, left, right, 0.9f, s);  // pushed forward
+    CHECK(math::distance(far + left.hipOffset, left.foot) <= s.maxReach * 0.9f + 1e-4f);
+    CHECK(math::distance(far + right.hipOffset, right.foot) <= s.maxReach * 0.9f + 1e-4f);
+    CHECK(far.z > 0.0f);
+    const math::Vec3 low = motion::clampToLegs({0, 0.2f, 0}, left, right, 0.9f, s);  // deep squat: allowed
+    CHECK(low.y == doctest::Approx(0.2f));
+}
+
 TEST_CASE("settles at standing height above both feet") {
     RepositionSettings s;
     LegSupport l = leg(1, {0.1f, 0, 0}), r = leg(-1, {-0.1f, 0, 0});

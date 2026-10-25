@@ -17,8 +17,11 @@
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
-    // Reaching: left-click the ground to place the ball there (the hand
-    // target); R clears it.
-    "ClearReach": ["R"]
-  }
+    // Reaching: hold the left button to drag the ball (the hand target) on a
+    // level plane at its height; E raises it, Q lowers it; R clears the reach.
+    "ClearReach": ["R"],
+    "BallUp": ["E"],
+    "BallDown": ["Q"]
+  },
+  "ballLiftSpeed": 1.0  // m/s while E/Q is held
 }

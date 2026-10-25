@@ -77,7 +77,8 @@
   // pelvis, clavicle, then two-bone arm IK; the leftover error goes to the later stages.
   "reach": {
     "armReach": 0.97,         // share of full arm length; the elbow never locks straight
-    "wristAboveTarget": 0.08, // m; wrist goal above the ball centre (palm on the ball)
+    "wristOffset": 0.08,      // m; wrist goal back from the ball centre toward the reaching
+                              // shoulder, so the palm meets the ball (above it on the ground)
     "maxSpeed": 0.05,         // m/s; reach only while standing
     // Spine stage (BIOMECHANICS 9.3): one swing about the spine base, split into
     // bend and twist; shares for [spine_01, spine_02, chest], normalised to 1.
@@ -90,15 +91,23 @@
     // Forward tilt 80 = hip flexion with straight knees (hamstrings).
     "pelvisMinDeg": [-10, -30, -20],
     "pelvisMaxDeg": [80, 30, 20],
-    // Body stage: the body moves toward the target in any direction (no squat
-    // limit yet), legs limited to min(reposition.maxReach, ik.soften); blocked hips slide along
-    // the leg's reach (forward and down). Iterations of push + slide.
-    "bodyIterations": 16,
-    // The hips limit the pelvis: if the joint limits would pull a planted ankle
-    // more than footTolerance (m) off its spot, the pelvis and body are scaled
-    // back by bisection (plantChecks steps); the arm takes the leftover.
-    "footTolerance": 0.01,
-    "plantChecks": 6
+    // Body stage (repositionBody driven by the hand): the body moves toward
+    // the target by the leftover, in any direction; the hips shift against the
+    // centre of mass's overhang beyond the base of support (a capsule
+    // supportRadius m around the foot centres, BIOMECHANICS 3, 9.5) x
+    // balanceGain, at most maxHipShift m; then the reposition leg clamp keeps
+    // the planted feet within reach (no squat limit yet).
+    "supportRadius": 0.12,
+    "balanceGain": 1.5,
+    "maxHipShift": 0.3,
+    // After the leg IK the actual centre of mass is measured and the pelvis
+    // moved to cancel any overhang (a deep squat swings the knees forward,
+    // which no estimate sees); this many passes.
+    "balancePasses": 2,
+    // Elbow pole [out, down, back] for the left arm (mirrored for the right),
+    // made perpendicular to the shoulder-to-target line: the elbow bends away
+    // from the body for any target (ground, side, air).
+    "elbowPole": [0.4, -1.0, -0.6]
   },
 
   // Body repositioning (runs every tick after the foot targets are set).
