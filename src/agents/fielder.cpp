@@ -46,10 +46,11 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reposition_.followRate = joints.getFloat("reposition.followRate", reposition_.followRate);
     reposition_.softBand = joints.getFloat("reposition.softBand", reposition_.softBand);
     stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
-    // The fielder starts with the ball in the right hand.
+    // The fielder starts with the ball in the right hand, picking with it.
     phase_ = Phase::Idle;
     holding_ = true;
     reachLeft_ = bothHands_ = false;
+    handMode_ = HandMode::Right;
     reach_.armReach = joints.getFloat("reach.armReach", reach_.armReach);
     reach_.wristOffset = joints.getFloat("reach.wristOffset", reach_.wristOffset);
     // Weights are normalised so each set sums to 1.

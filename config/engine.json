@@ -52,5 +52,19 @@
   "debug": {
     "showOverlay": true,
     "debugDraw": true
+  },
+  // Picking test driver (T): the ball starts `distance` m in front of the
+  // fielder and moves straight past them (no physics) at a random speed
+  // (m/s), rolling for groundShare of throws, else at a random height (m),
+  // up to sideSpread m to either side; it stops passDistance m behind them.
+  "feeder": {
+    "distance": 12.0,
+    "speedMin": 3.0,
+    "speedMax": 6.0,
+    "heightMin": 0.4,
+    "heightMax": 1.8,
+    "groundShare": 0.5,
+    "sideSpread": 1.0,
+    "passDistance": 5.0
   }
 }

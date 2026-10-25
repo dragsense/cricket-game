@@ -88,6 +88,7 @@ bool CricketApp::init() {
     actions_.load(cfg_.input);
     camera_.configure(e, rd.width, rd.height);
     sim_.configure(e);
+    feeder_.configure(e);
 
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
     ballPos_ = cfg_.scene.getVec3("ball.restPosition", math::Vec3(0.15f, 0.0f, 5.0f));
@@ -132,6 +133,7 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         if (name == "engine.json") {
             cfg_.engine = std::move(fresh);
             applyEngineConfig();
+            feeder_.configure(cfg_.engine);
         } else if (name == "input.json") {
             cfg_.input = std::move(fresh);
             actions_.load(cfg_.input);
@@ -219,12 +221,22 @@ bool CricketApp::pumpEvents() {
 
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
     if (actions_.pressed(input_, core::Action::Pick)) sim_.fielder().startPick();
-    if (actions_.pressed(input_, core::Action::CycleHand)) {
+    {
         agents::Fielder& f = sim_.fielder();
-        const agents::HandMode next = static_cast<agents::HandMode>((static_cast<int>(f.handMode()) + 1) % 4);
-        f.setHandMode(next);
-        constexpr const char* kNames[] = {"auto", "left", "right", "both"};
-        LOG_INFO("picking hand: {}", kNames[static_cast<int>(next)]);
+        int mode = -1;
+        if (actions_.pressed(input_, core::Action::CycleHand)) mode = (static_cast<int>(f.handMode()) + 1) % 4;
+        if (actions_.pressed(input_, core::Action::HandLeft)) mode = static_cast<int>(agents::HandMode::Left);
+        if (actions_.pressed(input_, core::Action::HandRight)) mode = static_cast<int>(agents::HandMode::Right);
+        if (actions_.pressed(input_, core::Action::HandBoth)) mode = static_cast<int>(agents::HandMode::Both);
+        if (mode >= 0) {
+            f.setHandMode(static_cast<agents::HandMode>(mode));
+            constexpr const char* kNames[] = {"auto", "left", "right", "both"};
+            LOG_INFO("picking hand: {}", kNames[mode]);
+        }
+    }
+    if (actions_.pressed(input_, core::Action::ThrowBall)) {
+        sim_.fielder().clearReach();
+        feeder_.throwAt(sim_.fielder().root(), cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi);
     }
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
@@ -238,6 +250,13 @@ bool CricketApp::pumpEvents() {
 }
 
 void CricketApp::fixedUpdate(double dt) {
+    // A thrown ball is the fielder's target every tick until it is caught
+    // (then it rides in the hand) or has gone past.
+    if (feeder_.active() && sim_.fielder().holding()) feeder_.stop();
+    if (feeder_.active()) {
+        feeder_.tick(static_cast<float>(dt));
+        sim_.fielder().setReachTarget(feeder_.position());
+    }
     sim_.tick(dt);
 }
 
@@ -309,7 +328,7 @@ void CricketApp::updateReachBall(float dt) {
     // E / Q: raise or lower the ball (never below the ground).
     const float lift = (actions_.down(input_, core::Action::BallUp) ? 1.0f : 0.0f) -
                        (actions_.down(input_, core::Action::BallDown) ? 1.0f : 0.0f);
-    if (lift != 0.0f && !sim_.fielder().holding()) {  // a held ball stays in the hand
+    if (lift != 0.0f && !sim_.fielder().holding() && !feeder_.active()) {  // held or thrown: not ours
         ballPos_.y = std::max(radius, ballPos_.y + lift * cfg_.input.getFloat("ballLiftSpeed", 1.0f) * dt);
         moved = true;
     }
@@ -327,6 +346,7 @@ void CricketApp::updateReachBall(float dt) {
         const float y = (1.0f - 2.0f * input_.mouseY / h) * tanHalf;
         const math::Vec3 ray = math::normalize(forward + right * x + up * y);
         float t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
+        feeder_.stop();  // manual placement takes over from a throw
         // A click on a held ball takes it from the hand and puts it down there.
         if (sim_.fielder().holding()) {
             ballPos_.y = radius;
@@ -353,7 +373,12 @@ void CricketApp::updateFielder(float alpha) {
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
     fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
-    if (fielder.holding()) {
+    if (feeder_.active()) {
+        ballPos_ = feeder_.position(alpha);
+        math::Transform ball;
+        ball.position = ballPos_;
+        world_.setTransform(scene_.ball, ball);
+    } else if (fielder.holding()) {
         // The ball rides in the hand; a later drag starts from here.
         ballPos_ = fielder.ballInHand(fielderModels_, fielder.interpolatedRoot(alpha));
         math::Transform ball;

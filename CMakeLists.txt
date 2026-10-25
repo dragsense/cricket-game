@@ -70,6 +70,7 @@ cricket_warnings(cricket_motion)
 # ---- game executable --------------------------------------------------------
 add_executable(CricketGame
     src/main.cpp
+    src/game/ball_feeder.cpp
     src/game/cricket_app.cpp
     src/game/test_scene.cpp
     src/game/world.cpp
@@ -138,7 +139,8 @@ if(CRICKET_BUILD_TESTS)
     cricket_warnings(motion_tests)
     add_test(NAME motion_tests COMMAND motion_tests)
 
-    add_executable(agents_tests tests/test_main.cpp tests/test_fielder.cpp src/agents/fielder.cpp)
+    add_executable(agents_tests tests/test_main.cpp tests/test_fielder.cpp tests/test_ball_feeder.cpp src/agents/fielder.cpp
+        src/game/ball_feeder.cpp)
     target_link_libraries(agents_tests PRIVATE cricket_ik cricket_motion doctest::doctest)
     target_include_directories(agents_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_definitions(agents_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")

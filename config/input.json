@@ -24,7 +24,14 @@
     "BallUp": ["E"],
     "BallDown": ["Q"],
     "Pick": ["Space"],
-    "CycleHand": ["H"]
+    "CycleHand": ["H"],
+    // Picking hand directly: 1 left, 2 right, 3 both (H also cycles auto).
+    "HandLeft": ["1"],
+    "HandRight": ["2"],
+    "HandBoth": ["3"],
+    // T: the feeder throws the ball at the fielder (config/engine.json "feeder");
+    // press Space in time to pick it, else it passes. Clicking stops a throw.
+    "ThrowBall": ["T"]
   },
   "ballLiftSpeed": 1.0  // m/s while E/Q is held
 }

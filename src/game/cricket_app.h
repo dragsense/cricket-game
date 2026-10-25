@@ -9,6 +9,7 @@
 #include "core/file_watcher.h"
 #include "core/input.h"
 #include "debug/debug_overlay.h"
+#include "game/ball_feeder.h"
 #include "game/fielder_visual.h"
 #include "game/test_scene.h"
 #include "game/world.h"
@@ -70,6 +71,7 @@ private:
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
     math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
+    BallFeeder feeder_;         // T: throws the ball at the fielder
     float heading_ = 0.0f;    // fielder's W heading; follows the camera only while stopped
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)
     debug::DebugSettings appliedSettings_;  // last values pushed to the renderer

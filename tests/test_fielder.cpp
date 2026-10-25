@@ -30,6 +30,7 @@ bool makeFielder(agents::Fielder& fielder, bool lunge = false) {
         return false;
     rig::SkeletonDef def;
     if (!rig::loadSkeletonDef(skeleton, def) || !fielder.init(def, def.height, joints, locomotion)) return false;
+    fielder.setHandMode(agents::HandMode::Auto);  // these tests check the hand on the ball's side
     if (!lunge) {
         agents::ReachSettings r = fielder.reachSettings();
         r.maxLunge = 0.0f;  // feet stay planted

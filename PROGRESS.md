@@ -84,6 +84,12 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   reach; while that foot is in the air the body follows the feet through
   `repositionBody`, and the reach starts once it lands (the at-full-stretch lunge stays
   as a fallback).
+  Test controls (user's request): 1/2/3 pick with the left/right/both hands (default
+  right; H still cycles, auto kept for later). **T** throws the ball at the fielder
+  (`game::BallFeeder`, config/engine.json "feeder"): straight line, no physics, rolling
+  or at a random height, random speed and side offset, passing beside them; Space in
+  time picks it, otherwise it stops behind them; T again throws another. A click
+  stops a throw (manual placement). Test: `test_ball_feeder.cpp`.
 - [-] **2.6** folded into 2.5 (user's choice): timing via the eased goal, balance from 2.4.
 
 ## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
