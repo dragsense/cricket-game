@@ -19,16 +19,11 @@
     "ToggleMouseLook": ["Tab"],
     // Ball: hold the left button to drag it on a level plane at its height;
     // E raises it, Q lowers it. Space: the fielder picks it (reach, grip,
-    // carry back); R abandons the pick; H cycles the hand: auto, left, right, both.
+    // carry back) with the hand on the ball's side; R abandons the pick.
     "ClearReach": ["R"],
     "BallUp": ["E"],
     "BallDown": ["Q"],
     "Pick": ["Space"],
-    "CycleHand": ["H"],
-    // Picking hand directly: 1 left, 2 right, 3 both (H also cycles auto).
-    "HandLeft": ["1"],
-    "HandRight": ["2"],
-    "HandBoth": ["3"],
     // T: the feeder throws the ball at the fielder (config/engine.json "feeder");
     // press Space in time to pick it, else it passes. Clicking stops a throw.
     "ThrowBall": ["T"]

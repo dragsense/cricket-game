@@ -38,8 +38,8 @@ struct IkSettings {
     float headAimWeight = 1.0f;
 };
 
-// Which hand picks: the one on the ball's side, a fixed one, or both.
-enum class HandMode { Auto, Left, Right, Both };
+// Which hand picks: the one on the ball's side (default), or a fixed one.
+enum class HandMode { Auto, Left, Right };
 
 // Hand-driven reaching and picking (config/fielder_joints.json "reach").
 struct ReachSettings {
@@ -79,7 +79,7 @@ struct ReachSettings {
     float movingSpeed = 0.2f;
     float gripTolerance = 0.02f;  // m; the hand counts as on the ball within this
     float giveUpTime = 0.4f;      // s at full stretch, out of reach, before letting go (the dive later)
-    float ballRadius = 0.036f;    // m; two-hand mode puts a hand each side
+    float ballRadius = 0.036f;    // m; a held ball sits this far out from the palm (plus its thickness)
     // Grip: full curl per joint [_01, _02, _03] once the hand is on the ball
     // and while holding it (degrees in config); relaxedCurl share otherwise.
     float relaxedCurl = 0.25f;
@@ -234,8 +234,7 @@ private:
     bool holding_ = false;
     math::Vec3 carryFrom_{0.0f};  // wrist goal where the ball was gripped, character space
     bool reachLeft_ = true;       // this tick's (primary) reaching hand
-    bool bothHands_ = false;
-    math::Vec3 goal_{0.0f}, otherGoal_{0.0f};  // wrist goals, character space
+    math::Vec3 goal_{0.0f};  // wrist goal, character space
     float reachError_ = 0.0f;
     motion::RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;

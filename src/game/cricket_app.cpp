@@ -221,19 +221,6 @@ bool CricketApp::pumpEvents() {
 
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
     if (actions_.pressed(input_, core::Action::Pick)) sim_.fielder().startPick();
-    {
-        agents::Fielder& f = sim_.fielder();
-        int mode = -1;
-        if (actions_.pressed(input_, core::Action::CycleHand)) mode = (static_cast<int>(f.handMode()) + 1) % 4;
-        if (actions_.pressed(input_, core::Action::HandLeft)) mode = static_cast<int>(agents::HandMode::Left);
-        if (actions_.pressed(input_, core::Action::HandRight)) mode = static_cast<int>(agents::HandMode::Right);
-        if (actions_.pressed(input_, core::Action::HandBoth)) mode = static_cast<int>(agents::HandMode::Both);
-        if (mode >= 0) {
-            f.setHandMode(static_cast<agents::HandMode>(mode));
-            constexpr const char* kNames[] = {"auto", "left", "right", "both"};
-            LOG_INFO("picking hand: {}", kNames[mode]);
-        }
-    }
     if (actions_.pressed(input_, core::Action::ThrowBall)) {
         sim_.fielder().clearReach();
         feeder_.throwAt(sim_.fielder().root(), cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi);

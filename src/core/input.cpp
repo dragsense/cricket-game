@@ -31,8 +31,7 @@ constexpr const char* kActionNames[] = {
     "ToggleMouseLook",
     "ClearReach",
     "BallUp", "BallDown",
-    "Pick", "CycleHand",
-    "HandLeft", "HandRight", "HandBoth",
+    "Pick",
     "ThrowBall",
 };
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == static_cast<int>(Action::Count));
@@ -92,10 +91,6 @@ ActionMap::ActionMap() {
     bind(Action::BallUp, Key::E);
     bind(Action::BallDown, Key::Q);
     bind(Action::Pick, Key::Space);
-    bind(Action::CycleHand, Key::H);
-    bind(Action::HandLeft, Key::Num1);
-    bind(Action::HandRight, Key::Num2);
-    bind(Action::HandBoth, Key::Num3);
     bind(Action::ThrowBall, Key::T);
 }
 

@@ -49,8 +49,8 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     // The fielder starts with the ball in the right hand, picking with it.
     phase_ = Phase::Idle;
     holding_ = true;
-    reachLeft_ = bothHands_ = false;
-    handMode_ = HandMode::Right;
+    reachLeft_ = false;
+    handMode_ = HandMode::Auto;
     reach_.armReach = joints.getFloat("reach.armReach", reach_.armReach);
     reach_.wristOffset = joints.getFloat("reach.wristOffset", reach_.wristOffset);
     // Weights are normalised so each set sums to 1.
@@ -309,13 +309,12 @@ void Fielder::tick(double dt) {
     stabiliseHead(static_cast<float>(dt));
     if (reachNow) {
         reachArm(reachLeft_, goal_);
-        if (bothHands_) reachArm(!reachLeft_, otherGoal_);
     }
     // Fingers: closed around the ball once the hand is on it and while it is
     // held (walking and running too), relaxed otherwise.
     const bool closed = holding_ || (phase_ == Phase::Reach && holdTimer_ > 0.0f);
-    grip(true, closed && (reachLeft_ || bothHands_) ? 1.0f : reach_.relaxedCurl);
-    grip(false, closed && (!reachLeft_ || bothHands_) ? 1.0f : reach_.relaxedCurl);
+    grip(true, closed && reachLeft_ ? 1.0f : reach_.relaxedCurl);
+    grip(false, closed && !reachLeft_ ? 1.0f : reach_.relaxedCurl);
     limits_.apply(current_);
     if (reachNow) {
         // Measured after the limits, so a clamped arm shows as a miss.
@@ -758,10 +757,9 @@ void Fielder::updatePick(float dt) {
             return;
         }
         // Which hand: the one on the meeting point's side (rest shoulders),
-        // or the chosen one; both hands pick from either side of the ball.
+        // unless a fixed one is set.
         reachLeft_ = handMode_ == HandMode::Left ||
                      (handMode_ != HandMode::Right && math::distance(restShoulderL_, meet) <= math::distance(restShoulderR_, meet));
-        bothHands_ = handMode_ == HandMode::Both;
         // Start so the hand arrives as the ball passes: the reach time for
         // the hand's travel, plus the lunge's if one is needed first.
         const bool lunge = reach_.maxLunge > 0.0f && flat(meet - mid) > reach_.stepBeyond;
@@ -786,18 +784,11 @@ void Fielder::updatePick(float dt) {
     }
     const float s = pickTime_ * pickTime_ * (3.0f - 2.0f * pickTime_);
 
-    // Wrist goal on the ball: back from it toward the shoulder (palm on the
-    // ball); with both hands, each a ball radius to its own side (+X is left).
-    auto onBall = [&](bool left) {
-        const math::Vec3 shoulder = left ? restShoulderL_ : restShoulderR_;
-        const math::Vec3 side = bothHands_ ? math::kRight * (left ? reach_.ballRadius : -reach_.ballRadius) : math::Vec3(0.0f);
-        return ball + side + math::safeNormalize(shoulder - ball, math::kUp) * reach_.wristOffset;
-    };
-    auto rest = [&](bool left) { return left ? restWristL_ : restWristR_; };
-    const math::Vec3 end = phase_ == Phase::Reach ? onBall(reachLeft_) : carryFrom_;
-    goal_ = math::lerp(rest(reachLeft_), end, s);
-    const math::Vec3 otherEnd = phase_ == Phase::Reach ? onBall(!reachLeft_) : carryFrom_ - onBall(reachLeft_) + onBall(!reachLeft_);
-    otherGoal_ = math::lerp(rest(!reachLeft_), otherEnd, s);
+    // Wrist goal on the ball: back from it toward the shoulder (palm on the ball).
+    const math::Vec3 shoulder = reachLeft_ ? restShoulderL_ : restShoulderR_;
+    const math::Vec3 onBall = ball + math::safeNormalize(shoulder - ball, math::kUp) * reach_.wristOffset;
+    const math::Vec3 end = phase_ == Phase::Reach ? onBall : carryFrom_;
+    goal_ = math::lerp(reachLeft_ ? restWristL_ : restWristR_, end, s);
 }
 
 void Fielder::finishPick(float dt) {
@@ -850,14 +841,9 @@ math::Vec3 Fielder::ballSpot(bool left) const {
 }
 
 math::Vec3 Fielder::ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const {
-    // In front of the holding palm; with both hands, between the two palm centres.
-    auto at = [&](bool left, math::Vec3 local) {
-        const ik::TwoBoneChain& arm = left ? joints_.armL : joints_.armR;
-        return math::Vec3(models[static_cast<size_t>(arm.end)] * math::Vec4(local, 1.0f));
-    };
-    const math::Vec3 centre(0.0f, -reach_.palmCentre, 0.0f);
-    const math::Vec3 p = bothHands_ ? 0.5f * (at(true, centre) + at(false, centre)) : at(reachLeft_, ballSpot(reachLeft_));
-    return root.transformPoint(p);
+    // In front of the holding palm.
+    const ik::TwoBoneChain& arm = reachLeft_ ? joints_.armL : joints_.armR;
+    return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.end)] * math::Vec4(ballSpot(reachLeft_), 1.0f)));
 }
 
 void Fielder::interpolatedPose(float alpha, rig::Pose& out) const {

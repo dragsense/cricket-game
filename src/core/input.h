@@ -59,8 +59,6 @@ enum class Action : uint8_t {
     ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)
     BallUp, BallDown,  // raise / lower the ball (the hand target)
     Pick,              // reach for the ball, grip it, carry it back
-    CycleHand,         // picking hand: auto, left, right, both
-    HandLeft, HandRight, HandBoth,  // picking hand, directly
     ThrowBall,         // the feeder throws the ball toward the fielder
     Count
 };

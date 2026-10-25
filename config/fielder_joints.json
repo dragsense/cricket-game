@@ -119,7 +119,7 @@
     // the foot nearer the ball lunges to land beside it, lungeShort m short of
     // it (BIOMECHANICS 8), at most maxLunge m (0 = off); still out of reach
     // after giveUpTime s, it lets go
-    // (the dive case, M3). ballRadius: two-hand spacing.
+    // (the dive case, M3).
     "fittsA": 0.1,
     "fittsB": 0.1,
     "fittsWidth": 0.1,

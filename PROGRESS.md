@@ -99,6 +99,8 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   starting so the hand arrives as it passes; a moving ball is grabbed on contact.
   Already past: tried at once if in range. No dive. Tests: Fitts, timeToClosest, out of
   range, still ball sooner when nearer, moving ball waited for (~2.5 s) then caught.
+  Simplified (user's request): two-hand picking and the hand keys (H, 1/2/3) are
+  removed; the hand on the ball's side picks (auto). Left/Right stay in the API.
 - [-] **2.6** folded into 2.5 (user's choice): timing via the eased goal, balance from 2.4.
 
 ## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
