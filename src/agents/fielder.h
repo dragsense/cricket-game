@@ -5,7 +5,8 @@
 // turn the root, step the feet on the gait), reposition the body over the
 // foot targets (late update), add pelvis bob, sway, lean and twist, solve two-bone
 // IK for the legs, keep the feet flat, swing the arms opposite the legs,
-// steady the head, then clamp every joint to its limits.
+// steady the head, reach for the hand target if there is one (standing
+// only; docs/BIOMECHANICS.md section 9), then clamp every joint to its limits.
 
 #include "ik/joint_limits.h"
 #include "ik/limb_ik.h"
@@ -37,6 +38,13 @@ struct IkSettings {
     float headAimWeight = 1.0f;
 };
 
+// Hand-driven reaching (config/fielder_joints.json "reach").
+struct ReachSettings {
+    float armReach = 0.97f;         // share of full arm length the hand reaches; the elbow never locks
+    float wristAboveTarget = 0.08f; // m; wrist goal above the target (the palm is on the ball)
+    float maxSpeed = 0.05f;         // m/s; reaching runs only below this (standing)
+};
+
 class Fielder {
 public:
     // Builds the skeleton at `height` metres, loads joint limits and IK settings
@@ -65,6 +73,18 @@ public:
     motion::Gait gait() const { return gait_; }
     float speed() const { return walker_.speed(); }  // m/s
 
+    // Hand target in world space (e.g. a ball on the ground). The nearer hand
+    // reaches for it while the fielder stands; walking pauses the reach.
+    void setReachTarget(math::Vec3 world) {
+        reachTarget_ = world;
+        reaching_ = true;
+    }
+    void clearReach() { reaching_ = false; }
+    bool reaching() const { return reaching_; }
+    // Distance (m) the hand is still short of the target after the last tick;
+    // 0 when reached. Later stages (spine, pelvis, body, step) take it on.
+    float reachError() const { return reachError_; }
+
     const rig::SkeletonDef& def() const { return def_; }
     const rig::Rig& rig() const { return rig_; }
     const rig::Pose& pose() const { return current_; }
@@ -83,10 +103,11 @@ private:
     void swingArms(float dt);
     void stabiliseHead(float dt);
     void solveIk();
+    void reach();
     motion::GaitStyle gaitStyle() const;
 
     struct Joints {
-        int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1;
+        int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1, clavicleL = -1, clavicleR = -1;
         ik::TwoBoneChain legL, legR, armL, armR;
     };
 
@@ -95,6 +116,11 @@ private:
     ik::JointLimits limits_;
     const core::Config* jointsConfig_ = nullptr;
     IkSettings ik_;
+    ReachSettings reach_;
+    float armLength_ = 0.6f;  // shoulder to wrist (m), from the skeleton
+    math::Vec3 reachTarget_{0.0f};
+    bool reaching_ = false;
+    float reachError_ = 0.0f;
     motion::RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
     float ballDistance_ = 0.1f;  // ankle to ball of the foot (m), from the skeleton

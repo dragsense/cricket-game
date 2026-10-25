@@ -45,6 +45,8 @@ protected:
 private:
     void drawDebugGeometry(float alpha);
     void updateFielder(float alpha);
+    // Left click on the ground: moves the ball there and makes it the reach target.
+    void placeReachTarget();
     // Re-reads the named config files (e.g. "scene.json") and re-applies them
     // to the running game. A file that fails to parse keeps its previous values.
     void reloadConfig(const std::vector<std::string>& files);

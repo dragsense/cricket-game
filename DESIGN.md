@@ -292,6 +292,8 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
 A hand target drives the body like foot targets do in `repositionBody`: arm, clavicle,
 spine, pelvis, then body translation (summed with the foot offset), then one lunge step;
 beyond that the body holds maximum reach. See docs/BIOMECHANICS.md "Reaching".
+Built: `motion::swingToward` (src/motion/reach.h) and `Fielder::reach()` (clavicle +
+arm, Step 2.1); left click places the target (the ball), R clears it.
 
 ### Ball physics (M3): not started
 Our own code: flight with drag, bounce off pitch and outfield, rolling. Fixed-step.

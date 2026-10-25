@@ -1,6 +1,7 @@
 #include "agents/fielder.h"
 
 #include "core/config.h"
+#include "motion/reach.h"
 
 #include <algorithm>
 #include <cmath>
@@ -44,6 +45,9 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reposition_.followRate = joints.getFloat("reposition.followRate", reposition_.followRate);
     reposition_.softBand = joints.getFloat("reposition.softBand", reposition_.softBand);
     stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
+    reach_.armReach = joints.getFloat("reach.armReach", reach_.armReach);
+    reach_.wristAboveTarget = joints.getFloat("reach.wristAboveTarget", reach_.wristAboveTarget);
+    reach_.maxSpeed = joints.getFloat("reach.maxSpeed", reach_.maxSpeed);
     return setHeight(height);
 }
 
@@ -135,6 +139,8 @@ bool Fielder::setHeight(float height) {
     joints_.head = rig_.findJoint("head");
     joints_.toeL = rig_.findJoint("toe_l");
     joints_.toeR = rig_.findJoint("toe_r");
+    joints_.clavicleL = rig_.findJoint("clavicle_l");
+    joints_.clavicleR = rig_.findJoint("clavicle_r");
     joints_.legL = chain("thigh_l", "shin_l", "foot_l", {-1, 0, 0});
     joints_.legR = chain("thigh_r", "shin_r", "foot_r", {-1, 0, 0});
     joints_.armL = chain("upper_arm_l", "forearm_l", "hand_l", {1, 0, 0});
@@ -144,6 +150,9 @@ bool Fielder::setHeight(float height) {
     previous_ = current_;
     models_.assign(static_cast<size_t>(rig_.numJoints()), math::Mat4(1.0f));
     pelvis_ = current_.locals[static_cast<size_t>(joints_.pelvis)].position;  // pelvis is the root joint
+    rig_.localToModel(current_, models_);
+    armLength_ = math::distance(modelPos(models_, joints_.armL.start), modelPos(models_, joints_.armL.mid)) +
+                 math::distance(modelPos(models_, joints_.armL.mid), modelPos(models_, joints_.armL.end));
     if (joints_.toeL >= 0) {
         rig_.localToModel(current_, models_);
         const math::Vec3 d = modelPos(models_, joints_.toeL) - modelPos(models_, joints_.legL.end);
@@ -172,6 +181,8 @@ void Fielder::tick(double dt) {
     solveIk();
     swingArms(static_cast<float>(dt));
     stabiliseHead(static_cast<float>(dt));
+    reachError_ = 0.0f;
+    if (reaching_ && walker_.speed() < reach_.maxSpeed) reach();
     limits_.apply(current_);
 }
 
@@ -343,6 +354,49 @@ void Fielder::stabiliseHead(float dt) {
     const math::Quat level = math::normalize(math::inverse(modelRot(models_, parent)) * desired);
     math::Quat& head = current_.locals[static_cast<size_t>(joints_.head)].rotation;
     head = math::normalize(math::slerp(head, level, math::clamp(w.headStabilise, 0.0f, 1.0f)));
+}
+
+void Fielder::reach() {
+    // Stage 1 (Step 2.1): clavicle, then the arm. Each stage only takes the
+    // error the stage after it can't remove; proximal joints are posed first
+    // and the arm IK runs last, on the final shoulder (BIOMECHANICS 9.1-9.2).
+    const math::Vec3 target = math::inverse(root_).transformPoint(reachTarget_) + math::kUp * reach_.wristAboveTarget;
+    const float armReach = reach_.armReach * armLength_;
+
+    // The nearer shoulder's hand reaches.
+    rig_.localToModel(current_, models_);
+    const bool left = math::distance(modelPos(models_, joints_.armL.start), target) <=
+                      math::distance(modelPos(models_, joints_.armR.start), target);
+    const ik::TwoBoneChain& arm = left ? joints_.armL : joints_.armR;
+    const int clavicle = left ? joints_.clavicleL : joints_.clavicleR;
+
+    // Clavicle: protract/elevate so the shoulder moves toward the target,
+    // within its swing-twist limit. Model rotation M = P * L, so a model-space
+    // rotation R becomes the local L' = P^-1 * R * P * L.
+    if (clavicle >= 0) {
+        const motion::Swing swing =
+            motion::swingToward(modelPos(models_, clavicle), modelPos(models_, arm.start), target, armReach);
+        if (swing.angle > 0.0f) {
+            const math::Quat parent = modelRot(models_, rig_.parent(clavicle));
+            math::Quat& local = current_.locals[static_cast<size_t>(clavicle)].rotation;
+            local = math::normalize(math::inverse(parent) * math::fromAxisAngle(swing.axis, swing.angle) * parent * local);
+            local = ik::clampRotation(local, limits_.limit(clavicle));
+        }
+    }
+
+    // Arm: from the rest pose (no walk swing), two-bone IK toward the target,
+    // never further than armReach so the elbow stays bent. Elbows point back
+    // and out, mirrored for the right arm (+X is left).
+    const rig::Pose& rest = rig_.restPose();
+    current_.locals[static_cast<size_t>(arm.start)].rotation = rest.locals[static_cast<size_t>(arm.start)].rotation;
+    current_.locals[static_cast<size_t>(arm.mid)].rotation = rest.locals[static_cast<size_t>(arm.mid)].rotation;
+    rig_.localToModel(current_, models_);
+    const math::Vec3 shoulder = modelPos(models_, arm.start);
+    const math::Vec3 pole = left ? ik_.elbowPole : math::Vec3(-ik_.elbowPole.x, ik_.elbowPole.y, ik_.elbowPole.z);
+    ik::solveTwoBone(arm, models_, motion::clampToReach(shoulder, target, armReach), pole, ik_.soften, current_);
+
+    // Leftover for the next stages (spine, pelvis, body, step: Steps 2.2-2.5).
+    reachError_ = std::max(0.0f, math::distance(shoulder, target) - armReach);
 }
 
 void Fielder::interpolatedPose(float alpha, rig::Pose& out) const {

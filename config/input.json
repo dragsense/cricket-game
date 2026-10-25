@@ -16,6 +16,9 @@
     "Jog": ["LeftCtrl", "RightCtrl"],
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
-    "ToggleMouseLook": ["Tab"]
+    "ToggleMouseLook": ["Tab"],
+    // Reaching: left-click the ground to place the ball there (the hand
+    // target); R clears it.
+    "ClearReach": ["R"]
   }
 }

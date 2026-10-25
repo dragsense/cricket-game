@@ -175,6 +175,18 @@ void* Window::nativeHandle() const {
 #endif
 }
 
+int Window::width() const {
+    int w = 0, h = 0;
+    SDL_GetWindowSize(window_, &w, &h);
+    return w;
+}
+
+int Window::height() const {
+    int w = 0, h = 0;
+    SDL_GetWindowSize(window_, &w, &h);
+    return h;
+}
+
 int Window::pixelWidth() const {
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window_, &w, &h);

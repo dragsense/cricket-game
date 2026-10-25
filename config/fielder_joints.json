@@ -73,6 +73,14 @@
     "headAimWeight": 1.0
   },
 
+  // Hand-driven reaching (M2), docs/BIOMECHANICS.md section 9. Stages: clavicle,
+  // then two-bone arm IK; the leftover error goes to the later stages.
+  "reach": {
+    "armReach": 0.97,         // share of full arm length; the elbow never locks straight
+    "wristAboveTarget": 0.08, // m; wrist goal above the ball centre (palm on the ball)
+    "maxSpeed": 0.05          // m/s; reach only while standing
+  },
+
   // Body repositioning (runs every tick after the foot targets are set).
   // Reaches are hip-to-ankle distances as a fraction of leg length (thigh + shin).
   "reposition": {

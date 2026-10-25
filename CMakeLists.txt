@@ -61,6 +61,7 @@ cricket_warnings(cricket_ik)
 add_library(cricket_motion STATIC
     src/motion/body_reposition.cpp
     src/motion/foot_stepper.cpp
+    src/motion/reach.cpp
     src/motion/walk_controller.cpp
 )
 target_link_libraries(cricket_motion PUBLIC cricket_core)
@@ -132,7 +133,7 @@ if(CRICKET_BUILD_TESTS)
     cricket_warnings(ik_tests)
     add_test(NAME ik_tests COMMAND ik_tests)
 
-    add_executable(motion_tests tests/test_main.cpp tests/test_reposition.cpp tests/test_stepping.cpp tests/test_walk.cpp)
+    add_executable(motion_tests tests/test_main.cpp tests/test_reposition.cpp tests/test_stepping.cpp tests/test_walk.cpp tests/test_reach.cpp)
     target_link_libraries(motion_tests PRIVATE cricket_motion doctest::doctest)
     cricket_warnings(motion_tests)
     add_test(NAME motion_tests COMMAND motion_tests)

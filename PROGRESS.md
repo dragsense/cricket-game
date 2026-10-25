@@ -15,7 +15,15 @@ while walking, game logic. One step at a time; stop for a visual check after eac
 
 - [x] **2.0 Research** (awaiting the user's review) → docs/BIOMECHANICS.md section 9 "Reaching" (recruitment order, clavicle,
   spine, pelvis ranges, squat/kneel, balance, timing). Stop for review.
-- [ ] **2.1 Arm and clavicle** (two-bone IK at armReach ≈ 0.97, clavicle for first leftover)
+- [x] **2.1 Arm and clavicle** (built; `motion_tests` pass; awaiting the user's visual
+  check): left-click the ground to place the ball there; it becomes the hand target
+  (R clears it). The nearer hand reaches while standing (walking pauses it).
+  `motion::swingToward` (law-of-cosines swing about a pivot, reused by 2.2/2.3) turns
+  the clavicle toward the target within its swing-twist limit, then ozz two-bone IK
+  places the hand at most `armReach` (0.97 × arm length) from the shoulder, so the
+  elbow never locks. The leftover distance is kept in `Fielder::reachError()`.
+  Settings in `config/fielder_joints.json` "reach". No smoothing yet (2.6), so the arm
+  snaps to a new target. `test_reach.cpp` added.
 - [ ] **2.2 Spine rotation** (law of cosines swing, weighted over spine_01/02/chest)
 - [ ] **2.3 Pelvis rotation and tilt**
 - [ ] **2.4 Body repositioning toward the hand** (offset added to the foot repositioning)

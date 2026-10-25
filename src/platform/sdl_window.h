@@ -37,6 +37,8 @@ public:
     void setRelativeMouse(bool enabled);
 
     void* nativeHandle() const;   // HWND on Windows; what Filament needs for a swap chain
+    int width() const;   // window size in screen units (what mouse coordinates use)
+    int height() const;
     int pixelWidth() const;
     int pixelHeight() const;
     float refreshRate() const;     // Hz of the display the window is on (60 if unknown)

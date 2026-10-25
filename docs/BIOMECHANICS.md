@@ -734,7 +734,7 @@ hip-heavy late (9.1); side bend shared evenly.
   the same time or slightly earlier and settle later. This refines the M2 plan's "arm
   leads, body follows": onset is near-simultaneous, the body settles later.
 
-### Implementation notes (`config/reach.json`)
+### Implementation notes (`config/fielder_joints.json` "reach")
 - Each tick (late update, after foot repositioning), every stage reduces the error and
   passes the rest on: arm → clavicle → spine → pelvis → body translation → lunge → hold.
   Proximal segments are posed first; the arm IK runs last.

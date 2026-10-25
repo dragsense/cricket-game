@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include <chrono>
+#include <cmath>
 
 namespace game {
 
@@ -214,6 +215,10 @@ bool CricketApp::pumpEvents() {
                            : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
                                                                       : motion::Gait::Walk);
 
+    // Reaching: left click places the ball (the hand target); R clears it.
+    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && !mouseLook_) placeReachTarget();
+    if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
+
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
@@ -285,6 +290,30 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
         double spent = std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count();
         platform::preciseSleep(targetFrameSeconds_ - spent - 0.0005);
     }
+}
+
+void CricketApp::placeReachTarget() {
+    // Ray through the cursor from the camera (vertical FOV, window aspect),
+    // hit with the ground plane y = 0.
+    const float w = static_cast<float>(window_.width()), h = static_cast<float>(window_.height());
+    if (w <= 0.0f || h <= 0.0f) return;
+    const camera::CameraPose view = camera_.pose();
+    const math::Vec3 forward = math::normalize(view.target - view.eye);
+    const math::Vec3 right = math::normalize(math::cross(forward, view.up));
+    const math::Vec3 up = math::cross(right, forward);
+    const float tanHalf = std::tan(0.5f * math::radians(cfg_.engine.getFloat("camera.fovY", 50.0f)));
+    const float x = (2.0f * input_.mouseX / w - 1.0f) * tanHalf * (w / h);
+    const float y = (1.0f - 2.0f * input_.mouseY / h) * tanHalf;
+    const math::Vec3 ray = math::normalize(forward + right * x + up * y);
+    if (ray.y > -1e-3f) return;  // at or above the horizon
+    const math::Vec3 hit = view.eye + ray * (-view.eye.y / ray.y);
+
+    // The ball rests on the ground at the hit point.
+    const float radius = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
+    math::Transform ball;
+    ball.position = math::Vec3(hit.x, radius, hit.z);
+    world_.setTransform(scene_.ball, ball);
+    sim_.fielder().setReachTarget(ball.position);
 }
 
 void CricketApp::updateFielder(float alpha) {
