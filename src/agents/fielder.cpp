@@ -84,6 +84,7 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reach_.thumbCurl = degs("reach.thumbCurlDeg", reach_.thumbCurl);
     reach_.maxLunge = joints.getFloat("reach.maxLunge", reach_.maxLunge);
     reach_.lungeShort = joints.getFloat("reach.lungeShort", reach_.lungeShort);
+    reach_.stepBeyond = joints.getFloat("reach.stepBeyond", reach_.stepBeyond);
     reach_.lungeDuration = joints.getFloat("reach.lungeDuration", reach_.lungeDuration);
     reach_.lungeHeight = joints.getFloat("reach.lungeHeight", reach_.lungeHeight);
     reach_.elbowPole = joints.getVec3("reach.elbowPole", reach_.elbowPole);
@@ -189,6 +190,33 @@ bool Fielder::setHeight(float height) {
             for (int k = 0; k < 3; ++k)
                 joints_.fingers[side][f][k] = rig_.findJoint(std::string(fingerNames[f]) + "_0" + std::to_string(k + 1) +
                                                              (side == 0 ? "_l" : "_r"));
+    // Curl axes: each finger bone turns toward the palm (palm normal -X on
+    // the left, +X on the right) about cross(bone direction, palm normal); each
+    // thumb bone turns toward the ball held in front of the palm, about
+    // cross(bone direction, ball - bone start). Rest joint frames are aligned
+    // with the character, so rest offsets are hand-space directions; the last
+    // bone keeps its parent's axis.
+    const rig::Pose& rest = rig_.restPose();
+    for (int side = 0; side < 2; ++side) {
+        const math::Vec3 palm(side == 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
+        const math::Vec3 ball = ballSpot(side == 0);
+        for (int f = 0; f < 5; ++f) {
+            math::Vec3 at(0.0f);  // bone start in hand space
+            for (int k = 0; k < 3; ++k) {
+                math::Vec3& axis = joints_.curlAxis[side][f][k];
+                const int joint = joints_.fingers[side][f][k];
+                const int child = k < 2 ? joints_.fingers[side][f][k + 1] : -1;
+                if (joint >= 0) at += rest.locals[static_cast<size_t>(joint)].position;
+                if (child < 0) {
+                    axis = k > 0 ? joints_.curlAxis[side][f][k - 1] : math::Vec3(0.0f, 0.0f, -palm.x);
+                    continue;
+                }
+                const math::Vec3 dir = math::safeNormalize(rest.locals[static_cast<size_t>(child)].position, -math::kUp);
+                const math::Vec3 toward = f < 4 ? palm : math::safeNormalize(ball - at, palm);
+                axis = math::safeNormalize(math::cross(dir, toward), math::Vec3(0.0f, 0.0f, -palm.x));
+            }
+        }
+    }
     joints_.legL = chain("thigh_l", "shin_l", "foot_l", {-1, 0, 0});
     joints_.legR = chain("thigh_r", "shin_r", "foot_r", {-1, 0, 0});
     joints_.armL = chain("upper_arm_l", "forearm_l", "hand_l", {1, 0, 0});
@@ -263,14 +291,16 @@ void Fielder::tick(double dt) {
     addGaitMotion(static_cast<float>(dt));
     reachError_ = 0.0f;
     updatePick(static_cast<float>(dt));
-    const bool reachNow = phase_ != Phase::Idle;
+    // While the step-first lunge is in the air the body follows the feet the
+    // usual way (repositionBody); the reach starts once the foot lands.
+    const bool reachNow = phase_ != Phase::Idle && !(phase_ == Phase::Reach && pickTime_ <= 0.0f);
     if (reachNow) {
         reachSpine();
         reachPelvis();
         reachBody();
     }
     solveIk();
-    if (reachNow) rebalance();
+    if (reachNow && !stepper_.stepping()) rebalance();  // a swinging foot is no support
     swingArms(static_cast<float>(dt));
     stabiliseHead(static_cast<float>(dt));
     if (reachNow) {
@@ -665,10 +695,8 @@ void Fielder::reachArm(bool left, math::Vec3 goal) {
 }
 
 void Fielder::grip(bool left, float amount) {
-    // Fingers and thumb flex toward the palm about their local Z (negative on
-    // the left, mirrored on the right; config/fielder_joints.json sign guide).
+    // Each finger and thumb bone turns toward the palm about its curl axis.
     const int side = left ? 0 : 1;
-    const float zSign = left ? -1.0f : 1.0f;
     const float curl[3] = {reach_.fingerCurl.x, reach_.fingerCurl.y, reach_.fingerCurl.z};
     const float thumb[3] = {reach_.thumbCurl.x, reach_.thumbCurl.y, reach_.thumbCurl.z};
     for (int f = 0; f < 5; ++f) {
@@ -676,7 +704,7 @@ void Fielder::grip(bool left, float amount) {
             const int j = joints_.fingers[side][f][k];
             if (j < 0) continue;
             current_.locals[static_cast<size_t>(j)].rotation =
-                math::fromAxisAngle(math::kForward, zSign * (f < 4 ? curl[k] : thumb[k]) * amount);
+                math::fromAxisAngle(joints_.curlAxis[side][f][k], (f < 4 ? curl[k] : thumb[k]) * amount);
         }
     }
 }
@@ -699,6 +727,15 @@ void Fielder::updatePick(float dt) {
     // Progress eases in and out (smoothstep), so the hand leads and the body,
     // driven by the same goal through every stage, follows smoothly.
     if (phase_ == Phase::Idle) return;
+    // Step first: a ball beyond the planted reach (horizontally, from the
+    // middle of the feet) gets the lunge before the reach starts; the reach
+    // waits until the foot lands, then the hand and body go from the new stance.
+    const math::Vec3 ballNow = math::inverse(root_).transformPoint(reachTarget_);
+    if (phase_ == Phase::Reach && pickTime_ <= 0.0f && !lunged_ && reach_.maxLunge > 0.0f) {
+        const math::Vec3 mid = 0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right));
+        if (math::length(math::Vec2(ballNow.x - mid.x, ballNow.z - mid.z)) > reach_.stepBeyond) lungeToward(ballNow);
+    }
+    if (phase_ == Phase::Reach && stepper_.stepping()) return;  // goals from the last tick hold
     if (phase_ == Phase::Reach) pickTime_ = std::min(1.0f, pickTime_ + dt / std::max(reach_.reachTime, 0.05f));
     else pickTime_ = std::max(0.0f, pickTime_ - dt / std::max(reach_.returnTime, 0.05f));
     if (phase_ == Phase::Return && pickTime_ <= 0.0f) {
@@ -743,19 +780,8 @@ void Fielder::finishPick(float dt) {
     }
     if (stepper_.stepping()) return;
     if (!lunged_ && reach_.maxLunge > 0.0f) {
-        // Out of reach at full stretch: the foot nearer the ball steps to land
-        // beside it (BIOMECHANICS 8: low pickups put the foot by the ball),
-        // lungeShort short of it, at most maxLunge; the reach carries on.
-        lunged_ = true;
-        const math::Vec3 ball = math::inverse(root_).transformPoint(reachTarget_);
-        const motion::Foot foot = math::distance(stepper_.foot(motion::Foot::Left), ball) <=
-                                          math::distance(stepper_.foot(motion::Foot::Right), ball)
-                                      ? motion::Foot::Left
-                                      : motion::Foot::Right;
-        const math::Vec3 from = stepper_.foot(foot);
-        const math::Vec3 flat(ball.x - from.x, 0.0f, ball.z - from.z);
-        const float length = math::clamp(math::length(flat) - reach_.lungeShort, 0.0f, reach_.maxLunge);
-        stepper_.stepTo(foot, from + math::safeNormalize(flat, math::kForward) * length);
+        // Fallback: the step-first estimate (stepBeyond) was short.
+        lungeToward(math::inverse(root_).transformPoint(reachTarget_));
         return;
     }
     // Still out of reach after the lunge: hold the stretch briefly, then let
@@ -765,6 +791,20 @@ void Fielder::finishPick(float dt) {
         LOG_INFO("reach: ball out of reach by {:.2f} m (dive case)", reachError_);
         clearReach();
     }
+}
+
+void Fielder::lungeToward(math::Vec3 ball) {
+    // The foot nearer the ball steps to land beside it (BIOMECHANICS 8: low
+    // pickups put the foot by the ball), lungeShort short of it, at most maxLunge.
+    lunged_ = true;
+    const motion::Foot foot = math::distance(stepper_.foot(motion::Foot::Left), ball) <=
+                                      math::distance(stepper_.foot(motion::Foot::Right), ball)
+                                  ? motion::Foot::Left
+                                  : motion::Foot::Right;
+    const math::Vec3 from = stepper_.foot(foot);
+    const math::Vec3 flat(ball.x - from.x, 0.0f, ball.z - from.z);
+    const float length = math::clamp(math::length(flat) - reach_.lungeShort, 0.0f, reach_.maxLunge);
+    stepper_.stepTo(foot, from + math::safeNormalize(flat, math::kForward) * length);
 }
 
 math::Vec3 Fielder::ballSpot(bool left) const {

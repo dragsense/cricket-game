@@ -86,6 +86,7 @@ struct ReachSettings {
     // land lungeShort (m) short of it, at most maxLunge (m; 0 = off).
     float maxLunge = 0.9f;
     float lungeShort = 0.25f;
+    float stepBeyond = 0.65f;     // m from the middle of the feet: step first, then reach
     float lungeDuration = 0.4f;   // s
     float lungeHeight = 0.06f;    // m swing arc apex
 };
@@ -177,6 +178,7 @@ private:
     // solve, grips, lunges or gives up.
     void updatePick(float dt);
     void finishPick(float dt);
+    void lungeToward(math::Vec3 ball);  // character space
     // Clavicle + two-bone IK of one arm toward `goal`.
     void reachArm(bool left, math::Vec3 goal);
     void grip(bool left, float amount);  // curls the fingers and thumb, 0..1
@@ -192,6 +194,7 @@ private:
         int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1, clavicleL = -1, clavicleR = -1;
         int spine[3] = {-1, -1, -1};  // spine_01, spine_02, chest
         int fingers[2][5][3] = {};     // [left/right][index, middle, ring, pinky, thumb][_01.._03]
+        math::Vec3 curlAxis[2][5][3];  // local axis that turns each bone toward the palm
         ik::TwoBoneChain legL, legR, armL, armR;
     };
 

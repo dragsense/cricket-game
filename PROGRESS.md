@@ -77,6 +77,13 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   the palm about Z like the fingers (thumb limits moved to Z). While reaching, the hand
   turns so the palm faces the ball; a held ball sits in front of the palm
   (`palmCentre`, `palmThickness`), not inside the fingers.
+  Second follow-up: finger and thumb curl axes come from the rest geometry (each finger
+  bone turns toward the palm, each thumb bone toward the held ball), so the thumb now
+  closes on the ball (thumb limits allow its twist). Step first: a ball further than
+  `reach.stepBeyond` (0.65 m) from the middle of the feet gets the lunge before the
+  reach; while that foot is in the air the body follows the feet through
+  `repositionBody`, and the reach starts once it lands (the at-full-stretch lunge stays
+  as a fallback).
 - [-] **2.6** folded into 2.5 (user's choice): timing via the eased goal, balance from 2.4.
 
 ## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review

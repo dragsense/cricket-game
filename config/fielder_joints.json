@@ -57,10 +57,11 @@
     "ring_03":   { "type": "hinge", "axis": "z", "min": -80, "max": 0 },
     "pinky_03":  { "type": "hinge", "axis": "z", "min": -80, "max": 0 },
     // Thumb (runs down, forward and toward the palm): kept loose for now.
-    "thumb_01":  { "type": "swingTwist", "twistAxis": "y", "twist": [-20, 20], "swing1": [-40, 40], "swing2": [-40, 40] },
-    // Thumb flexes toward the palm about Z, like the fingers (negative on the left).
-    "thumb_02":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-10, 10], "swing2": [-60, 10] },
-    "thumb_03":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-5, 5],   "swing2": [-80, 10] }
+    // Thumb: it closes across the palm about an axis with a twist part (its
+    // bones point down, forward and in), so twist is allowed on every joint.
+    "thumb_01":  { "type": "swingTwist", "twistAxis": "y", "twist": [-45, 45], "swing1": [-50, 50], "swing2": [-50, 50] },
+    "thumb_02":  { "type": "swingTwist", "twistAxis": "y", "twist": [-45, 45], "swing1": [-60, 60], "swing2": [-60, 60] },
+    "thumb_03":  { "type": "swingTwist", "twistAxis": "y", "twist": [-45, 45], "swing1": [-80, 80], "swing2": [-80, 80] }
   },
 
   "ik": {
@@ -123,6 +124,10 @@
     "ballRadius": 0.036,
     "maxLunge": 0.9,
     "lungeShort": 0.25,
+    // Step first: a ball further than stepBeyond m (horizontally) from the
+    // middle of the feet gets the lunge before the reach starts (the planted
+    // reach sweep covers 0.6 m; 0.9 m needs a step).
+    "stepBeyond": 0.65,
     "lungeDuration": 0.4,
     "lungeHeight": 0.06,
     // Grip: fingers and thumb close fully once the hand is on the ball and stay

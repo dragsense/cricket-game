@@ -188,6 +188,29 @@ TEST_CASE("the fielder starts with the ball in hand; placing it releases it") {
     CHECK_FALSE(fielder.holding());
 }
 
+TEST_CASE("grip: a closed hand brings the thumb tip toward the ball") {
+    // The fielder starts holding the ball in the right hand (closed grip);
+    // placing the ball relaxes it.
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
+    auto thumbToPalm = [&]() {
+        // Thumb tip to the held ball's spot in front of the right palm (+X).
+        fielder.rig().localToModel(fielder.pose(), models);
+        const math::Mat4& hand = models[static_cast<size_t>(fielder.rig().findJoint("hand_r"))];
+        const agents::ReachSettings& r = fielder.reachSettings();
+        const math::Vec3 ball(hand * math::Vec4(r.ballRadius + r.palmThickness, -r.palmCentre, 0.0f, 1.0f));
+        return math::distance(math::Vec3(models[static_cast<size_t>(fielder.rig().findJoint("thumb_03_r"))][3]), ball);
+    };
+    fielder.tick(1.0 / 120.0);
+    const float closed = thumbToPalm();
+    fielder.setReachTarget(fielder.root().transformPoint(math::Vec3(0.2f, 0.036f, 0.4f)));
+    fielder.tick(1.0 / 120.0);
+    const float relaxed = thumbToPalm();
+    MESSAGE("thumb tip to palm: closed ", closed, "  relaxed ", relaxed);
+    CHECK(closed < relaxed - 0.005f);
+}
+
 TEST_CASE("picking: grips the ball, carries it back, stands again") {
     agents::Fielder fielder;
     REQUIRE(makeFielder(fielder));
@@ -223,6 +246,22 @@ TEST_CASE("picking: a ball out of planted reach is picked with a lunge step") {
     }
     CHECK(stepped);
     CHECK(held);
+}
+
+TEST_CASE("picking: a far ball is stepped to first, before the body bends") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder, true));
+    fielder.tick(1.0 / 120.0);
+    const math::Transform root = fielder.root();
+    const float standY = fielder.pose().locals[0].position.y;
+    const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
+    fielder.setReachTarget(root.transformPoint(math::Vec3(0.1f, 0.036f, 1.2f)));
+    fielder.startPick();
+    for (int i = 0; i < 12; ++i) fielder.tick(1.0 / 120.0);  // 0.1 s in
+    const bool stepping = math::distance(fielder.targets().footL, footL) > 0.01f ||
+                          math::distance(fielder.targets().footR, footR) > 0.01f;
+    CHECK(stepping);                                                                   // the foot moves first
+    CHECK(fielder.pose().locals[0].position.y == doctest::Approx(standY).epsilon(0.02)); // the body has not bent yet
 }
 
 TEST_CASE("picking: hand mode Right uses the right hand for a ball on the left") {
