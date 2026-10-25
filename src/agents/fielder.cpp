@@ -48,6 +48,16 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reach_.armReach = joints.getFloat("reach.armReach", reach_.armReach);
     reach_.wristAboveTarget = joints.getFloat("reach.wristAboveTarget", reach_.wristAboveTarget);
     reach_.maxSpeed = joints.getFloat("reach.maxSpeed", reach_.maxSpeed);
+    // Weights are normalised so each set sums to 1.
+    auto weights = [&](const char* key, math::Vec3 v) {
+        v = joints.getVec3(key, v);
+        v = math::Vec3(std::max(v.x, 0.0f), std::max(v.y, 0.0f), std::max(v.z, 0.0f));
+        const float sum = v.x + v.y + v.z;
+        return sum > 0.0f ? v / sum : math::Vec3(1.0f / 3.0f);
+    };
+    reach_.spineBend = weights("reach.spineBend", reach_.spineBend);
+    reach_.spineTwist = weights("reach.spineTwist", reach_.spineTwist);
+    reach_.spineIterations = joints.getInt("reach.spineIterations", reach_.spineIterations);
     return setHeight(height);
 }
 
@@ -141,6 +151,9 @@ bool Fielder::setHeight(float height) {
     joints_.toeR = rig_.findJoint("toe_r");
     joints_.clavicleL = rig_.findJoint("clavicle_l");
     joints_.clavicleR = rig_.findJoint("clavicle_r");
+    joints_.spine[0] = rig_.findJoint("spine_01");
+    joints_.spine[1] = rig_.findJoint("spine_02");
+    joints_.spine[2] = joints_.chest;
     joints_.legL = chain("thigh_l", "shin_l", "foot_l", {-1, 0, 0});
     joints_.legR = chain("thigh_r", "shin_r", "foot_r", {-1, 0, 0});
     joints_.armL = chain("upper_arm_l", "forearm_l", "hand_l", {1, 0, 0});
@@ -356,10 +369,19 @@ void Fielder::stabiliseHead(float dt) {
     head = math::normalize(math::slerp(head, level, math::clamp(w.headStabilise, 0.0f, 1.0f)));
 }
 
+void Fielder::rotateInModel(int joint, math::Quat rotation) {
+    // Model rotation M = P * L, so a model-space rotation R becomes the local
+    // L' = P^-1 * R * P * L.
+    const math::Quat parent = modelRot(models_, rig_.parent(joint));
+    math::Quat& local = current_.locals[static_cast<size_t>(joint)].rotation;
+    local = math::normalize(math::inverse(parent) * rotation * parent * local);
+    local = ik::clampRotation(local, limits_.limit(joint));
+}
+
 void Fielder::reach() {
-    // Stage 1 (Step 2.1): clavicle, then the arm. Each stage only takes the
-    // error the stage after it can't remove; proximal joints are posed first
-    // and the arm IK runs last, on the final shoulder (BIOMECHANICS 9.1-9.2).
+    // Each stage takes only the error the stages after it can't remove:
+    // spine (2.2), clavicle, then the arm. Proximal joints are posed first and
+    // the arm IK runs last, on the final shoulder (BIOMECHANICS 9.1-9.2).
     const math::Vec3 target = math::inverse(root_).transformPoint(reachTarget_) + math::kUp * reach_.wristAboveTarget;
     const float armReach = reach_.armReach * armLength_;
 
@@ -370,18 +392,34 @@ void Fielder::reach() {
     const ik::TwoBoneChain& arm = left ? joints_.armL : joints_.armR;
     const int clavicle = left ? joints_.clavicleL : joints_.clavicleR;
 
-    // Clavicle: protract/elevate so the shoulder moves toward the target,
-    // within its swing-twist limit. Model rotation M = P * L, so a model-space
-    // rotation R becomes the local L' = P^-1 * R * P * L.
+    // Spine: swing the shoulder toward the target about the spine base (law
+    // of cosines), split into bend and twist (about the character's up), each
+    // shared over spine_01, spine_02 and chest by its weights (9.3: twist
+    // mostly thoracic, bend mostly lumbar), every bone clamped to its limit.
+    if (joints_.spine[0] >= 0 && joints_.spine[2] >= 0) {
+        const float bendShare[3] = {reach_.spineBend.x, reach_.spineBend.y, reach_.spineBend.z};
+        const float twistShare[3] = {reach_.spineTwist.x, reach_.spineTwist.y, reach_.spineTwist.z};
+        for (int it = 0; it < reach_.spineIterations; ++it) {
+            const motion::Swing swing = motion::swingToward(modelPos(models_, joints_.spine[0]),
+                                                            modelPos(models_, arm.start), target, armReach);
+            if (swing.angle <= 0.0f) break;
+            math::Quat bend, twist;
+            math::swingTwist(math::fromAxisAngle(swing.axis, swing.angle), math::kUp, bend, twist);
+            for (int i = 0; i < 3; ++i) {
+                if (joints_.spine[i] < 0) continue;
+                const math::Quat id = math::identityQuat();
+                rotateInModel(joints_.spine[i],
+                              math::slerp(id, bend, bendShare[i]) * math::slerp(id, twist, twistShare[i]));
+                rig_.localToModel(current_, models_);
+            }
+        }
+    }
+
+    // Clavicle: protract/elevate so the shoulder moves toward the target.
     if (clavicle >= 0) {
         const motion::Swing swing =
             motion::swingToward(modelPos(models_, clavicle), modelPos(models_, arm.start), target, armReach);
-        if (swing.angle > 0.0f) {
-            const math::Quat parent = modelRot(models_, rig_.parent(clavicle));
-            math::Quat& local = current_.locals[static_cast<size_t>(clavicle)].rotation;
-            local = math::normalize(math::inverse(parent) * math::fromAxisAngle(swing.axis, swing.angle) * parent * local);
-            local = ik::clampRotation(local, limits_.limit(clavicle));
-        }
+        if (swing.angle > 0.0f) rotateInModel(clavicle, math::fromAxisAngle(swing.axis, swing.angle));
     }
 
     // Arm: from the rest pose (no walk swing), two-bone IK toward the target,
@@ -395,7 +433,7 @@ void Fielder::reach() {
     const math::Vec3 pole = left ? ik_.elbowPole : math::Vec3(-ik_.elbowPole.x, ik_.elbowPole.y, ik_.elbowPole.z);
     ik::solveTwoBone(arm, models_, motion::clampToReach(shoulder, target, armReach), pole, ik_.soften, current_);
 
-    // Leftover for the next stages (spine, pelvis, body, step: Steps 2.2-2.5).
+    // Leftover for the next stages (pelvis, body, step: Steps 2.3-2.5).
     reachError_ = std::max(0.0f, math::distance(shoulder, target) - armReach);
 }
 

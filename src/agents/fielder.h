@@ -43,6 +43,11 @@ struct ReachSettings {
     float armReach = 0.97f;         // share of full arm length the hand reaches; the elbow never locks
     float wristAboveTarget = 0.08f; // m; wrist goal above the target (the palm is on the ball)
     float maxSpeed = 0.05f;         // m/s; reaching runs only below this (standing)
+    // Spine stage: share of the bend and of the twist taken by spine_01,
+    // spine_02 and chest (each sums to 1); iterations absorb clamping.
+    math::Vec3 spineBend{0.6f, 0.2f, 0.2f};
+    math::Vec3 spineTwist{0.2f, 0.4f, 0.4f};
+    int spineIterations = 2;
 };
 
 class Fielder {
@@ -104,10 +109,14 @@ private:
     void stabiliseHead(float dt);
     void solveIk();
     void reach();
+    // Applies a model-space rotation to `joint` (about its own position),
+    // clamped to its limit. `models_` must be current.
+    void rotateInModel(int joint, math::Quat rotation);
     motion::GaitStyle gaitStyle() const;
 
     struct Joints {
         int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1, clavicleL = -1, clavicleR = -1;
+        int spine[3] = {-1, -1, -1};  // spine_01, spine_02, chest
         ik::TwoBoneChain legL, legR, armL, armR;
     };
 

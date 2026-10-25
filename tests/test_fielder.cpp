@@ -1,5 +1,5 @@
 // Whole-fielder checks: runs the real fielder from config and measures how the
-// body moves (side-to-side sway while running).
+// body moves (side-to-side sway while running, reaching for a ball).
 
 #include "agents/fielder.h"
 #include "core/config.h"
@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace {
 
@@ -21,7 +22,55 @@ struct Range {
     float span() const { return hi - lo; }
 };
 
+bool makeFielder(agents::Fielder& fielder) {
+    core::Config skeleton, joints, locomotion;
+    if (!skeleton.load(CRICKET_CONFIG_DIR "/fielder_skeleton.json") ||
+        !joints.load(CRICKET_CONFIG_DIR "/fielder_joints.json") ||
+        !locomotion.load(CRICKET_CONFIG_DIR "/locomotion.json"))
+        return false;
+    rig::SkeletonDef def;
+    return rig::loadSkeletonDef(skeleton, def) && fielder.init(def, def.height, joints, locomotion);
+}
+
+// World direction of a joint's local +Y (up the spine).
+math::Vec3 boneUp(const agents::Fielder& fielder, int joint) {
+    std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
+    fielder.rig().localToModel(fielder.pose(), models);
+    return fielder.root().transformDirection(math::normalize(math::Vec3(models[static_cast<size_t>(joint)][1])));
+}
+
+math::Vec3 boneForward(const agents::Fielder& fielder, int joint) {
+    std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
+    fielder.rig().localToModel(fielder.pose(), models);
+    return fielder.root().transformDirection(math::normalize(math::Vec3(models[static_cast<size_t>(joint)][2])));
+}
+
 } // namespace
+
+TEST_CASE("reaching for a ball on the ground ahead bends the spine forward") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
+    fielder.setReachTarget(fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
+    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    const math::Vec3 chestUp = boneUp(fielder, fielder.rig().findJoint("chest"));
+    MESSAGE("chest up . ahead = ", math::dot(chestUp, ahead), "  reach error ", fielder.reachError());
+    CHECK(math::dot(chestUp, ahead) > 0.3f);  // leaning toward the ball
+    CHECK(fielder.reachError() > 0.0f);       // a ground ball needs the pelvis and legs (2.3-2.4)
+}
+
+TEST_CASE("reaching for a ball to the side and behind twists the chest toward it") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    const math::Transform& root = fielder.root();
+    const math::Vec3 left = root.transformDirection(math::kRight);  // +X is left
+    fielder.setReachTarget(root.position + left * 0.5f - root.transformDirection(math::kForward) * 0.7f +
+                           math::Vec3(0, 1.3f, 0));
+    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    const math::Vec3 chestForward = boneForward(fielder, fielder.rig().findJoint("chest"));
+    MESSAGE("chest forward . left = ", math::dot(chestForward, left));
+    CHECK(math::dot(chestForward, left) > 0.1f);  // turned toward the left-behind target
+}
 
 TEST_CASE("running fielder keeps the body and feet in their lanes") {
     core::Config skeleton, joints, locomotion;

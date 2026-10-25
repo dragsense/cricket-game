@@ -73,12 +73,18 @@
     "headAimWeight": 1.0
   },
 
-  // Hand-driven reaching (M2), docs/BIOMECHANICS.md section 9. Stages: clavicle,
-  // then two-bone arm IK; the leftover error goes to the later stages.
+  // Hand-driven reaching (M2), docs/BIOMECHANICS.md section 9. Stages: spine,
+  // clavicle, then two-bone arm IK; the leftover error goes to the later stages.
   "reach": {
     "armReach": 0.97,         // share of full arm length; the elbow never locks straight
     "wristAboveTarget": 0.08, // m; wrist goal above the ball centre (palm on the ball)
-    "maxSpeed": 0.05          // m/s; reach only while standing
+    "maxSpeed": 0.05,         // m/s; reach only while standing
+    // Spine stage (BIOMECHANICS 9.3): one swing about the spine base, split into
+    // bend and twist; shares for [spine_01, spine_02, chest], normalised to 1.
+    // Twist is mostly thoracic (lumbar twist ~7 deg), bend mostly lumbar.
+    "spineBend": [0.6, 0.2, 0.2],
+    "spineTwist": [0.2, 0.4, 0.4],
+    "spineIterations": 2      // re-solve to absorb clamping and the higher pivots
   },
 
   // Body repositioning (runs every tick after the foot targets are set).

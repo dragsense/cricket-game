@@ -24,7 +24,14 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   elbow never locks. The leftover distance is kept in `Fielder::reachError()`.
   Settings in `config/fielder_joints.json` "reach". No smoothing yet (2.6), so the arm
   snaps to a new target. `test_reach.cpp` added.
-- [ ] **2.2 Spine rotation** (law of cosines swing, weighted over spine_01/02/chest)
+- [x] **2.2 Spine rotation** (built; tests pass; awaiting the user's visual check): runs
+  before the clavicle. One `motion::swingToward` swing about the spine base, split into
+  bend and twist (about the character's up), each shared over spine_01 / spine_02 /
+  chest by `reach.spineBend` [0.6, 0.2, 0.2] and `reach.spineTwist` [0.2, 0.4, 0.4]
+  (BIOMECHANICS 9.3), every bone clamped to its swing-twist limit; `spineIterations` 2
+  absorbs clamping. `Fielder::rotateInModel` is shared with the clavicle. agents_tests:
+  a ground ball ahead tilts the chest ~58° forward (error left for 2.3–2.4); a target
+  behind-left twists the chest toward it.
 - [ ] **2.3 Pelvis rotation and tilt**
 - [ ] **2.4 Body repositioning toward the hand** (offset added to the foot repositioning)
 - [ ] **2.5 Lunge step / max reach hold** (leftover error kept for the dive)
