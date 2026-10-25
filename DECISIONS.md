@@ -155,3 +155,17 @@ Dated log. Format: decision, reason, alternatives rejected.
   locomotion; the problems were tuning and phase bugs. A physics body waits for Jolt.
 - **Also:** W uses the camera heading only while the fielder is stopped (user's choice,
   so the camera can orbit a running fielder).
+
+## 2026-10-25: M2 becomes hand-driven reaching; roadmap shifted
+- **Decision:** M2 is hand-driven reaching and body repositioning. Ball physics moves to
+  M3, fielding to M4 (later milestones shift by one). The dive moves to M3 because it
+  needs the ball's arrival time.
+- **Reach mechanism:** solved continuously like `repositionBody`; recruitment arm →
+  clavicle → spine → pelvis → body translation → one lunge step; beyond that the body
+  holds maximum reach and keeps the leftover error (dive trigger later). No squat/drop
+  limit at first, to observe behaviour. Hand and foot body offsets are summed, never
+  overriding each other. Target placed by mouse click on the ground; one hand (nearest
+  automatic) or both. Standing only.
+- **Reason:** the user's choice; fielding needs reaching before ball interaction.
+- **Rejected:** multi-step approach to the target (that is M4 fielding); logging only
+  when out of reach.

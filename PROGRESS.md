@@ -1,8 +1,26 @@
 # Progress
 
-## Current milestone: M2 Basic ball flight (drag), bounce, roll — NOT STARTED
+## Current milestone: M2 Hand-Driven Body Repositioning (Reaching) — IN PROGRESS
 
-Start it with the `start-milestone` skill.
+Goal: a hand target (a ball on the ground, placed by mouse click) drives the whole body,
+the same way foot targets drive the body in `repositionBody`. Solved continuously every
+tick (the body re-adjusts while the target moves). Recruitment follows real
+biomechanics: arm → clavicle → spine → pelvis rotation/tilt → body translation in any
+direction (no squat/drop limit yet, to observe behaviour) → one lunge step. If still out
+of reach, the body holds its maximum reach toward the target and the leftover error is
+kept (the dive trigger, M3). Hand and foot repositioning offsets are added together;
+neither overrides the other. Hand mode: one hand (nearest picked automatically) or both.
+Standing only (walking cancels the reach). Out of scope: ball physics, dive, reaching
+while walking, game logic. One step at a time; stop for a visual check after each.
+
+- [ ] **2.0 Research** → docs/BIOMECHANICS.md "Reaching" (recruitment order, clavicle,
+  spine, pelvis ranges, squat/kneel, balance, timing). Stop for review.
+- [ ] **2.1 Arm and clavicle** (two-bone IK at armReach ≈ 0.97, clavicle for first leftover)
+- [ ] **2.2 Spine rotation** (law of cosines swing, weighted over spine_01/02/chest)
+- [ ] **2.3 Pelvis rotation and tilt**
+- [ ] **2.4 Body repositioning toward the hand** (offset added to the foot repositioning)
+- [ ] **2.5 Lunge step / max reach hold** (leftover error kept for the dive)
+- [ ] **2.6 Balance and natural timing** (CoM, counter-balance arm, springs, two-hand)
 
 ## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
 
@@ -143,11 +161,12 @@ Scope:
 |---|---|---|
 | M0 | Foundation: window, render, cameras, debug tools | done |
 | M1 | Procedural fielder body and basic locomotion: ozz skeleton, IK, joint limits, stepping, walk, jog, run | done |
-| M2 | Basic ball flight (drag), bounce, roll | not started |
-| M3 | Fielding: chase, intercept, pick-up, throw, catch | not started |
-| M4 | Wicketkeeper | not started |
-| M5 | Bowling | not started |
-| M6 | Batting | not started |
+| M2 | Hand-driven body repositioning (reaching) | in progress |
+| M3 | Basic ball flight (drag), bounce, roll; dive (needs ball arrival time) | not started |
+| M4 | Fielding: chase, intercept, pick-up, throw, catch | not started |
+| M5 | Wicketkeeper | not started |
+| M6 | Bowling | not started |
+| M7 | Batting | not started |
 | M7 | Match rules | not started |
 | M8 | Broadcast cameras | not started |
 | M9 | Game UI (RmlUi) | not started |

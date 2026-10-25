@@ -288,10 +288,15 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
 - Jumping was dropped from M1 (the user's choice). It comes back with the fielding
   actions that need it (M3: catches, dives).
 
-### Ball physics (M2): not started
+### Reaching (M2): in progress
+A hand target drives the body like foot targets do in `repositionBody`: arm, clavicle,
+spine, pelvis, then body translation (summed with the foot offset), then one lunge step;
+beyond that the body holds maximum reach. See docs/BIOMECHANICS.md "Reaching".
+
+### Ball physics (M3): not started
 Our own code: flight with drag, bounce off pitch and outfield, rolling. Fixed-step.
 
-### Agents / AI (M3+): not started
+### Agents / AI (M4+): not started
 Player bodies (agents) driven by fielding, bowling and batting decisions (ai).
 
 ### Match (M7): not started
@@ -319,9 +324,10 @@ Status and checklists live in [PROGRESS.md](PROGRESS.md).
 - **M1 (done):** procedural fielder rig: ozz-animation skeleton, ozz two-bone/aim IK,
   our swing-twist limits, body repositioning, stepping, walk, jog, run (no jump, no
   ImGuizmo, no demos).
-- **M2:** basic ball physics (ours): flight with drag, bounce off the pitch and outfield,
-  and rolling. Fielders need a ball to chase.
-- **M3:** fielding: chase, intercept, pick-up, throw and catch, using M1 + M2.
+- **M2:** hand-driven reaching and body repositioning (no ball, no game logic).
+- **M3:** basic ball physics (ours): flight with drag, bounce off the pitch and outfield,
+  and rolling; dive (needs the ball's arrival time).
+- **M4:** fielding: chase, intercept, pick-up, throw and catch, using M1–M3.
 - Then batting and bowling reuse the same rig, IK and motion systems.
 
 ## Decisions still open
