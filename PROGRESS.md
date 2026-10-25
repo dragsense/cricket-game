@@ -13,7 +13,7 @@ neither overrides the other. Hand mode: one hand (nearest picked automatically) 
 Standing only (walking cancels the reach). Out of scope: ball physics, dive, reaching
 while walking, game logic. One step at a time; stop for a visual check after each.
 
-- [ ] **2.0 Research** → docs/BIOMECHANICS.md "Reaching" (recruitment order, clavicle,
+- [x] **2.0 Research** (awaiting the user's review) → docs/BIOMECHANICS.md section 9 "Reaching" (recruitment order, clavicle,
   spine, pelvis ranges, squat/kneel, balance, timing). Stop for review.
 - [ ] **2.1 Arm and clavicle** (two-bone IK at armReach ≈ 0.97, clavicle for first leftover)
 - [ ] **2.2 Spine rotation** (law of cosines swing, weighted over spine_01/02/chest)

@@ -621,10 +621,142 @@ This section is brief by design. Detailed research belongs to the fielding miles
 
 ---
 
+## 9. Reaching (M2)
+
+How a standing person brings a hand to a target that may be beyond arm's length, here a
+ball on the ground. Joint ranges are in section 2; this section adds the order in which
+segments are recruited, how they depend on each other, and the working limits used
+while reaching.
+
+### 9.1 Recruitment order (which segment joins when)
+- **Arm first, trunk when needed.** Targets within arm's length are reached with the
+  shoulder and elbow and almost no trunk motion. For targets beyond it, trunk
+  displacement grows with target distance, first by forward trunk inclination, then by
+  raising or moving the whole body
+  ([Levin et al., Exp Brain Res 2001](https://link.springer.com/doi/10.1007/s00221-001-0976-6))
+  **[P]**. The trunk is recruited when the target is too far for shoulder–elbow
+  coordination alone, because it is massive and costly to start and stop
+  ([PMC8626510](https://pmc.ncbi.nlm.nih.gov/articles/PMC8626510)) **[P]**. The trunk
+  also places the hand, not only stabilising posture
+  ([PMC3773211](https://pmc.ncbi.nlm.nih.gov/articles/PMC3773211)) **[P]**.
+- **Shoulder girdle.** The first ~30° of arm elevation is mostly glenohumeral; after
+  that the scapula and clavicle join at an overall ratio of about 2:1 (humerus :
+  scapula), so the clavicle is the first "extra reach" after the arm
+  ([ABMP, scapulohumeral rhythm](https://www-b.abmp.com/massage-and-bodywork-magazine/issues/marchapril-2021/scapulohumeral-rhythm))
+  **[T]**.
+- **Standing reach uses the whole chain.** In the functional reach test, spinal motion
+  is forward flexion plus lateral flexion plus thoracolumbar rotation plus lower-body
+  rotation ([Cavanaugh et al. 1999](https://scholars.duke.edu/publication/665672);
+  [Duncan et al. 1990](https://researchers.mq.edu.au/en/publications/functional-reach-a-new-clinical-measure-of-balance/))
+  **[P]**.
+- **Lumbar vs. hip in forward bending (lumbopelvic rhythm).** The lumbar spine leads,
+  then the hips (pelvis tilting on the femurs) take over: lumbar : hip ratio ≈ 1.9 for
+  0–30° of bending, 0.9 for 30–60°, 0.4 for 60–90°
+  ([Esola et al. 1996](https://pubmed.ncbi.nlm.nih.gov/9122766/)) **[P]**. Tight
+  hamstrings shift this toward more lumbar motion
+  ([PMC7064356](https://pmc.ncbi.nlm.nih.gov/articles/PMC7064356)) **[P]**.
+- **Going lower: stoop vs. squat.** A stoop (straight knees) lowers the hand with the
+  lumbar spine and hips; a squat adds knee flexion. The largest difference between the
+  two is at the knee (model peaks ~16° vs. ~52°)
+  ([arXiv 1910.01184](https://arxiv.org/pdf/1910.01184);
+  [BMC Musculoskelet Disord 10:15](https://link.springer.com/doi/10.1186/1471-2474-10-15))
+  **[P]**. Real pickups mix both; fielders lower the body with the legs rather than
+  bending the back (section 8) **[T]**.
+
+**Order used by the game.** Each stage takes only the error the previous stage could not
+remove: arm (shoulder, elbow) → clavicle → spine (lumbar first for bending, thoracic for
+twist) → pelvis turn and forward tilt (hip flexion) → body translation in any direction
+(legs bend through leg IK) → lunge step → hold maximum reach (the dive comes later).
+
+### 9.2 Dependencies between segments
+- The **shoulder position depends on** clavicle, spine and pelvis. Proximal stages are
+  solved first and the arm IK runs last, on the final shoulder position.
+- **Pelvis tilt is hip flexion**, so it is limited by the hips: 120° with knees bent but
+  only ~80–90° with straight knees (hamstrings, section 2). Lowering the body (knees
+  bending) therefore *unlocks* more pelvis tilt.
+- **Body translation is limited by the legs.** Each hip-to-ankle distance stays within
+  leg length (the `repositionBody` rule); planted feet do not move.
+- **Balance couples everything.** Any forward reach moves the CoM; the hips shift back
+  to keep it over the feet (section 3, 9.5).
+
+### 9.3 Working ranges while reaching
+Reaching uses comfortable working ranges, not the clinical maxima of section 2. Spine
+values vary widely between sources and with age
+([Brighton lumbar database](https://research.brighton.ac.uk/en/publications/a-normative-database-of-lumbar-spine-ranges-of-motion/);
+[VA thoracolumbar exam template](https://vivian.worldvista.org/dox/Routine_DVBCWNS5_source.html)).
+
+| Segment (our bones) | Motion | Working range (deg) | Note |
+|---|---|---|---|
+| Clavicle (`clavicle`) | protraction / elevation | 15 / 30 | elevation up to ~40–60 clinically, mostly with the arm overhead **[T]** |
+| Lumbar (`spine_01`) | flexion / side bend / twist | 50 / 20 / 7 | lumbar twist is small (median ~7° each way) **[P]** |
+| Thoracic (`spine_02` + `chest`) | flexion / side bend / twist | 30 / 20 / 35 | thoracic rotation 35–50° **[T]** |
+| Whole thoracolumbar | flexion / side bend / twist | ~90 / ~30 / ~30–45 | VA template **[T]** |
+| Pelvis on the hips | forward tilt (hip flexion) | 80 straight knees, 110 knees bent | hamstring coupling **[T]** |
+| Pelvis | axial turn (hip rotation, feet planted) | ~30 | from hip rotation ranges **[E]** |
+
+Split rule **[E]**: twist mostly thoracic (~80 %); forward bend lumbar-heavy early and
+hip-heavy late (9.1); side bend shared evenly.
+
+### 9.4 Squat and kneeling
+- Squat depth by knee angle: partial ~40°, half 70–100°, deep >100° (NSCA review).
+  Measured "horizontal" squats average knee ~113°, hip ~128°, ankle dorsiflexion ~23°;
+  half squats ~71° / 88° / 16°
+  ([CEJSSM](https://wnus.usz.edu.pl/cejssm/hr/issue/1244/article/19713);
+  [J Exerc Sci Fit 2021](https://doaj.org/article/87e2425e7e374edf892fe6d1c38cd85f))
+  **[P]**. These are means, not hard limits.
+- **Kneeling:** no kinematic source was found for half-kneeling pickups. The cricket
+  "long barrier" puts one knee down beside the other foot's heel **[T]**.
+- M2 starts with **no squat or drop limit** (the user's choice), so the solve can be
+  observed. A minimum hip height and the one-knee drop come later.
+
+### 9.5 Balance compensation
+- A forward reach moves the CoM forward. The body responds with a backward shift of the
+  centre of pressure and the hips, and a counterweight from the free arm or leg
+  ([Liu et al., APAs in forward reaching](https://pure.lib.cgu.edu.tw/en/publications/within-session-acquisition-of-anticipatory-postural-adjustments-d-3/);
+  section 3) **[P]/[T]**.
+- A reach done mainly by bending at the hips moves the centre of pressure less than one
+  done by leaning from the ankles
+  ([Aino repository abstract](https://aino.repo.nii.ac.jp/records/648), secondary) **[T]**.
+- Static rule: the CoM's ground projection stays inside the base of support (section 3).
+  If it cannot, a step is needed (stepping strategy).
+
+### 9.6 Timing
+- **Posture before the arm.** Postural muscles fire about 50–100 ms before the arm's
+  prime mover (anticipatory postural adjustments). Standing, soleus is inhibited and
+  tibialis anterior fires first; hamstrings and erector spinae then fire with the
+  rotator cuff, before the anterior deltoid
+  ([Silva et al.](https://recipp.ipp.pt/bitstreams/95a6bb60-98da-4bee-8793-ddf7dbd24aca/download))
+  **[P]**.
+- **The trunk spans the hand movement.** When used, it starts with or before the hand
+  and stops after it ([Levin et al. 2001](https://link.springer.com/doi/10.1007/s00221-001-0976-6))
+  **[P]**.
+- So the hand *looks* like it leads (it moves fastest), but the trunk and hips start at
+  the same time or slightly earlier and settle later. This refines the M2 plan's "arm
+  leads, body follows": onset is near-simultaneous, the body settles later.
+
+### Implementation notes (`config/reach.json`)
+- Each tick (late update, after foot repositioning), every stage reduces the error and
+  passes the rest on: arm → clavicle → spine → pelvis → body translation → lunge → hold.
+  Proximal segments are posed first; the arm IK runs last.
+- `armReach` = 0.97 × arm length (the elbow never locks).
+- Spine weights: twist lumbar 0.2 / thoracic 0.8; bend lumbar 0.6 / thoracic 0.4. Each
+  bone is clamped by its swing-twist limit (`fielder_joints.json`).
+- Pelvis tilt limit from 9.3, raised with knee flexion (80° straight, 110° bent).
+- Body translation is an offset *added* to the foot repositioning offset; leg length
+  clamps it. No minimum squat height at first.
+- Timing: all stages start together; each has a spring, stiffest for the arm and softest
+  for the pelvis and body, so the hand arrives first and the body settles last (9.6).
+- Balance: the hips shift opposite to the CoM excursion; the free arm extends backward.
+  Gains in config.
+
+---
+
 ## Gaps and follow-ups
 - These numbers were not found online and rely on standard textbook values: the exact
   Winter / Perry joint-angle curves, arm-swing shoulder ranges, and running hip and knee
   peaks. They should be checked against the books if motion looks off.
 - Diving and penultimate-step data are deferred to M3.
+- Reaching: no kinematic source for half-kneeling pickups; the pelvis axial turn and the
+  spine split are estimates **[E]**.
 - All values are male-referenced. Female and other body types can be added later by
   swapping the ratio and mass tables in config.
