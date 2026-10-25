@@ -72,9 +72,14 @@ struct ReachSettings {
     float gripTolerance = 0.02f;  // m; the hand counts as on the ball within this
     float giveUpTime = 0.4f;      // s at full stretch, out of reach, before letting go (the dive later)
     float ballRadius = 0.036f;    // m; two-hand mode puts a hand each side
-    // Grip: fingers curl as the wrist nears its goal within gripRadius (m);
-    // curl at full grip per joint [_01, _02, _03] (degrees in config).
-    float gripRadius = 0.15f;
+    // Grip: full curl per joint [_01, _02, _03] once the hand is on the ball
+    // and while holding it (degrees in config); relaxedCurl share otherwise.
+    float relaxedCurl = 0.25f;
+    // Palm: its centre is palmCentre (m) down the hand from the wrist; the
+    // palm faces the side the fingers curl to (-X left, +X right); a held
+    // ball sits ballRadius + palmThickness (m) out from the palm centre.
+    float palmCentre = 0.05f;
+    float palmThickness = 0.015f;
     math::Vec3 fingerCurl{math::radians(35.0f), math::radians(55.0f), math::radians(40.0f)};
     math::Vec3 thumbCurl{math::radians(10.0f), math::radians(30.0f), math::radians(25.0f)};
     // Lunge: out of reach at full stretch, the foot nearer the ball steps to
@@ -175,6 +180,8 @@ private:
     // Clavicle + two-bone IK of one arm toward `goal`.
     void reachArm(bool left, math::Vec3 goal);
     void grip(bool left, float amount);  // curls the fingers and thumb, 0..1
+    // Held ball's centre in the hand's joint space (in front of the palm).
+    math::Vec3 ballSpot(bool left) const;
     math::Vec3 reachGoal() const { return goal_; }  // primary wrist goal, character space
     // Applies a model-space rotation to `joint` (about its own position),
     // clamped to its limit. `models_` must be current.

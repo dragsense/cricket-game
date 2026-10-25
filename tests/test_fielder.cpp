@@ -177,6 +177,17 @@ TEST_CASE("reaching for a ball to the side and behind twists the chest toward it
     CHECK(math::dot(chestForward, left) > 0.1f);  // turned toward the left-behind target
 }
 
+TEST_CASE("the fielder starts with the ball in hand; placing it releases it") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    CHECK(fielder.holding());
+    fielder.setMoveInput(math::Vec2(0.0f, 1.0f), true, 0.0f);  // still held while walking
+    for (int i = 0; i < 120; ++i) fielder.tick(1.0 / 120.0);
+    CHECK(fielder.holding());
+    fielder.setReachTarget(fielder.root().transformPoint(math::Vec3(0.2f, 0.036f, 0.4f)));
+    CHECK_FALSE(fielder.holding());
+}
+
 TEST_CASE("picking: grips the ball, carries it back, stands again") {
     agents::Fielder fielder;
     REQUIRE(makeFielder(fielder));

@@ -70,6 +70,13 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   left, right, both (a hand each side of the ball). **R** abandons a pick. Walk input
   waits during a pick. Tests: pick + carry + stand again, lunge pick of a 1.2 m ball,
   right-hand mode, `stepTo`.
+  Follow-up (user's review): the fielder starts with the ball in the right hand (carried
+  while walking/running); a left click takes it from the hand and puts it down there;
+  E/Q ignored while held. Fingers and thumb close fully once the hand is on the ball and
+  stay closed while held, relaxed (`relaxedCurl`) otherwise; the thumb now flexes toward
+  the palm about Z like the fingers (thumb limits moved to Z). While reaching, the hand
+  turns so the palm faces the ball; a held ball sits in front of the palm
+  (`palmCentre`, `palmThickness`), not inside the fingers.
 - [-] **2.6** folded into 2.5 (user's choice): timing via the eased goal, balance from 2.4.
 
 ## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review

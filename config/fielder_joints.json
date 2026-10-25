@@ -58,8 +58,9 @@
     "pinky_03":  { "type": "hinge", "axis": "z", "min": -80, "max": 0 },
     // Thumb (runs down, forward and toward the palm): kept loose for now.
     "thumb_01":  { "type": "swingTwist", "twistAxis": "y", "twist": [-20, 20], "swing1": [-40, 40], "swing2": [-40, 40] },
-    "thumb_02":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-60, 10], "swing2": [-10, 10] },
-    "thumb_03":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-80, 10], "swing2": [-5, 5] }
+    // Thumb flexes toward the palm about Z, like the fingers (negative on the left).
+    "thumb_02":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-10, 10], "swing2": [-60, 10] },
+    "thumb_03":  { "type": "swingTwist", "twistAxis": "y", "twist": [0, 0],     "swing1": [-5, 5],   "swing2": [-80, 10] }
   },
 
   "ik": {
@@ -124,9 +125,15 @@
     "lungeShort": 0.25,
     "lungeDuration": 0.4,
     "lungeHeight": 0.06,
-    // Grip: fingers curl as the wrist comes within gripRadius (m) of its goal;
-    // full curl per joint [_01, _02, _03], degrees.
-    "gripRadius": 0.15,
+    // Grip: fingers and thumb close fully once the hand is on the ball and stay
+    // closed while it is held; otherwise relaxedCurl of it (a natural hand).
+    // Full curl per joint [_01, _02, _03], degrees.
+    "relaxedCurl": 0.25,
+    // Palm centre palmCentre m down the hand from the wrist; it faces the side
+    // the fingers curl to; a held ball sits ballRadius + palmThickness m out
+    // from it. While reaching, the hand turns so the palm faces the ball.
+    "palmCentre": 0.05,
+    "palmThickness": 0.015,
     "fingerCurlDeg": [35, 55, 40],
     "thumbCurlDeg": [10, 30, 25]
   },

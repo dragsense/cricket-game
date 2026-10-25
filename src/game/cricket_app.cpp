@@ -309,7 +309,7 @@ void CricketApp::updateReachBall(float dt) {
     // E / Q: raise or lower the ball (never below the ground).
     const float lift = (actions_.down(input_, core::Action::BallUp) ? 1.0f : 0.0f) -
                        (actions_.down(input_, core::Action::BallDown) ? 1.0f : 0.0f);
-    if (lift != 0.0f) {
+    if (lift != 0.0f && !sim_.fielder().holding()) {  // a held ball stays in the hand
         ballPos_.y = std::max(radius, ballPos_.y + lift * cfg_.input.getFloat("ballLiftSpeed", 1.0f) * dt);
         moved = true;
     }
@@ -326,7 +326,12 @@ void CricketApp::updateReachBall(float dt) {
         const float x = (2.0f * input_.mouseX / w - 1.0f) * tanHalf * (w / h);
         const float y = (1.0f - 2.0f * input_.mouseY / h) * tanHalf;
         const math::Vec3 ray = math::normalize(forward + right * x + up * y);
-        const float t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
+        float t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
+        // A click on a held ball takes it from the hand and puts it down there.
+        if (sim_.fielder().holding()) {
+            ballPos_.y = radius;
+            t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
+        }
         if (t > 0.0f) {
             const math::Vec3 hit = view.eye + ray * t;
             ballPos_.x = hit.x;

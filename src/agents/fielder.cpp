@@ -46,6 +46,10 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reposition_.followRate = joints.getFloat("reposition.followRate", reposition_.followRate);
     reposition_.softBand = joints.getFloat("reposition.softBand", reposition_.softBand);
     stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
+    // The fielder starts with the ball in the right hand.
+    phase_ = Phase::Idle;
+    holding_ = true;
+    reachLeft_ = bothHands_ = false;
     reach_.armReach = joints.getFloat("reach.armReach", reach_.armReach);
     reach_.wristOffset = joints.getFloat("reach.wristOffset", reach_.wristOffset);
     // Weights are normalised so each set sums to 1.
@@ -73,7 +77,9 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reach_.gripTolerance = joints.getFloat("reach.gripTolerance", reach_.gripTolerance);
     reach_.giveUpTime = joints.getFloat("reach.giveUpTime", reach_.giveUpTime);
     reach_.ballRadius = joints.getFloat("reach.ballRadius", reach_.ballRadius);
-    reach_.gripRadius = joints.getFloat("reach.gripRadius", reach_.gripRadius);
+    reach_.relaxedCurl = joints.getFloat("reach.relaxedCurl", reach_.relaxedCurl);
+    reach_.palmCentre = joints.getFloat("reach.palmCentre", reach_.palmCentre);
+    reach_.palmThickness = joints.getFloat("reach.palmThickness", reach_.palmThickness);
     reach_.fingerCurl = degs("reach.fingerCurlDeg", reach_.fingerCurl);
     reach_.thumbCurl = degs("reach.thumbCurlDeg", reach_.thumbCurl);
     reach_.maxLunge = joints.getFloat("reach.maxLunge", reach_.maxLunge);
@@ -271,6 +277,11 @@ void Fielder::tick(double dt) {
         reachArm(reachLeft_, goal_);
         if (bothHands_) reachArm(!reachLeft_, otherGoal_);
     }
+    // Fingers: closed around the ball once the hand is on it and while it is
+    // held (walking and running too), relaxed otherwise.
+    const bool closed = holding_ || (phase_ == Phase::Reach && holdTimer_ > 0.0f);
+    grip(true, closed && (reachLeft_ || bothHands_) ? 1.0f : reach_.relaxedCurl);
+    grip(false, closed && (!reachLeft_ || bothHands_) ? 1.0f : reach_.relaxedCurl);
     limits_.apply(current_);
     if (reachNow) {
         // Measured after the limits, so a clamped arm shows as a miss.
@@ -642,15 +653,20 @@ void Fielder::reachArm(bool left, math::Vec3 goal) {
     const math::Vec3 pole = math::safeNormalize(side - dir * math::dot(side, dir), side);
     ik::solveTwoBone(arm, models_, motion::clampToReach(shoulder, goal, armReach), pole, ik_.soften, current_);
 
-    // Grip: the fingers close as the wrist nears its goal (fully while holding).
+    // Palm toward the ball while reaching: turn the hand so its palm normal
+    // points from the palm centre at the ball (within the wrist's limits).
+    if (phase_ != Phase::Reach) return;
     rig_.localToModel(current_, models_);
-    const float near = 1.0f - math::distance(modelPos(models_, arm.end), goal) / std::max(reach_.gripRadius, 1e-3f);
-    grip(left, holding_ ? 1.0f : math::clamp(near, 0.0f, 1.0f));
+    const math::Mat4& hand = models_[static_cast<size_t>(arm.end)];
+    const math::Vec3 palm = math::Vec3(hand * math::Vec4(0.0f, -reach_.palmCentre, 0.0f, 1.0f));
+    const math::Vec3 normal = modelRot(models_, arm.end) * math::Vec3(left ? -1.0f : 1.0f, 0.0f, 0.0f);
+    const math::Vec3 ball = math::inverse(root_).transformPoint(reachTarget_);
+    rotateInModel(arm.end, math::fromTo(normal, math::safeNormalize(ball - palm, normal)));
 }
 
 void Fielder::grip(bool left, float amount) {
-    // Fingers flex about their local Z (negative on the left; mirrored), the
-    // thumb about X (config/fielder_joints.json sign guide).
+    // Fingers and thumb flex toward the palm about their local Z (negative on
+    // the left, mirrored on the right; config/fielder_joints.json sign guide).
     const int side = left ? 0 : 1;
     const float zSign = left ? -1.0f : 1.0f;
     const float curl[3] = {reach_.fingerCurl.x, reach_.fingerCurl.y, reach_.fingerCurl.z};
@@ -660,8 +676,7 @@ void Fielder::grip(bool left, float amount) {
             const int j = joints_.fingers[side][f][k];
             if (j < 0) continue;
             current_.locals[static_cast<size_t>(j)].rotation =
-                f < 4 ? math::fromAxisAngle(math::kForward, zSign * curl[k] * amount)
-                      : math::fromAxisAngle(math::kRight, -thumb[k] * amount);
+                math::fromAxisAngle(math::kForward, zSign * (f < 4 ? curl[k] : thumb[k]) * amount);
         }
     }
 }
@@ -752,14 +767,20 @@ void Fielder::finishPick(float dt) {
     }
 }
 
+math::Vec3 Fielder::ballSpot(bool left) const {
+    // Half the palm down the hand (-Y), out along the palm normal.
+    return math::Vec3(0.0f, -reach_.palmCentre, 0.0f) +
+           math::Vec3(left ? -1.0f : 1.0f, 0.0f, 0.0f) * (reach_.ballRadius + reach_.palmThickness);
+}
+
 math::Vec3 Fielder::ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const {
-    // The palm is wristOffset along the hand bone (which points down its -Y);
-    // with both hands, midway between them.
-    auto palm = [&](const ik::TwoBoneChain& arm) {
-        return math::Vec3(models[static_cast<size_t>(arm.end)] * math::Vec4(0.0f, -reach_.wristOffset, 0.0f, 1.0f));
+    // In front of the holding palm; with both hands, between the two palm centres.
+    auto at = [&](bool left, math::Vec3 local) {
+        const ik::TwoBoneChain& arm = left ? joints_.armL : joints_.armR;
+        return math::Vec3(models[static_cast<size_t>(arm.end)] * math::Vec4(local, 1.0f));
     };
-    const math::Vec3 p = bothHands_ ? 0.5f * (palm(joints_.armL) + palm(joints_.armR))
-                                    : palm(reachLeft_ ? joints_.armL : joints_.armR);
+    const math::Vec3 centre(0.0f, -reach_.palmCentre, 0.0f);
+    const math::Vec3 p = bothHands_ ? 0.5f * (at(true, centre) + at(false, centre)) : at(reachLeft_, ballSpot(reachLeft_));
     return root.transformPoint(p);
 }
 
