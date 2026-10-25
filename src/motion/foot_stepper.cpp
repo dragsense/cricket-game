@@ -21,6 +21,13 @@ float smoothstep(float x) {
     return x * x * (3.0f - 2.0f * x);
 }
 
+// Swing height share, 0 -> 1 at `peakAt` -> 0. Eases in and out on both
+// sides, so the foot never jumps up at lift-off however early the apex is.
+float swingArc(float t, float peakAt) {
+    const float p = math::clamp(peakAt, 0.1f, 0.9f);
+    return t < p ? smoothstep(t / p) : smoothstep((1.0f - t) / (1.0f - p));
+}
+
 } // namespace
 
 void FootStepper::reset(math::Vec3 left, math::Vec3 right) {
@@ -30,6 +37,7 @@ void FootStepper::reset(math::Vec3 left, math::Vec3 right) {
     stance_[1] = right;
     stanceWidth_ = std::fabs(left.x - right.x);
     pitch_[0] = pitch_[1] = toe_[0] = toe_[1] = 0.0f;
+    carry_[0] = carry_[1] = launch_ = math::Vec3(0.0f);
     swing_ = -1;
     t_ = 0.0f;
     wait_ = 0.0f;
@@ -41,6 +49,8 @@ void FootStepper::rebase(const math::Transform& from, const math::Transform& to)
     for (math::Vec3& f : feet_) f = toNew.transformPoint(f);
     from_ = toNew.transformPoint(from_);
     to_ = toNew.transformPoint(to_);
+    launch_ = toNew.transformDirection(launch_);
+    for (math::Vec3& v : carry_) v = toNew.transformDirection(v);
 }
 
 void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, float stepHeight, float settleDistance,
@@ -85,6 +95,8 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
         }
         swing_ = f;
         from_ = feet_[f];
+        launch_ = moving ? carry_[f] : math::Vec3(0.0f);  // keeps the speed it had after toe-off
+        carry_[f] = math::Vec3(0.0f);
         t_ = 0.0f;
         wait_ = 0.0f;
         dur_ = g.swing;
@@ -100,7 +112,8 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
 
     // Stance foot: late in the other foot's swing the heel rises and the foot
     // rolls over its ball (toes stay down), then the toes push off into the
-    // flight. The next swing starts from there.
+    // flight: it leaves the ground and starts forward (heel recovery), so the
+    // feet are never both down a full step apart. The next swing starts there.
     if (style.heelRise > 0.0f && moving) {
         const float roll = smoothstep((t - (1.0f - style.heelRise)) / style.heelRise);
         const float flightShare = dur_ > 0.0f ? std::min(g.flight / dur_, 1.0f) : 0.0f;
@@ -111,15 +124,26 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
         pitch_[stance] = pitch;
         toe_[stance] = -std::max(pitch, 0.0f);
         feet_[stance].y = stance_[stance].y + style.ballDistance * std::sin(std::max(pitch, 0.0f)) + style.flightLift * lift;
+        carry_[stance] = math::Vec3(velocity.x, 0.0f, velocity.z) * (style.flightCarry * lift);
+        feet_[stance] += carry_[stance] * dt;
     }
+}
+
+float FootStepper::rightWeight(float flightShare) const {
+    if (swing_ < 0) return -1.0f;
+    const float f = math::clamp(flightShare, 0.0f, 0.9f);
+    const float toSwing = f > 0.0f ? smoothstep((t_ - (1.0f - f)) / f) : 0.0f;
+    const float right = swing_ == static_cast<int>(Foot::Right) ? toSwing : 1.0f - toSwing;
+    return right;
 }
 
 void FootStepper::advanceSwing(float dt, float duration, float height, float peakAt) {
     t_ = std::min(1.0f, t_ + dt / std::max(duration, 0.05f));
-    math::Vec3 p = math::lerp(from_, to_, smoothstep(t_));  // lift off and land softly
-    // Arc apex at `peakAt` (0.5: centred sine; earlier: heel recovery).
-    const float shape = std::log(0.5f) / std::log(math::clamp(peakAt, 0.1f, 0.9f));
-    p.y += height * std::sin(math::kPi * std::pow(t_, shape));
+    // Hermite: leaves with the launch velocity, lands softly (zero speed).
+    const float t = t_, launch = t * (1.0f - t) * (1.0f - t) * std::max(duration, 0.05f);
+    math::Vec3 p = math::lerp(from_, to_, smoothstep(t)) + launch_ * launch;
+    // Arc apex at `peakAt` (0.5: centred; earlier: heel recovery).
+    p.y += height * swingArc(t, peakAt);
     feet_[swing_] = p;
 
     if (t_ >= 1.0f) {  // planted
@@ -156,6 +180,7 @@ bool FootStepper::startStep(math::Vec2 dir, const StepSettings& s) {
 
     swing_ = f;
     from_ = feet_[f];
+    launch_ = math::Vec3(0.0f);
     to_ = target[f];
     t_ = 0.0f;
     return true;

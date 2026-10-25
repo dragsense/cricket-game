@@ -105,6 +105,42 @@ TEST_CASE("gait blend interpolates every setting") {
     CHECK(m.stepK == doctest::Approx(a.stepK));
 }
 
+TEST_CASE("running bob is lowest mid-stance and highest mid-flight") {
+    const float f = 0.4f;  // stance is the first 60 % of the swing
+    CHECK(gaitBob(0.3f, f) == doctest::Approx(-0.5f));
+    CHECK(gaitBob(0.8f, f) == doctest::Approx(0.5f));
+    CHECK(gaitBob(0.0f, f) == doctest::Approx(0.0f));  // touchdown: mid-height, falling
+    CHECK(gaitBob(0.5f, 0.0f) == doctest::Approx(0.5f)); // walking: highest mid-swing
+}
+
+TEST_CASE("run share blends walk to run by flight") {
+    CHECK(runShare(0.0f) == doctest::Approx(0.0f));
+    CHECK(runShare(0.05f) == doctest::Approx(0.5f));
+    CHECK(runShare(0.4f) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("running swing foot eases off the ground (no jump at lift-off)") {
+    WalkSettings s;
+    s.speed = s.refSpeed = 5.0f;
+    s.stepK = 0.92f;
+    s.swingFraction = 1.0f;
+    s.flightFraction = 0.4f;
+    s.minSwing = 0.2f;
+    const GaitTiming g = gaitTiming(s.speed, 1.8f, s);
+    GaitStyle style;
+    style.peakAt = 0.38f;
+    FootStepper st;
+    st.reset(Vec3(0.1f, 0, 0), Vec3(-0.1f, 0, 0));
+    const float dt = 1.0f / 120.0f;
+    st.tickGait(dt, Vec3(0, 0, 5.0f), g, 0.36f, 0.12f, style);
+    REQUIRE(st.stepping());
+    const Foot f = static_cast<Foot>(st.swingFoot());
+    CHECK(st.foot(f).y < 0.01f);  // the old power-curve arc rose ~8 cm in the first tick
+    // Weight is on the stance foot early in the swing.
+    const float right = st.rightWeight(s.flightFraction);
+    CHECK(right == doctest::Approx(f == Foot::Right ? 0.0f : 1.0f));
+}
+
 TEST_CASE("running has a flight phase and lands both feet on stop") {
     WalkSettings s;
     s.speed = s.refSpeed = 4.0f;

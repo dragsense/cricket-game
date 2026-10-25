@@ -53,6 +53,9 @@ struct WalkSettings {
     float widthScale = 1.0f;     // share of standing width the feet land at
     float pelvisTwist = 0.0f;    // rad, pelvis turn toward the forward leg
     float chestCounter = 0.0f;   // chest turn against the pelvis, share of pelvisTwist
+    float flightCarry = 0.0f;    // share of body speed the back foot moves forward at after toe-off
+    float sideFollow = 1.0f;     // share of the sideways shift over the stance foot the pelvis takes
+    float pelvisDrop = 0.0f;     // m the pelvis sits lower (stance knee flexes more when running)
 };
 
 // Movement pace chosen by the player; the body's gait shape follows the
@@ -71,6 +74,16 @@ struct GaitTiming {
 };
 
 GaitTiming gaitTiming(float speed, float height, const WalkSettings& s);
+
+// Pelvis height over one step, in [-0.5, 0.5], at swing progress t. Walking
+// (no flight): lowest in double support, highest mid-swing. Running: lowest
+// mid-stance and highest mid-flight (spring-mass); `flightShare` is the
+// share of the swing with both feet off the ground.
+float gaitBob(float t, float flightShare);
+
+// How far a gait is from walking toward running, [0, 1], by its flight share
+// (blends walk-only and run-only behaviour so pace changes never snap).
+float runShare(float flightShare);
 
 class WalkController {
 public:

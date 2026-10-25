@@ -8,6 +8,7 @@ namespace motion {
 namespace {
 
 constexpr float kMinGaitSpeed = 0.1f;  // m/s; slower walking uses this speed's timing
+constexpr float kRunShareFlight = 0.1f; // flight share at which a gait counts fully as running
 
 float wrapAngle(float a) {
     return std::remainder(a, math::kTwoPi);
@@ -54,6 +55,9 @@ WalkSettings blendGait(const WalkSettings& a, const WalkSettings& b, float t) {
     r.widthScale = math::lerp(a.widthScale, b.widthScale, t);
     r.pelvisTwist = math::lerp(a.pelvisTwist, b.pelvisTwist, t);
     r.chestCounter = math::lerp(a.chestCounter, b.chestCounter, t);
+    r.pelvisDrop = math::lerp(a.pelvisDrop, b.pelvisDrop, t);
+    r.sideFollow = math::lerp(a.sideFollow, b.sideFollow, t);
+    r.flightCarry = math::lerp(a.flightCarry, b.flightCarry, t);
     return r;
 }
 
@@ -67,6 +71,20 @@ GaitTiming gaitTiming(float speed, float height, const WalkSettings& s) {
     g.flight = math::clamp(s.flightFraction, 0.0f, 0.9f) * g.swing;
     g.stance = 2.0f * g.period - g.swing - g.flight;
     return g;
+}
+
+float gaitBob(float t, float flightShare) {
+    const float walk = std::sin(math::kPi * t) - 0.5f;
+    const float f = math::clamp(flightShare, 0.0f, 0.9f);
+    if (f <= 0.0f) return walk;
+    const float stance = 1.0f - f;
+    const float run = t < stance ? -0.5f * std::sin(math::kPi * t / stance)
+                                 : 0.5f * std::sin(math::kPi * (t - stance) / f);
+    return math::lerp(walk, run, runShare(f));
+}
+
+float runShare(float flightShare) {
+    return math::clamp(flightShare / kRunShareFlight, 0.0f, 1.0f);
 }
 
 void WalkController::reset(float yaw) {

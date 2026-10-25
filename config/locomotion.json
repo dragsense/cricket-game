@@ -48,11 +48,12 @@
     "acceleration": 3.5,
     "deceleration": 5.0,
     "turnRateDeg": 220,
-    "stepK": 0.556,          // 1.0 m step at 3 m/s (H = 1.8): 180 steps/min
+    "stepK": 0.6,            // 1.08 m step at 3 m/s (H = 1.8): ~167 steps/min
     "refSpeed": 3.0,
     "swingFraction": 1.0,    // no double support
     "flightFraction": 0.2,   // stance ~40 % of the stride
-    "flightLift": 0.03,
+    "flightLift": 0.08,      // back foot rises after toe-off (heel recovery starts)
+    "flightCarry": 0.8,      // and moves forward at this share of body speed
     "heelRise": 0.5,
     "toeOffPitchDeg": 25,
     "landPitchDeg": -8,      // rearfoot/midfoot strike
@@ -60,11 +61,13 @@
     "minSwing": 0.2,
     "maxSwing": 0.5,
     "stepHeight": 0.22,      // heel recovery height
-    "widthScale": 0.75,      // feet land a little nearer the midline than standing
+    "widthScale": 0.85,      // feet land a little nearer the midline than standing
+    "sideFollow": 0.4,       // pelvis shifts only partly over the stance foot
     "bob": 0.07,             // lowest mid-stance (flipped from walking)
     "sway": 0.012,
     "pelvisTwistDeg": 5,
     "chestCounter": 1.4,
+    "pelvisDrop": 0.02,      // stance knee ~35 deg mid-stance
     "leanPerSpeedDeg": 1.7,  // ~5 deg at 3 m/s
     "leanPerAccelDeg": 4.0,
     "maxLeanDeg": 20,
@@ -79,19 +82,22 @@
     // No backSpeed / sideSpeed: backing up and sidesteps stay at jog pace and shape.
     "acceleration": 4.0,
     "turnRateDeg": 240,
-    "stepK": 0.833,          // 1.5 m step at 5 m/s: 200 steps/min
+    "stepK": 0.92,           // 1.66 m step at 5 m/s: ~181 steps/min
     "refSpeed": 5.0,
     "flightFraction": 0.4,   // stance ~30 % of the stride
-    "flightLift": 0.05,
+    "flightLift": 0.15,
+    "flightCarry": 1.0,
     "toeOffPitchDeg": 35,
     "landPitchDeg": -3,      // midfoot
     "swingPeakAt": 0.38,
     "stepHeight": 0.36,      // heel higher toward the buttock
-    "widthScale": 0.65,      // feet near, not on, the midline
+    "widthScale": 0.8,       // feet near, not on, the midline; each keeps its own lane
+    "sideFollow": 0.25,      // ~1-2 cm sideways pelvis shift
     "bob": 0.06,             // less oscillation as speed rises
     "sway": 0.008,
     "pelvisTwistDeg": 6,
     "chestCounter": 1.6,
+    "pelvisDrop": 0.035,     // stance knee ~40-45 deg mid-stance
     "leanPerSpeedDeg": 1.4,  // ~7 deg at 5 m/s
     "armSwingDeg": 80,       // hands from about chin height to behind the hip
     "armBackBiasDeg": -5,

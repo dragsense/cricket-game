@@ -14,7 +14,11 @@ struct RepositionSettings {
     float standReach = 0.95f;  // comfortable hip-to-foot distance (fraction of leg length)
     float minReach = 0.5f;     // deepest crouch
     float maxReach = 0.98f;    // legs never fully straight
+    float softBand = 0.02f;    // the max reach eases in over this share of leg length (0: hard)
     float followRate = 10.0f;  // 1/s, how fast the body settles toward the comfortable height
+    float sideFollow = 1.0f;   // share of the sideways shift over the stance foot the body takes
+    float forwardFollow = 1.0f; // share of the forward/back shift over the feet (0: stay at restZ)
+    float restZ = 0.0f;        // pelvis forward position when not following the feet
     int iterations = 4;
 };
 

@@ -32,6 +32,7 @@ struct GaitStyle {
     float peakAt = 0.5f;        // swing time share of the arc apex
     float ballDistance = 0.1f;  // m, ankle to the ball of the foot (heel-rise pivot)
     float widthScale = 1.0f;    // share of standing width the feet land at
+    float flightCarry = 0.0f;   // share of body speed the back foot moves forward at after toe-off
 };
 
 enum class Foot : int { Left = 0, Right = 1 };
@@ -64,6 +65,10 @@ public:
     bool stepping() const { return swing_ >= 0; }
     int swingFoot() const { return swing_; }     // -1 when both are planted
     float swingProgress() const { return t_; }  // [0, 1] while stepping
+    // Running: share of the body's weight on the right foot from the gait
+    // phase (the stance foot, handing over to the swing foot through the
+    // flight); -1 when both feet are planted.
+    float rightWeight(float flightShare) const;
     // Foot pitch in character space (rad, positive = toes down) and toe bend
     // (rad, negative = toes up, keeping them on the ground while the heel rises).
     float footPitch(Foot f) const { return pitch_[static_cast<int>(f)]; }
@@ -75,6 +80,8 @@ private:
 
     math::Vec3 feet_[2]{};    // current positions (swing foot moves along the arc)
     math::Vec3 from_{0.0f}, to_{0.0f};
+    math::Vec3 launch_{0.0f};     // swing foot's starting velocity relative to the step (m/s)
+    math::Vec3 carry_[2]{};       // gait mode: back foot's forward velocity after toe-off
     math::Vec3 stance_[2]{};  // gait mode's standing spots
     float pitch_[2]{}, toe_[2]{};
     float wait_ = 0.0f;       // gait mode: time both feet have been planted

@@ -79,6 +79,7 @@
     "standReach": 0.95,       // comfortable standing height
     "minReach": 0.5,          // deepest crouch
     "maxReach": 0.98,         // legs never lock fully straight
+    "softBand": 0.02,         // max reach eases in over the last 2 % (above standReach: idle at normal height)
     "followRate": 10.0,       // 1/s, how fast the body settles over the feet
     "stanceBlendHeight": 0.1  // m; a foot this much higher than the other carries no weight
   }

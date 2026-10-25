@@ -29,6 +29,7 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     walker_.reset(def.spawnYaw);
     gait_ = motion::Gait::Walk;
     lean_ = math::Vec2(0.0f);
+    accel_ = 0.0f;
     legPhase_ = armAmount_ = headYaw_ = 0.0f;
     loadLocomotion(locomotion);
 
@@ -41,6 +42,7 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reposition_.minReach = joints.getFloat("reposition.minReach", reposition_.minReach);
     reposition_.maxReach = joints.getFloat("reposition.maxReach", reposition_.maxReach);
     reposition_.followRate = joints.getFloat("reposition.followRate", reposition_.followRate);
+    reposition_.softBand = joints.getFloat("reposition.softBand", reposition_.softBand);
     stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
     return setHeight(height);
 }
@@ -88,6 +90,9 @@ void Fielder::loadLocomotion(const core::Config& c) {
         w.widthScale = get("widthScale", w.widthScale);
         w.pelvisTwist = deg("pelvisTwistDeg", w.pelvisTwist);
         w.chestCounter = get("chestCounter", w.chestCounter);
+        w.pelvisDrop = get("pelvisDrop", w.pelvisDrop);
+        w.flightCarry = get("flightCarry", w.flightCarry);
+        w.sideFollow = get("sideFollow", w.sideFollow);
     };
     load("walk", walkSettings_);
     jogSettings_ = walkSettings_;
@@ -200,6 +205,7 @@ motion::GaitStyle Fielder::gaitStyle() const {
     s.peakAt = w.swingPeakAt;
     s.ballDistance = ballDistance_;
     s.widthScale = w.widthScale;
+    s.flightCarry = w.flightCarry;
     return s;
 }
 
@@ -207,9 +213,8 @@ void Fielder::addGaitMotion(float dt) {
     const motion::WalkSettings& w = shape_;
     const float amount = math::clamp(walker_.speed() / std::max(w.speed, 0.1f), 0.0f, 1.0f);
 
-    // Bob: walking, lowest in double support and highest mid-swing (stance
-    // leg under the hip); running flips it, lowest mid-stance (spring-mass)
-    // and rising into flight. Sway: toward the stance foot (+X is left).
+    // Bob: see motion::gaitBob. Running also lowers the pelvis so the stance
+    // knee flexes (about 40 deg mid-stance). Sway: toward the stance foot (+X is left).
     // Left leg position from the gait: it travels back to front while it
     // swings, front to back while the right swings. Held when standing.
     const int swing = stepper_.swingFoot();
@@ -219,14 +224,20 @@ void Fielder::addGaitMotion(float dt) {
 
     const float arc = swing >= 0 ? std::sin(math::kPi * stepper_.swingProgress()) : 0.0f;
     const float side = swing == static_cast<int>(motion::Foot::Right) ? 1.0f : -1.0f;
-    const math::Vec3 offset(side * w.sway * amount * arc, w.bob * amount * (w.flightFraction > 0.0f ? 0.5f - arc : arc - 0.5f), 0.0f);
+    // Between steps, hold the value at a step boundary (continuous for walk and run).
+    const float bob = motion::gaitBob(swing >= 0 ? stepper_.swingProgress() : 0.0f, w.flightFraction);
+    const math::Vec3 offset(side * w.sway * amount * arc, amount * (w.bob * bob - w.pelvisDrop), 0.0f);
 
     // Lean forward with speed and acceleration, and into turns (about +Z,
     // positive tips the body toward -X, the right).
     const float forward = math::dot(math::inverse(root_).transformDirection(walker_.velocity()), math::kForward);
-    const math::Vec2 want(w.leanPerSpeed * forward + w.leanPerAccel * walker_.acceleration(),
+    // Acceleration steps (to 0 on reaching speed); smoothing it before the
+    // lean filter makes the lean ease out instead of kinking.
+    const float follow = std::min(1.0f, w.leanRate * dt);
+    accel_ += (walker_.acceleration() - accel_) * follow;
+    const math::Vec2 want(w.leanPerSpeed * forward + w.leanPerAccel * accel_,
                           -w.turnLean * walker_.yawRate() * walker_.speed());
-    lean_ += (math::clamp(want, math::Vec2(-w.maxLean), math::Vec2(w.maxLean)) - lean_) * std::min(1.0f, w.leanRate * dt);
+    lean_ += (math::clamp(want, math::Vec2(-w.maxLean), math::Vec2(w.maxLean)) - lean_) * follow;
 
     math::Transform& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)];
     pelvis.position = pelvis_ + offset;
@@ -251,8 +262,18 @@ void Fielder::repositionBody(float dt) {
     motion::LegSupport right{modelPos(models_, joints_.legR.start) - restPelvis, toModel.transformPoint(targets_.footR)};
 
     // The lower foot carries the body; even weight when both are level.
+    // Running, both feet are in the air in flight, so the weight follows the
+    // gait phase instead (stance foot, handing over to the landing foot).
     float stance = math::clamp(0.5f + 0.5f * (left.foot.y - right.foot.y) / stanceBlendHeight_, 0.0f, 1.0f);
-    pelvis_ = motion::repositionBody(pelvis_, left, right, rig_.legLength(), stance, reposition_, dt);
+    const float phase = stepper_.rightWeight(shape_.flightFraction);
+    if (phase >= 0.0f) stance = math::lerp(stance, phase, motion::runShare(shape_.flightFraction));
+    motion::RepositionSettings reposition = reposition_;
+    reposition.sideFollow = shape_.sideFollow;  // runners barely shift sideways
+    // Moving, the root already travels smoothly; chasing the stance foot
+    // (which slides back every step) would make the body lag and surge.
+    reposition.forwardFollow = 1.0f - math::clamp(walker_.speed() / std::max(shape_.speed, 0.1f), 0.0f, 1.0f);
+    reposition.restZ = restPelvis.z;
+    pelvis_ = motion::repositionBody(pelvis_, left, right, rig_.legLength(), stance, reposition, dt);
     current_.locals[static_cast<size_t>(joints_.pelvis)].position = pelvis_;
 }
 

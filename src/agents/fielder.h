@@ -63,6 +63,7 @@ public:
     // the new pace and the gait shape blends with the actual speed.
     void setGait(motion::Gait gait) { gait_ = gait; }
     motion::Gait gait() const { return gait_; }
+    float speed() const { return walker_.speed(); }  // m/s
 
     const rig::SkeletonDef& def() const { return def_; }
     const rig::Rig& rig() const { return rig_; }
@@ -109,6 +110,7 @@ private:
     bool face_ = false;
     float faceYaw_ = 0.0f;
     math::Vec2 lean_{0.0f};  // smoothed (forward, into-turn) lean, radians
+    float accel_ = 0.0f;     // smoothed forward acceleration for the lean, m/s^2
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians
