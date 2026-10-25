@@ -39,7 +39,18 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   `motion::clampRotationVector` to `reach.pelvisMinDeg/MaxDeg` [-10, -30, -20] /
   [80, 30, 20] (forward tilt = hip flexion, straight knees). Test: a ground ball
   0.5 m ahead is now reached with straight legs (pelvis ~64° forward), feet unmoved.
-- [ ] **2.4 Body repositioning toward the hand** (offset added to the foot repositioning)
+- [x] **2.4 Body repositioning toward the hand** (built; tests pass; awaiting the user's
+  visual check): after the spine and pelvis, `motion::bodyReachOffset` moves the body
+  toward the target by the leftover, in any direction (no squat limit, as asked); each
+  iteration pushes, then projects each hip onto its planted leg's reach sphere, so a
+  blocked hip slides forward and down (knees bend). Leg reach = min(reposition.maxReach,
+  ik.soften) × leg length. The offset is added on top of the foot repositioning
+  (`pelvis_` unchanged), so both apply. Feet guard: bent ~90°, a pelvis turn becomes hip
+  abduction and the thigh limit lifted the planted ankle ~5 cm; now
+  `reachHipsWithPlantedFeet` scales the pelvis rotation back (bisection,
+  `reach.plantChecks`) until both ankles stay within `reach.footTolerance` (1 cm).
+  Tests: 0.5 m and 0.9 m ground balls reached (pelvis 21 cm lower for 0.9 m), feet
+  planted; a 3 m ball leaves ~0.96 m error.
 - [ ] **2.5 Lunge step / max reach hold** (leftover error kept for the dive)
 - [ ] **2.6 Balance and natural timing** (CoM, counter-balance arm, springs, two-hand)
 

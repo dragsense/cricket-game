@@ -89,7 +89,16 @@
     // character space: [forward tilt (hip flexion, + forward), turn, side tilt].
     // Forward tilt 80 = hip flexion with straight knees (hamstrings).
     "pelvisMinDeg": [-10, -30, -20],
-    "pelvisMaxDeg": [80, 30, 20]
+    "pelvisMaxDeg": [80, 30, 20],
+    // Body stage: the body moves toward the target in any direction (no squat
+    // limit yet), legs limited to min(reposition.maxReach, ik.soften); blocked hips slide along
+    // the leg's reach (forward and down). Iterations of push + slide.
+    "bodyIterations": 16,
+    // The hips limit the pelvis: if the joint limits would pull a planted ankle
+    // more than footTolerance (m) off its spot, the pelvis and body are scaled
+    // back by bisection (plantChecks steps); the arm takes the leftover.
+    "footTolerance": 0.01,
+    "plantChecks": 6
   },
 
   // Body repositioning (runs every tick after the foot targets are set).

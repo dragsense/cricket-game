@@ -2,6 +2,8 @@
 
 #include <doctest/doctest.h>
 
+#include <cmath>
+
 using motion::clampToReach;
 using motion::swingToward;
 
@@ -50,6 +52,21 @@ TEST_CASE("clampRotationVector limits each axis") {
     const math::Quat turn = math::fromAxisAngle(math::kUp, math::radians(60.0f));
     CHECK(math::angleBetween(motion::clampRotationVector(turn, lo, hi),
                              math::fromAxisAngle(math::kUp, math::radians(30.0f))) < 1e-3f);
+}
+
+TEST_CASE("bodyReachOffset slides the hips forward and down along the legs") {
+    const math::Vec3 footL(0.1f, 0, 0), footR(-0.1f, 0, 0), hipL(0.1f, 0.85f, 0), hipR(-0.1f, 0.85f, 0);
+    const float maxLeg = 0.88f;
+    const math::Vec3 shoulder(0.15f, 0.6f, 0.6f), target(0.15f, 0.1f, 1.2f);  // bent over, ball further ahead
+    const math::Vec3 o = motion::bodyReachOffset(shoulder, target, 0.55f, hipL, hipR, footL, footR, maxLeg, 16);
+    CHECK(o.z > 0.0f);  // forward
+    CHECK(o.y < 0.0f);  // and down: the knees bend
+    CHECK(math::distance(hipL + o, footL) <= maxLeg + 1e-4f);
+    CHECK(math::distance(hipR + o, footR) <= maxLeg + 1e-4f);
+    // Lowering alone is never blocked (no squat limit).
+    const math::Vec3 down = motion::bodyReachOffset({0.15f, 1.4f, 0}, {0.15f, 0.2f, 0}, 0.55f, hipL, hipR, footL,
+                                                    footR, maxLeg, 16);
+    CHECK(down.y == doctest::Approx(-0.65f).epsilon(1e-3));
 }
 
 TEST_CASE("clampToReach keeps near targets and pulls far ones in") {

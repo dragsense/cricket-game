@@ -77,7 +77,33 @@ TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet plante
     std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
     fielder.rig().localToModel(fielder.pose(), models);
     const math::Vec3 ankle = fielder.root().transformPoint(math::Vec3(models[static_cast<size_t>(fielder.rig().findJoint("foot_l"))][3]));
-    CHECK(math::distance(ankle, footL) < 0.02f);
+    CHECK(math::distance(ankle, footL) < 0.015f);
+}
+
+TEST_CASE("a ground ball further away lowers the body; the feet stay planted") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
+    fielder.tick(1.0 / 120.0);
+    const float standY = fielder.pose().locals[0].position.y;  // pelvis (root joint), character space
+    const math::Vec3 footL = fielder.targets().footL;
+    fielder.setReachTarget(fielder.root().position + ahead * 0.9f + math::Vec3(0, 0.036f, 0));
+    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    const float reachY = fielder.pose().locals[0].position.y;
+    MESSAGE("pelvis y ", standY, " -> ", reachY, "  reach error ", fielder.reachError());
+    CHECK(reachY < standY - 0.05f);
+    CHECK(fielder.reachError() < 0.01f);
+    CHECK(math::distance(fielder.targets().footL, footL) < 1e-4f);
+}
+
+TEST_CASE("a ball far out of reach leaves an error (the dive case later)") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
+    fielder.setReachTarget(fielder.root().position + ahead * 3.0f + math::Vec3(0, 0.036f, 0));
+    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    MESSAGE("reach error ", fielder.reachError());
+    CHECK(fielder.reachError() > 0.5f);
 }
 
 TEST_CASE("reaching for a ball to the side and behind twists the chest toward it") {

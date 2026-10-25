@@ -52,6 +52,9 @@ struct ReachSettings {
     // x = forward tilt (hip flexion; + forward), y = turn, z = side tilt.
     math::Vec3 pelvisMin{math::radians(-10.0f), math::radians(-30.0f), math::radians(-20.0f)};
     math::Vec3 pelvisMax{math::radians(80.0f), math::radians(30.0f), math::radians(20.0f)};
+    int bodyIterations = 16;  // body stage: push toward the target, slide along the legs
+    float footTolerance = 0.01f;  // m; an ankle further than this from its target counts as moved
+    int plantChecks = 6;          // bisection steps that scale the pelvis/body back to keep the feet
 };
 
 class Fielder {
@@ -112,9 +115,15 @@ private:
     void swingArms(float dt);
     void stabiliseHead(float dt);
     void solveIk();
-    // Reaching, split around the leg IK: spine and pelvis before it (the
-    // feet stay planted), clavicle and arm after the walk arm swing.
-    void reachBody();
+    // Reaching, split around the leg IK: spine, then pelvis and body before it
+    // (the feet stay planted), clavicle and arm after the walk arm swing.
+    void reachSpine();
+    // Pelvis rotation (scaled by `scale` in [0, 1]), then the body translation.
+    void reachHips(float scale);
+    // reachHips + leg IK, scaled back (bisection) until the joint limits keep
+    // both ankles on their planted foot targets.
+    void reachHipsWithPlantedFeet();
+    bool feetPlanted();
     void reachArm();
     math::Vec3 reachGoal() const;  // wrist goal, character space
     // Applies a model-space rotation to `joint` (about its own position),
@@ -162,6 +171,7 @@ private:
     IkTargets targets_;
     math::Vec3 pelvis_{0.0f};  // pelvis position in character space, kept between ticks
     rig::Pose previous_, current_;
+    rig::Pose reachBase_;  // scratch: pose after the spine stage, sized at build
     std::vector<math::Mat4> models_;  // scratch, sized at build
     math::Transform root_, previousRoot_;
 };
