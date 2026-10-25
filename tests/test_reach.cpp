@@ -36,6 +36,22 @@ TEST_CASE("swingToward: target too far points the end straight at it") {
     CHECK(math::nearlyEqual(math::normalize(moved), math::Vec3(1, 0, 0), 1e-4f));
 }
 
+TEST_CASE("clampRotationVector limits each axis") {
+    const math::Vec3 lo(math::radians(-10.0f), math::radians(-30.0f), math::radians(-20.0f));
+    const math::Vec3 hi(math::radians(80.0f), math::radians(30.0f), math::radians(20.0f));
+    const math::Quat small = math::fromAxisAngle(math::kRight, math::radians(40.0f));
+    CHECK(math::angleBetween(motion::clampRotationVector(small, lo, hi), small) < 1e-3f);
+    const math::Quat tooFar = math::fromAxisAngle(math::kRight, math::radians(100.0f));
+    CHECK(math::angleBetween(motion::clampRotationVector(tooFar, lo, hi),
+                             math::fromAxisAngle(math::kRight, math::radians(80.0f))) < 1e-3f);
+    const math::Quat back = math::fromAxisAngle(math::kRight, math::radians(-45.0f));
+    CHECK(math::angleBetween(motion::clampRotationVector(back, lo, hi),
+                             math::fromAxisAngle(math::kRight, math::radians(-10.0f))) < 1e-3f);
+    const math::Quat turn = math::fromAxisAngle(math::kUp, math::radians(60.0f));
+    CHECK(math::angleBetween(motion::clampRotationVector(turn, lo, hi),
+                             math::fromAxisAngle(math::kUp, math::radians(30.0f))) < 1e-3f);
+}
+
 TEST_CASE("clampToReach keeps near targets and pulls far ones in") {
     CHECK(math::nearlyEqual(clampToReach({0, 0, 0}, {0, 0.3f, 0}, 0.5f), math::Vec3(0, 0.3f, 0)));
     CHECK(math::nearlyEqual(clampToReach({0, 0, 0}, {0, 0, 2.0f}, 0.5f), math::Vec3(0, 0, 0.5f)));

@@ -32,7 +32,13 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   absorbs clamping. `Fielder::rotateInModel` is shared with the clavicle. agents_tests:
   a ground ball ahead tilts the chest ~58° forward (error left for 2.3–2.4); a target
   behind-left twists the chest toward it.
-- [ ] **2.3 Pelvis rotation and tilt**
+- [x] **2.3 Pelvis rotation and tilt** (built; tests pass; awaiting the user's visual
+  check): `reach()` is split around the leg IK: `reachBody()` (spine, then pelvis)
+  runs before it so the feet stay planted; `reachArm()` (clavicle, arm) runs last.
+  The pelvis swings about the hip centre for the spine's leftover, clamped per axis by
+  `motion::clampRotationVector` to `reach.pelvisMinDeg/MaxDeg` [-10, -30, -20] /
+  [80, 30, 20] (forward tilt = hip flexion, straight knees). Test: a ground ball
+  0.5 m ahead is now reached with straight legs (pelvis ~64° forward), feet unmoved.
 - [ ] **2.4 Body repositioning toward the hand** (offset added to the foot repositioning)
 - [ ] **2.5 Lunge step / max reach hold** (leftover error kept for the dive)
 - [ ] **2.6 Balance and natural timing** (CoM, counter-balance arm, springs, two-hand)

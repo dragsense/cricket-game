@@ -19,6 +19,10 @@ struct Swing {
 // reach^2 = r^2 + d^2 - 2 r d cos(angle).
 Swing swingToward(math::Vec3 pivot, math::Vec3 end, math::Vec3 target, float reach);
 
+// Clamps `q` per axis of its rotation vector (axis * angle, radians): x, y
+// and z each limited to [min, max]. Used for the pelvis (tilt, turn, side tilt).
+math::Quat clampRotationVector(math::Quat q, math::Vec3 min, math::Vec3 max);
+
 // `target` moved toward `from` so it is at most `reach` away.
 math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach);
 

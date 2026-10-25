@@ -56,7 +56,28 @@ TEST_CASE("reaching for a ball on the ground ahead bends the spine forward") {
     const math::Vec3 chestUp = boneUp(fielder, fielder.rig().findJoint("chest"));
     MESSAGE("chest up . ahead = ", math::dot(chestUp, ahead), "  reach error ", fielder.reachError());
     CHECK(math::dot(chestUp, ahead) > 0.3f);  // leaning toward the ball
-    CHECK(fielder.reachError() > 0.0f);       // a ground ball needs the pelvis and legs (2.3-2.4)
+}
+
+TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet planted") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
+    fielder.tick(1.0 / 120.0);
+    const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
+    fielder.setReachTarget(fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
+    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    const math::Vec3 pelvisUp = boneUp(fielder, fielder.rig().findJoint("pelvis"));
+    MESSAGE("pelvis up . ahead = ", math::dot(pelvisUp, ahead), "  reach error ", fielder.reachError());
+    CHECK(math::dot(pelvisUp, ahead) > 0.3f);
+    CHECK(fielder.reachError() < 0.4f);  // the spine alone left about 0.52 m
+    CHECK(math::distance(fielder.targets().footL, footL) < 1e-4f);
+    CHECK(math::distance(fielder.targets().footR, footR) < 1e-4f);
+
+    // The ankles really are at the foot targets after the leg IK.
+    std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
+    fielder.rig().localToModel(fielder.pose(), models);
+    const math::Vec3 ankle = fielder.root().transformPoint(math::Vec3(models[static_cast<size_t>(fielder.rig().findJoint("foot_l"))][3]));
+    CHECK(math::distance(ankle, footL) < 0.02f);
 }
 
 TEST_CASE("reaching for a ball to the side and behind twists the chest toward it") {

@@ -48,6 +48,10 @@ struct ReachSettings {
     math::Vec3 spineBend{0.6f, 0.2f, 0.2f};
     math::Vec3 spineTwist{0.2f, 0.4f, 0.4f};
     int spineIterations = 2;
+    // Pelvis stage limits (radians), as a rotation vector in character space:
+    // x = forward tilt (hip flexion; + forward), y = turn, z = side tilt.
+    math::Vec3 pelvisMin{math::radians(-10.0f), math::radians(-30.0f), math::radians(-20.0f)};
+    math::Vec3 pelvisMax{math::radians(80.0f), math::radians(30.0f), math::radians(20.0f)};
 };
 
 class Fielder {
@@ -108,7 +112,11 @@ private:
     void swingArms(float dt);
     void stabiliseHead(float dt);
     void solveIk();
-    void reach();
+    // Reaching, split around the leg IK: spine and pelvis before it (the
+    // feet stay planted), clavicle and arm after the walk arm swing.
+    void reachBody();
+    void reachArm();
+    math::Vec3 reachGoal() const;  // wrist goal, character space
     // Applies a model-space rotation to `joint` (about its own position),
     // clamped to its limit. `models_` must be current.
     void rotateInModel(int joint, math::Quat rotation);
@@ -129,6 +137,7 @@ private:
     float armLength_ = 0.6f;  // shoulder to wrist (m), from the skeleton
     math::Vec3 reachTarget_{0.0f};
     bool reaching_ = false;
+    bool reachLeft_ = true;  // this tick's reaching hand
     float reachError_ = 0.0f;
     motion::RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
