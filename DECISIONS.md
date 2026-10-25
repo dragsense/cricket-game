@@ -146,3 +146,12 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Decision:** Step 1.7 (jump) is removed from M1. Jumps return with the fielding
   actions that need them (M3).
 - **Reason:** the user's choice.
+
+## 2026-10-25: Run review fixes before M2
+- **Decision:** keep the kinematic approach (foot placement + IK + gait-phase pelvis
+  motion); fix bob phase, cadence, stance-leg compression, flight-phase back foot, pelvis
+  following and swing smoothness rather than switching to a physics (spring-mass) body.
+- **Reason:** the research review found the approach matches standard procedural
+  locomotion; the problems were tuning and phase bugs. A physics body waits for Jolt.
+- **Also:** W uses the camera heading only while the fielder is stopped (user's choice,
+  so the camera can orbit a running fielder).

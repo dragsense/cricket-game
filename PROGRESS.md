@@ -77,6 +77,28 @@ check after each step.
   `test_walk.cpp` adds blend and flight-phase tests.
   Camera: right-drag rotates by default; Tab toggles mouse-look (the mouse turns the
   orbit camera, cursor hidden via relative mouse mode). Later: sprint (to 9 m/s), crossover, turn-and-run (M3).
+- [x] **1.6b Run review fixes (2026-10-25, pre-M2)** (awaiting the user's visual check):
+  research review of the run against docs/BIOMECHANICS.md section 5, then fixes:
+  - Bob phase: `motion::gaitBob` puts the pelvis lowest mid-stance and highest mid-flight
+    (was highest at touchdown). `motion::runShare` blends walk-only/run-only behaviour.
+  - Cadence: jog `stepK` 0.6 (~167 steps/min at 3 m/s), run 0.92 (~181 at 5 m/s).
+  - `pelvisDrop` (jog 2 cm, run 3.5 cm) for stance knee flexion.
+  - Back foot leaves the ground at toe-off and moves forward in flight (`flightCarry`,
+    higher `flightLift`); it was planted a whole step, giving a 1.6 m lunge.
+  - Pelvis no longer chases the stance foot fore/aft while moving (`forwardFollow`
+    from speed); sideways follow per gait (`sideFollow`, run 0.25); wider running
+    feet (`widthScale` jog 0.85, run 0.8) so the feet keep their lanes.
+  - Smoothness: swing arc eases in at lift-off (old power curve jumped ~8 cm), swing
+    keeps its launch velocity (Hermite), soft max leg reach (`reposition.softBand`
+    0.02, must stay above standReach), running weight from gait phase
+    (`FootStepper::rightWeight`), smoothed acceleration for the lean, continuous idle bob.
+  - Input: W takes the camera heading only while stopped, so the camera can orbit a
+    moving fielder.
+  - Side sway root cause: the min-reach clamp also acted on the lifted leg, so the
+    tucked heel pushed the pelvis ±28 cm sideways; the unloaded leg now only limits
+    max reach (pelvis now ±0.4 cm). This also caused the crossed-over look.
+  Tests: `test_walk.cpp` additions and new `agents_tests` (`test_fielder.cpp`, whole
+  fielder at run speed: pelvis sway and foot lanes). User confirmed fixed 2026-10-25.
 - [ ] Cross-cutting: config hot-reload key; slow motion (0.1–1x) and pause in ImGui;
   unit tests for joint limits, swing-twist and repositioning.
 

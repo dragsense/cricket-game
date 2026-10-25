@@ -456,6 +456,21 @@ toe-off (section 4.1). Sprint and the crossover come later.
 - **Arms:** elbows near 85–90°, and an 80° shoulder swing (hands from about chin height
   to behind the hip), opposite the legs.
 
+### Step 1.6b review (2026-10-25)
+A check against the literature found the approach right but several details off. Fixed:
+- **Bob phase:** the pelvis was highest at touchdown. Now lowest mid-stance and highest
+  mid-flight (spring-mass model;
+  [Geyer et al. 2005](https://www.ri.cmu.edu/app/uploads/2017/11/GeyerEA05JTheorBiol.pdf)).
+- **Cadence:** was 180 and 200 steps/min at 3 and 5 m/s. Recreational runners are about
+  160–170 and 175–185 ([Hanley](https://eprints.leedsbeckett.ac.uk/id/eprint/7491/6/TheBiomechanicsOfDistanceRunningAM-HANLEY.pdf))
+  **[P/E]**. Steps are now about 1.08 m and 1.66 m.
+- **Stance knee:** about 20° at contact and 40–45° mid-stance **[T]**; the pelvis now
+  drops 2–3.5 cm when jogging and running.
+- **Back foot in flight:** it leaves the ground at toe-off and starts forward. It was
+  planted for the whole step, which made a lunge with both feet down.
+- **Pelvis:** it stays over the root fore/aft while moving, and shifts only partly
+  sideways when running (lateral CoM motion in running is small, about 1–2 cm **[E]**).
+
 ---
 
 ## 6. Jumping
