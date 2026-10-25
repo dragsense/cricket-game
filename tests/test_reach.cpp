@@ -63,6 +63,22 @@ TEST_CASE("supportExcess: zero over the feet, the overhang outside") {
     CHECK(e.y == doctest::Approx(0.23f));  // 0.35 ahead of the foot line, minus the radius
 }
 
+TEST_CASE("movementTime: Fitts' law, longer reaches take longer") {
+    CHECK(motion::movementTime(0.0f, 0.1f, 0.1f, 0.1f) == doctest::Approx(0.1f));  // no distance: onset only
+    const float near = motion::movementTime(0.2f, 0.1f, 0.1f, 0.1f);
+    const float far = motion::movementTime(1.0f, 0.1f, 0.1f, 0.1f);
+    CHECK(near == doctest::Approx(0.1f + 0.1f * 2.0f));            // log2(4) = 2 bits
+    CHECK(far == doctest::Approx(0.1f + 0.1f * std::log2(20.0f)));
+    CHECK(far > near);
+}
+
+TEST_CASE("timeToClosest: when a moving ball crosses the fielder's line") {
+    // Ball 10 m ahead, coming back at 5 m/s, passing 1 m to the side.
+    CHECK(motion::timeToClosest({1.0f, 0.0f, 10.0f}, {0, 0, -5.0f}, {0, 0, 0}) == doctest::Approx(2.0f));
+    CHECK(motion::timeToClosest({1.0f, 0.0f, -2.0f}, {0, 0, -5.0f}, {0, 0, 0}) < 0.0f);  // already past
+    CHECK(motion::timeToClosest({1.0f, 0.0f, 3.0f}, {0, 0, 0}, {0, 0, 0}) == 0.0f);      // not moving
+}
+
 TEST_CASE("clampToReach keeps near targets and pulls far ones in") {
     CHECK(math::nearlyEqual(clampToReach({0, 0, 0}, {0, 0.3f, 0}, 0.5f), math::Vec3(0, 0.3f, 0)));
     CHECK(math::nearlyEqual(clampToReach({0, 0, 0}, {0, 0, 2.0f}, 0.5f), math::Vec3(0, 0, 0.5f)));

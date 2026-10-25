@@ -46,6 +46,17 @@ math::Vec2 supportExcess(math::Vec2 com, math::Vec2 a, math::Vec2 b, float radiu
     return len <= radius ? math::Vec2(0.0f) : d * ((len - radius) / len);
 }
 
+float movementTime(float distance, float width, float a, float b) {
+    const float id = std::log2(std::max(2.0f * distance / std::max(width, 1e-3f), 1.0f));
+    return a + b * id;
+}
+
+float timeToClosest(math::Vec3 ball, math::Vec3 velocity, math::Vec3 point) {
+    const math::Vec2 v(velocity.x, velocity.z), d(ball.x - point.x, ball.z - point.z);
+    const float speed2 = math::dot(v, v);
+    return speed2 > math::kEpsilon ? -math::dot(d, v) / speed2 : 0.0f;
+}
+
 math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach) {
     const math::Vec3 d = target - from;
     const float len = math::length(d);

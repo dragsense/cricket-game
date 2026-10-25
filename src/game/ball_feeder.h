@@ -38,6 +38,7 @@ public:
 
     void tick(float dt);
     math::Vec3 position() const { return current_; }
+    math::Vec3 velocity() const { return active_ ? velocity_ : math::Vec3(0.0f); }
     math::Vec3 position(float alpha) const { return math::lerp(previous_, current_, alpha); }
 
 private:

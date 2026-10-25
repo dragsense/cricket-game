@@ -733,6 +733,15 @@ hip-heavy late (9.1); side bend shared evenly.
 - So the hand *looks* like it leads (it moves fastest), but the trunk and hips start at
   the same time or slightly earlier and settle later. This refines the M2 plan's "arm
   leads, body follows": onset is near-simultaneous, the body settles later.
+- **Movement time (Fitts' law).** Aimed movements take MT = a + b·log2(2D/W) for
+  distance D and target width W; a stylus pointing study measured a ≈ 13 ms and
+  b ≈ 95 ms per bit ([MacKenzie 1992](https://yorku.ca/mack/GI92.html)) **[P]**. We use
+  a = 0.1 s (whole-body onset), b = 0.1 s/bit, W = 0.1 m (hand around the ball)
+  **[E]**: a 0.2 m reach takes ~0.3 s, 1 m ~0.53 s.
+- **Intercepting a moving ball** **[E]**: the hand meets it where its straight path
+  passes closest to the fielder (where it crosses the line of control square to its
+  path); the reach starts one movement time (plus a lunge's time) before that, so it
+  arrives as the ball does; a moving ball is grabbed on contact.
 
 ### Implementation notes (`config/fielder_joints.json` "reach")
 - Each tick (late update, after foot repositioning), every stage reduces the error and

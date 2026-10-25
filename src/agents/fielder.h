@@ -63,12 +63,20 @@ struct ReachSettings {
     // Elbow pole before it is made perpendicular to the arm: out (+ = away
     // from the body), down, back (- = behind), left arm; mirrored for the right.
     math::Vec3 elbowPole{0.4f, -1.0f, -0.6f};
-    // Pick timing: the wrist goal eases from its rest spot to the ball over
-    // reachTime, holds holdTime once on the ball (grip), then the ball is
-    // carried back over returnTime (s).
-    float reachTime = 0.45f;
+    // Pick timing (BIOMECHANICS 9.6): the wrist goal eases from its rest spot
+    // to the ball and back over Fitts' law times a + b log2(2D / W) for the
+    // distance D the hand travels; holdTime on the ball before carrying it.
+    float fittsA = 0.1f;      // s
+    float fittsB = 0.1f;      // s per bit
+    float fittsWidth = 0.1f;  // m, target width (hand around the ball)
     float holdTime = 0.15f;
-    float returnTime = 0.6f;
+    // Whether and when to pick: a ball whose meeting point (where it passes
+    // closest; for a still ball, where it lies) is further than pickRange (m,
+    // horizontally from the middle of the feet) is not tried. A moving ball
+    // (faster than movingSpeed m/s) is waited for: the reach starts so the
+    // hand arrives as it passes (plus the lunge time if a lunge is needed).
+    float pickRange = 1.5f;
+    float movingSpeed = 0.2f;
     float gripTolerance = 0.02f;  // m; the hand counts as on the ball within this
     float giveUpTime = 0.4f;      // s at full stretch, out of reach, before letting go (the dive later)
     float ballRadius = 0.036f;    // m; two-hand mode puts a hand each side
@@ -121,8 +129,9 @@ public:
 
     // The ball (world space). Moving it drops it if held; it is only picked
     // on startPick().
-    void setReachTarget(math::Vec3 world) {
+    void setReachTarget(math::Vec3 world, math::Vec3 velocity = math::Vec3(0.0f)) {
         reachTarget_ = world;
+        reachVelocity_ = velocity;
         holding_ = false;
     }
     // Reach for the ball, grip it, carry it back to the standing pose. A lunge
@@ -131,6 +140,8 @@ public:
     // Abandon the pick: ease back to standing (keeps a held ball).
     void clearReach();
     bool reaching() const { return phase_ != Phase::Idle; }
+    bool waiting() const { return phase_ == Phase::Wait; }  // for a moving ball to come
+    float reachProgress() const { return pickTime_; }        // 0..1 of the reach (back to 0 on return)
     bool holding() const { return holding_; }
     void setHandMode(HandMode mode) { handMode_ = mode; }
     HandMode handMode() const { return handMode_; }
@@ -179,6 +190,8 @@ private:
     void updatePick(float dt);
     void finishPick(float dt);
     void lungeToward(math::Vec3 ball);  // character space
+    void startReturn();                  // carry back from goal_, Fitts timed
+    float handTime(float distance) const;  // Fitts' law movement time
     // Clavicle + two-bone IK of one arm toward `goal`.
     void reachArm(bool left, math::Vec3 goal);
     void grip(bool left, float amount);  // curls the fingers and thumb, 0..1
@@ -208,7 +221,10 @@ private:
     math::Vec3 restShoulderL_{0.0f}, restShoulderR_{0.0f};  // character space, rest pose
     math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
     math::Vec3 reachTarget_{0.0f};  // the ball, world space
-    enum class Phase { Idle, Reach, Return };
+    math::Vec3 reachVelocity_{0.0f};  // world, m/s
+    enum class Phase { Idle, Wait, Reach, Return };
+    float pickDuration_ = 0.4f, returnDuration_ = 0.5f;  // s, Fitts' law per pick
+    math::Vec3 meetPoint_{0.0f};  // character space: where the hand meets the ball (lunge aim)
     Phase phase_ = Phase::Idle;
     HandMode handMode_ = HandMode::Auto;
     float pickTime_ = 0.0f;   // 0..1 progress of the reach (back to 0 on return)

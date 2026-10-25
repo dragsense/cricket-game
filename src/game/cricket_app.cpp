@@ -255,7 +255,7 @@ void CricketApp::fixedUpdate(double dt) {
     if (feeder_.active() && sim_.fielder().holding()) feeder_.stop();
     if (feeder_.active()) {
         feeder_.tick(static_cast<float>(dt));
-        sim_.fielder().setReachTarget(feeder_.position());
+        sim_.fielder().setReachTarget(feeder_.position(), feeder_.velocity());
     }
     sim_.tick(dt);
 }

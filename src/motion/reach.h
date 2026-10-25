@@ -29,6 +29,15 @@ math::Quat clampRotationVector(math::Quat q, math::Vec3 min, math::Vec3 max);
 // nearest point to `com`; zero inside.
 math::Vec2 supportExcess(math::Vec2 com, math::Vec2 a, math::Vec2 b, float radius);
 
+// Fitts' law movement time (s) to move `distance` onto a target `width`
+// wide: a + b * log2(2D / W), never below a (MacKenzie 1992; BIOMECHANICS 9.6).
+float movementTime(float distance, float width, float a, float b);
+
+// A ball moving in a straight line: time (s) until it is closest to `point`
+// on the ground plane (x, z), i.e. crosses the line through `point` square to
+// its path. Negative once it has passed; 0 if it is not moving.
+float timeToClosest(math::Vec3 ball, math::Vec3 velocity, math::Vec3 point);
+
 // `target` moved toward `from` so it is at most `reach` away.
 math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach);
 

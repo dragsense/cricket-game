@@ -90,6 +90,15 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   or at a random height, random speed and side offset, passing beside them; Space in
   time picks it, otherwise it stops behind them; T again throws another. A click
   stops a throw (manual placement). Test: `test_ball_feeder.cpp`.
+  Human timing (user's request): reach and return take Fitts' law time for the hand's
+  travel (`motion::movementTime`, BIOMECHANICS 9.6). Space no longer acts at once: a
+  new Wait phase finds the meeting point (`motion::timeToClosest`: where the ball's
+  path passes closest to the feet; where a still ball lies). Beyond `reach.pickRange`
+  (1.5 m) it is not tried; a still ball in range is reached at once; a moving one is
+  waited for, the reach (plus a lunge if needed, stepped first to the meeting point)
+  starting so the hand arrives as it passes; a moving ball is grabbed on contact.
+  Already past: tried at once if in range. No dive. Tests: Fitts, timeToClosest, out of
+  range, still ball sooner when nearer, moving ball waited for (~2.5 s) then caught.
 - [-] **2.6** folded into 2.5 (user's choice): timing via the eased goal, balance from 2.4.
 
 ## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
