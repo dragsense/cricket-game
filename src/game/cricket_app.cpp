@@ -218,6 +218,14 @@ bool CricketApp::pumpEvents() {
                                                                       : motion::Gait::Walk);
 
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
+    if (actions_.pressed(input_, core::Action::Pick)) sim_.fielder().startPick();
+    if (actions_.pressed(input_, core::Action::CycleHand)) {
+        agents::Fielder& f = sim_.fielder();
+        const agents::HandMode next = static_cast<agents::HandMode>((static_cast<int>(f.handMode()) + 1) % 4);
+        f.setHandMode(next);
+        constexpr const char* kNames[] = {"auto", "left", "right", "both"};
+        LOG_INFO("picking hand: {}", kNames[static_cast<int>(next)]);
+    }
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
@@ -327,6 +335,7 @@ void CricketApp::updateReachBall(float dt) {
         }
     }
 
+    // Placing the ball only sets it; Space makes the fielder pick it.
     if (!moved) return;
     math::Transform ball;
     ball.position = ballPos_;
@@ -339,6 +348,13 @@ void CricketApp::updateFielder(float alpha) {
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
     fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
+    if (fielder.holding()) {
+        // The ball rides in the hand; a later drag starts from here.
+        ballPos_ = fielder.ballInHand(fielderModels_, fielder.interpolatedRoot(alpha));
+        math::Transform ball;
+        ball.position = ballPos_;
+        world_.setTransform(scene_.ball, ball);
+    }
 }
 
 void CricketApp::drawDebugGeometry(float alpha) {

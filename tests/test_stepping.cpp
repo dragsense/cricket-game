@@ -32,6 +32,18 @@ Foot finishStep(FootStepper& st, Vec2 dir, const StepSettings& s) {
 
 } // namespace
 
+TEST_CASE("stepTo moves one foot to the spot, the other stays") {
+    motion::FootStepper stepper;
+    stepper.reset({0.1f, 0, 0}, {-0.1f, 0, 0});
+    REQUIRE(stepper.stepTo(motion::Foot::Left, {0.3f, 0.5f, 0.6f}));
+    CHECK_FALSE(stepper.stepTo(motion::Foot::Right, {0, 0, 0}));  // one at a time
+    motion::StepSettings s;
+    for (int i = 0; i < 120 && stepper.stepping(); ++i) stepper.tick(1.0f / 120.0f, math::Vec2(0.0f), s);
+    CHECK_FALSE(stepper.stepping());
+    CHECK(math::nearlyEqual(stepper.foot(motion::Foot::Left), math::Vec3(0.3f, 0.0f, 0.6f), 1e-4f));  // ground height kept
+    CHECK(math::nearlyEqual(stepper.foot(motion::Foot::Right), math::Vec3(-0.1f, 0, 0), 1e-4f));
+}
+
 TEST_CASE("feet stay planted without input") {
     StepSettings s;
     FootStepper st = standing();

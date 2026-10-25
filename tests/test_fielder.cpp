@@ -22,14 +22,28 @@ struct Range {
     float span() const { return hi - lo; }
 };
 
-bool makeFielder(agents::Fielder& fielder) {
+bool makeFielder(agents::Fielder& fielder, bool lunge = false) {
     core::Config skeleton, joints, locomotion;
     if (!skeleton.load(CRICKET_CONFIG_DIR "/fielder_skeleton.json") ||
         !joints.load(CRICKET_CONFIG_DIR "/fielder_joints.json") ||
         !locomotion.load(CRICKET_CONFIG_DIR "/locomotion.json"))
         return false;
     rig::SkeletonDef def;
-    return rig::loadSkeletonDef(skeleton, def) && fielder.init(def, def.height, joints, locomotion);
+    if (!rig::loadSkeletonDef(skeleton, def) || !fielder.init(def, def.height, joints, locomotion)) return false;
+    if (!lunge) {
+        agents::ReachSettings r = fielder.reachSettings();
+        r.maxLunge = 0.0f;  // feet stay planted
+        fielder.setReachSettings(r);
+    }
+    return true;
+}
+
+// Places the ball and picks it; returns once the reach is fully eased in
+// (before the grip hold ends and the return starts).
+void reachFor(agents::Fielder& fielder, math::Vec3 ball) {
+    fielder.setReachTarget(ball);
+    fielder.startPick();
+    for (int i = 0; i < 56; ++i) fielder.tick(1.0 / 120.0);
 }
 
 // World direction of a joint's local +Y (up the spine).
@@ -51,8 +65,7 @@ TEST_CASE("reaching for a ball on the ground ahead bends the spine forward") {
     agents::Fielder fielder;
     REQUIRE(makeFielder(fielder));
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
-    fielder.setReachTarget(fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
-    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    reachFor(fielder, fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
     const math::Vec3 chestUp = boneUp(fielder, fielder.rig().findJoint("chest"));
     MESSAGE("chest up . ahead = ", math::dot(chestUp, ahead), "  reach error ", fielder.reachError());
     CHECK(math::dot(chestUp, ahead) > 0.3f);  // leaning toward the ball
@@ -65,8 +78,7 @@ TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet plante
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
     fielder.tick(1.0 / 120.0);
     const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
-    fielder.setReachTarget(fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
-    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    reachFor(fielder, fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
     const math::Vec3 pelvisUp = boneUp(fielder, fielder.rig().findJoint("pelvis"));
     MESSAGE("pelvis up . ahead = ", math::dot(pelvisUp, ahead), "  reach error ", fielder.reachError());
     CHECK(math::dot(pelvisUp, ahead) > 0.3f);
@@ -88,8 +100,7 @@ TEST_CASE("a ground ball too far for planted feet: lower, balanced, feet planted
     fielder.tick(1.0 / 120.0);
     const float standY = fielder.pose().locals[0].position.y;  // pelvis (root joint), character space
     const math::Vec3 footL = fielder.targets().footL;
-    fielder.setReachTarget(fielder.root().position + ahead * 0.9f + math::Vec3(0, 0.036f, 0));
-    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    reachFor(fielder, fielder.root().position + ahead * 0.9f + math::Vec3(0, 0.036f, 0));
     const float reachY = fielder.pose().locals[0].position.y;
     MESSAGE("pelvis y ", standY, " -> ", reachY, "  reach error ", fielder.reachError());
     CHECK(reachY < standY - 0.05f);
@@ -107,8 +118,7 @@ TEST_CASE("a ground ball beside the foot is reached") {
     const math::Transform& root = fielder.root();
     const math::Vec3 left = root.transformDirection(math::kRight);  // +X is left
     const math::Vec3 ahead = root.transformDirection(math::kForward);
-    fielder.setReachTarget(root.position + left * 0.25f + ahead * 0.1f + math::Vec3(0, 0.036f, 0));
-    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    reachFor(fielder, root.position + left * 0.25f + ahead * 0.1f + math::Vec3(0, 0.036f, 0));
     MESSAGE("beside foot: reach error ", fielder.reachError());
     CHECK(fielder.reachError() < 0.02f);
 }
@@ -125,8 +135,7 @@ TEST_CASE("ground balls near the feet: reach sweep") {
             agents::Fielder fielder;
             REQUIRE(makeFielder(fielder));
             const math::Transform root = fielder.root();
-            fielder.setReachTarget(root.transformPoint(math::Vec3(x, 0.036f, z)));
-            for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+            reachFor(fielder, root.transformPoint(math::Vec3(x, 0.036f, z)));
             ++total;
             if (fielder.reachError() > 0.02f) {
                 ++misses;
@@ -142,8 +151,7 @@ TEST_CASE("a ball far out of reach leaves an error (the dive case later)") {
     agents::Fielder fielder;
     REQUIRE(makeFielder(fielder));
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
-    fielder.setReachTarget(fielder.root().position + ahead * 3.0f + math::Vec3(0, 0.036f, 0));
-    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
+    reachFor(fielder, fielder.root().position + ahead * 3.0f + math::Vec3(0, 0.036f, 0));
     MESSAGE("reach error ", fielder.reachError());
     CHECK(fielder.reachError() > 0.5f);
 
@@ -162,12 +170,65 @@ TEST_CASE("reaching for a ball to the side and behind twists the chest toward it
     REQUIRE(makeFielder(fielder));
     const math::Transform& root = fielder.root();
     const math::Vec3 left = root.transformDirection(math::kRight);  // +X is left
-    fielder.setReachTarget(root.position + left * 0.5f - root.transformDirection(math::kForward) * 0.7f +
+    reachFor(fielder, root.position + left * 0.5f - root.transformDirection(math::kForward) * 0.7f +
                            math::Vec3(0, 1.3f, 0));
-    for (int i = 0; i < 10; ++i) fielder.tick(1.0 / 120.0);
     const math::Vec3 chestForward = boneForward(fielder, fielder.rig().findJoint("chest"));
     MESSAGE("chest forward . left = ", math::dot(chestForward, left));
     CHECK(math::dot(chestForward, left) > 0.1f);  // turned toward the left-behind target
+}
+
+TEST_CASE("picking: grips the ball, carries it back, stands again") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    fielder.tick(1.0 / 120.0);  // settled standing height
+    const math::Transform root = fielder.root();
+    const float standY = fielder.pose().locals[0].position.y;
+    fielder.setReachTarget(root.transformPoint(math::Vec3(0.2f, 0.036f, 0.4f)));
+    fielder.startPick();
+    bool held = false;
+    for (int i = 0; i < 3 * 120; ++i) {
+        fielder.tick(1.0 / 120.0);
+        held = held || fielder.holding();
+    }
+    CHECK(held);
+    CHECK(fielder.holding());          // still carrying it
+    CHECK_FALSE(fielder.reaching());   // back to standing
+    CHECK(fielder.pose().locals[0].position.y == doctest::Approx(standY).epsilon(0.02));
+}
+
+TEST_CASE("picking: a ball out of planted reach is picked with a lunge step") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder, true));
+    const math::Transform root = fielder.root();
+    const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
+    fielder.setReachTarget(root.transformPoint(math::Vec3(0.1f, 0.036f, 1.2f)));
+    fielder.startPick();
+    bool held = false, stepped = false;
+    for (int i = 0; i < 4 * 120; ++i) {
+        fielder.tick(1.0 / 120.0);
+        held = held || fielder.holding();
+        stepped = stepped || math::distance(fielder.targets().footL, footL) > 0.2f ||
+                  math::distance(fielder.targets().footR, footR) > 0.2f;
+    }
+    CHECK(stepped);
+    CHECK(held);
+}
+
+TEST_CASE("picking: hand mode Right uses the right hand for a ball on the left") {
+    agents::Fielder fielder;
+    REQUIRE(makeFielder(fielder));
+    fielder.setHandMode(agents::HandMode::Right);
+    const math::Transform root = fielder.root();
+    const math::Vec3 ball = root.transformPoint(math::Vec3(0.3f, 0.036f, 0.4f));  // +X is left
+    reachFor(fielder, ball);
+    std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
+    fielder.rig().localToModel(fielder.pose(), models);
+    auto hand = [&](const char* n) {
+        return root.transformPoint(math::Vec3(models[static_cast<size_t>(fielder.rig().findJoint(n))][3]));
+    };
+    MESSAGE("right hand to ball ", math::distance(hand("hand_r"), ball), "  left ", math::distance(hand("hand_l"), ball));
+    CHECK(math::distance(hand("hand_r"), ball) < math::distance(hand("hand_l"), ball));
+    CHECK(fielder.reachError() < 0.02f);
 }
 
 TEST_CASE("running fielder keeps the body and feet in their lanes") {

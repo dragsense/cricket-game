@@ -56,8 +56,21 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   Ball: hold the left button to drag it at its height, E/Q raise/lower it, R clears the
   reach. Tests: all 27 ground spots in front of and beside the feet (≤ 0.6 m) reached;
   balls behind the heels or beyond need 2.5; far balls stay balanced.
-- [ ] **2.5 Lunge step / max reach hold** (leftover error kept for the dive)
-- [ ] **2.6 Balance and natural timing** (CoM, counter-balance arm, springs, two-hand)
+- [x] **2.5 Pick, lunge, grip, hand modes** (built; tests pass; awaiting the user's visual
+  check; also covers 2.6, which the user folded in): placing the ball (left-drag, E/Q
+  height) no longer reaches; **Space** picks: the wrist goal eases (smoothstep,
+  `reach.reachTime`) from its rest spot to the ball, every stage follows the goal, so the
+  hand leads and the body follows; on the ball for `holdTime` the fingers and thumb
+  curl (grip grows within `gripRadius`) and the ball is carried back (`returnTime`) to
+  the standing pose; the ball rides in the hand until moved again. Out of reach at full
+  stretch: the foot nearer the ball lunges to land beside it (`lungeShort` short, at
+  most `maxLunge`; BIOMECHANICS 8) via the new `FootStepper::stepTo`; still out of reach
+  after `giveUpTime`, it lets go and logs the dive case. Back to standing, the gait's
+  settle steps the lunged foot home. **H** cycles the hand: auto (nearest; unchanged),
+  left, right, both (a hand each side of the ball). **R** abandons a pick. Walk input
+  waits during a pick. Tests: pick + carry + stand again, lunge pick of a 1.2 m ball,
+  right-hand mode, `stepTo`.
+- [-] **2.6** folded into 2.5 (user's choice): timing via the eased goal, balance from 2.4.
 
 ## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
 

@@ -58,6 +58,8 @@ enum class Action : uint8_t {
     ToggleMouseLook,
     ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)
     BallUp, BallDown,  // raise / lower the ball (the hand target)
+    Pick,              // reach for the ball, grip it, carry it back
+    CycleHand,         // picking hand: auto, left, right, both
     Count
 };
 

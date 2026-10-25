@@ -79,7 +79,6 @@
     "armReach": 0.97,         // share of full arm length; the elbow never locks straight
     "wristOffset": 0.08,      // m; wrist goal back from the ball centre toward the reaching
                               // shoulder, so the palm meets the ball (above it on the ground)
-    "maxSpeed": 0.05,         // m/s; reach only while standing
     // Spine stage (BIOMECHANICS 9.3): one swing about the spine base, split into
     // bend and twist; shares for [spine_01, spine_02, chest], normalised to 1.
     // Twist is mostly thoracic (lumbar twist ~7 deg), bend mostly lumbar.
@@ -107,7 +106,29 @@
     // Elbow pole [out, down, back] for the left arm (mirrored for the right),
     // made perpendicular to the shoulder-to-target line: the elbow bends away
     // from the body for any target (ground, side, air).
-    "elbowPole": [0.4, -1.0, -0.6]
+    "elbowPole": [0.4, -1.0, -0.6],
+    // Picking (Space): the wrist goal eases from its rest spot to the ball over
+    // reachTime (s); once within gripTolerance (m) for holdTime the ball is
+    // gripped and carried back over returnTime. Out of reach at full stretch:
+    // the foot nearer the ball lunges to land beside it, lungeShort m short of
+    // it (BIOMECHANICS 8), at most maxLunge m (0 = off); still out of reach
+    // after giveUpTime s, it lets go
+    // (the dive case, M3). ballRadius: two-hand spacing.
+    "reachTime": 0.45,
+    "holdTime": 0.15,
+    "returnTime": 0.6,
+    "gripTolerance": 0.02,
+    "giveUpTime": 0.4,
+    "ballRadius": 0.036,
+    "maxLunge": 0.9,
+    "lungeShort": 0.25,
+    "lungeDuration": 0.4,
+    "lungeHeight": 0.06,
+    // Grip: fingers curl as the wrist comes within gripRadius (m) of its goal;
+    // full curl per joint [_01, _02, _03], degrees.
+    "gripRadius": 0.15,
+    "fingerCurlDeg": [35, 55, 40],
+    "thumbCurlDeg": [10, 30, 25]
   },
 
   // Body repositioning (runs every tick after the foot targets are set).

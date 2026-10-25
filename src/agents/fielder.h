@@ -38,11 +38,13 @@ struct IkSettings {
     float headAimWeight = 1.0f;
 };
 
-// Hand-driven reaching (config/fielder_joints.json "reach").
+// Which hand picks: the one on the ball's side, a fixed one, or both.
+enum class HandMode { Auto, Left, Right, Both };
+
+// Hand-driven reaching and picking (config/fielder_joints.json "reach").
 struct ReachSettings {
     float armReach = 0.97f;         // share of full arm length the hand reaches; the elbow never locks
     float wristOffset = 0.08f;      // m; wrist goal back from the ball centre toward the shoulder (palm on the ball)
-    float maxSpeed = 0.05f;         // m/s; reaching runs only below this (standing)
     // Spine stage: share of the bend and of the twist taken by spine_01,
     // spine_02 and chest (each sums to 1); iterations absorb clamping.
     math::Vec3 spineBend{0.6f, 0.2f, 0.2f};
@@ -61,6 +63,26 @@ struct ReachSettings {
     // Elbow pole before it is made perpendicular to the arm: out (+ = away
     // from the body), down, back (- = behind), left arm; mirrored for the right.
     math::Vec3 elbowPole{0.4f, -1.0f, -0.6f};
+    // Pick timing: the wrist goal eases from its rest spot to the ball over
+    // reachTime, holds holdTime once on the ball (grip), then the ball is
+    // carried back over returnTime (s).
+    float reachTime = 0.45f;
+    float holdTime = 0.15f;
+    float returnTime = 0.6f;
+    float gripTolerance = 0.02f;  // m; the hand counts as on the ball within this
+    float giveUpTime = 0.4f;      // s at full stretch, out of reach, before letting go (the dive later)
+    float ballRadius = 0.036f;    // m; two-hand mode puts a hand each side
+    // Grip: fingers curl as the wrist nears its goal within gripRadius (m);
+    // curl at full grip per joint [_01, _02, _03] (degrees in config).
+    float gripRadius = 0.15f;
+    math::Vec3 fingerCurl{math::radians(35.0f), math::radians(55.0f), math::radians(40.0f)};
+    math::Vec3 thumbCurl{math::radians(10.0f), math::radians(30.0f), math::radians(25.0f)};
+    // Lunge: out of reach at full stretch, the foot nearer the ball steps to
+    // land lungeShort (m) short of it, at most maxLunge (m; 0 = off).
+    float maxLunge = 0.9f;
+    float lungeShort = 0.25f;
+    float lungeDuration = 0.4f;   // s
+    float lungeHeight = 0.06f;    // m swing arc apex
 };
 
 class Fielder {
@@ -91,14 +113,26 @@ public:
     motion::Gait gait() const { return gait_; }
     float speed() const { return walker_.speed(); }  // m/s
 
-    // Hand target in world space (e.g. a ball on the ground). The nearer hand
-    // reaches for it while the fielder stands; walking pauses the reach.
+    // The ball (world space). Moving it drops it if held; it is only picked
+    // on startPick().
     void setReachTarget(math::Vec3 world) {
         reachTarget_ = world;
-        reaching_ = true;
+        holding_ = false;
     }
-    void clearReach() { reaching_ = false; }
-    bool reaching() const { return reaching_; }
+    // Reach for the ball, grip it, carry it back to the standing pose. A lunge
+    // step is taken if it is out of reach; walking input is ignored meanwhile.
+    void startPick();
+    // Abandon the pick: ease back to standing (keeps a held ball).
+    void clearReach();
+    bool reaching() const { return phase_ != Phase::Idle; }
+    bool holding() const { return holding_; }
+    void setHandMode(HandMode mode) { handMode_ = mode; }
+    HandMode handMode() const { return handMode_; }
+    // Held ball's centre in world space from a model-space pose (e.g. the
+    // interpolated render pose); valid while holding().
+    math::Vec3 ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const;
+    const ReachSettings& reachSettings() const { return reach_; }
+    void setReachSettings(const ReachSettings& s) { reach_ = s; }
     // Distance (m) from the reaching hand's wrist to its goal after the last
     // tick (measured after the joint limits); 0 when reached or not reaching.
     float reachError() const { return reachError_; }
@@ -123,8 +157,6 @@ private:
     void swingArms(float dt);
     void stabiliseHead(float dt);
     void solveIk();
-    // Reaching, split around the leg IK: spine, then pelvis and body before it
-    // (the feet stay planted), clavicle and arm after the walk arm swing.
     // Reaching, one pass per stage (each takes the error left by the ones
     // before it): spine, pelvis, body before the leg IK; clavicle and arm last.
     void reachSpine();
@@ -136,8 +168,14 @@ private:
     math::Vec3 balanceOverhang(math::Vec3 pelvisMove);
     math::Vec3 clampPelvisToLegs(math::Vec3 pelvis);  // both feet planted, no squat limit
     math::Vec3 modelCentreOfMass();  // uses models_, which must be current
-    void reachArm();
-    math::Vec3 reachGoal() const;  // wrist goal, character space
+    // Picking: advances the phase and sets this tick's wrist goals; after the
+    // solve, grips, lunges or gives up.
+    void updatePick(float dt);
+    void finishPick(float dt);
+    // Clavicle + two-bone IK of one arm toward `goal`.
+    void reachArm(bool left, math::Vec3 goal);
+    void grip(bool left, float amount);  // curls the fingers and thumb, 0..1
+    math::Vec3 reachGoal() const { return goal_; }  // primary wrist goal, character space
     // Applies a model-space rotation to `joint` (about its own position),
     // clamped to its limit. `models_` must be current.
     void rotateInModel(int joint, math::Quat rotation);
@@ -146,6 +184,7 @@ private:
     struct Joints {
         int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1, clavicleL = -1, clavicleR = -1;
         int spine[3] = {-1, -1, -1};  // spine_01, spine_02, chest
+        int fingers[2][5][3] = {};     // [left/right][index, middle, ring, pinky, thumb][_01.._03]
         ik::TwoBoneChain legL, legR, armL, armR;
     };
 
@@ -157,9 +196,20 @@ private:
     ReachSettings reach_;
     float armLength_ = 0.6f;  // shoulder to wrist (m), from the skeleton
     math::Vec3 restShoulderL_{0.0f}, restShoulderR_{0.0f};  // character space, rest pose
-    math::Vec3 reachTarget_{0.0f};
-    bool reaching_ = false;
-    bool reachLeft_ = true;  // this tick's reaching hand
+    math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
+    math::Vec3 reachTarget_{0.0f};  // the ball, world space
+    enum class Phase { Idle, Reach, Return };
+    Phase phase_ = Phase::Idle;
+    HandMode handMode_ = HandMode::Auto;
+    float pickTime_ = 0.0f;   // 0..1 progress of the reach (back to 0 on return)
+    float holdTimer_ = 0.0f;  // s on the ball
+    float stuckTimer_ = 0.0f; // s at full stretch, out of reach, after the lunge
+    bool lunged_ = false;
+    bool holding_ = false;
+    math::Vec3 carryFrom_{0.0f};  // wrist goal where the ball was gripped, character space
+    bool reachLeft_ = true;       // this tick's (primary) reaching hand
+    bool bothHands_ = false;
+    math::Vec3 goal_{0.0f}, otherGoal_{0.0f};  // wrist goals, character space
     float reachError_ = 0.0f;
     motion::RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;

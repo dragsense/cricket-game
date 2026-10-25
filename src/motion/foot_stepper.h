@@ -62,6 +62,11 @@ public:
                   const GaitStyle& style = {});
 
     math::Vec3 foot(Foot f) const { return feet_[static_cast<int>(f)]; }
+    // Starts a step of foot `f` to `spot` (character space; lands at the
+    // foot's current height); tick() with no direction advances it. False if
+    // a step is already in progress.
+    bool stepTo(Foot f, math::Vec3 spot);
+
     bool stepping() const { return swing_ >= 0; }
     int swingFoot() const { return swing_; }     // -1 when both are planted
     float swingProgress() const { return t_; }  // [0, 1] while stepping
