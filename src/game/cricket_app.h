@@ -9,7 +9,6 @@
 #include "core/file_watcher.h"
 #include "core/input.h"
 #include "debug/debug_overlay.h"
-#include "game/ball_feeder.h"
 #include "game/fielder_visual.h"
 #include "game/test_scene.h"
 #include "game/world.h"
@@ -18,6 +17,7 @@
 #include "render/renderer.h"
 
 #include <memory>
+#include <random>
 
 namespace game {
 
@@ -49,15 +49,15 @@ protected:
 private:
     void drawDebugGeometry(float alpha);
     void updateFielder(float alpha);
-    // Left-drag moves the ball on a level plane at its height, E/Q raise and
-    // lower it; a moved ball becomes the fielder's reach target.
-    void updateReachBall(float dt);
     // Re-reads the named config files (e.g. "scene.json") and re-applies them
     // to the running game. A file that fails to parse keeps its previous values.
     void reloadConfig(const std::vector<std::string>& files);
     void applyEngineConfig();
     // Launches the ball with preset `index` of config/ball_launch.json.
     void launchBall(int index);
+    // T: releases the ball from the batting position toward the fielder
+    // (config/ball_launch.json "toFielder"), to be picked.
+    void releaseToFielder();
 
     AppConfigs cfg_;
     platform::Window window_;
@@ -76,7 +76,7 @@ private:
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
     math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
-    BallFeeder feeder_;         // T: throws the ball at the fielder
+    std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot
     float heading_ = 0.0f;    // fielder's W heading; follows the camera only while stopped
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)
     debug::DebugSettings appliedSettings_;  // last values pushed to the renderer

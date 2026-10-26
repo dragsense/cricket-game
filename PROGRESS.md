@@ -37,6 +37,12 @@ stop after each.
   slides on after its bounces (3.3). Tests (`test_sphere_solver.cpp`): free fall, drag
   (~13 % over 20 m, terminal 37 m/s), bounce apex e², comes to rest, no tunnelling through
   a 1 cm wall at 45 m/s, sphere and rotated box colliders, ball config.
+  Follow-up (user's request): clicking to place the ball and E/Q are removed; **T**
+  releases the ball with the physics from the batting position toward the fielder
+  (`config/ball_launch.json` "toFielder"): random elevation (10-55°) and first landing
+  (0.2-1.6 of the way), so throws vary between many bounces, one bounce, in the air and
+  over the fielder; Space picks it. The straight-line `BallFeeder` is no longer used by
+  the game (kept for its fielder test).
 - [ ] **3.3 Ball contacts**: friction and rolling on pitch and outfield (surface materials
   in config); comes to rest; stumps and bails as Jolt bodies, pushed by the ball.
 - [ ] **3.4 Prediction and boundary**: predictor using the same solver (bounces, stop

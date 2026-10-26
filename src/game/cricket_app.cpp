@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include <chrono>
+#include <random>
 #include <cmath>
 
 namespace game {
@@ -88,7 +89,6 @@ bool CricketApp::init() {
     actions_.load(cfg_.input);
     camera_.configure(e, rd.width, rd.height);
     sim_.configure(e);
-    feeder_.configure(e);
 
     if (!sim_.initPhysics(cfg_.physicsWorld)) return false;
     sim_.initBall(cfg_.ball, cfg_.scene);
@@ -135,7 +135,6 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         if (name == "engine.json") {
             cfg_.engine = std::move(fresh);
             applyEngineConfig();
-            feeder_.configure(cfg_.engine);
         } else if (name == "input.json") {
             cfg_.input = std::move(fresh);
             actions_.load(cfg_.input);
@@ -184,10 +183,40 @@ void CricketApp::launchBall(int index) {
     const float elevation = math::radians(p.value("elevationDeg", 0.0f));
     const float azimuth = math::radians(p.value("azimuthDeg", 0.0f));
     const math::Vec3 dir(std::sin(azimuth) * std::cos(elevation), std::sin(elevation), std::cos(azimuth) * std::cos(elevation));
-    feeder_.stop();
+    const math::Vec3 from = pos.size() == 3 ? math::Vec3(pos[0], pos[1], pos[2]) : math::Vec3(0, 1, 0);
     sim_.fielder().clearReach();
-    sim_.launchBall(pos.size() == 3 ? math::Vec3(pos[0], pos[1], pos[2]) : math::Vec3(0, 1, 0), dir * speed);
+    sim_.fielder().setReachTarget(from);  // lets go of a held ball
+    sim_.launchBall(from, dir * speed);
     LOG_INFO("ball launch: {} at {:.0f} km/h", p.value("name", std::string("preset")), speed * 3.6f);
+}
+
+void CricketApp::releaseToFielder() {
+    const core::Config& c = cfg_.ballLaunch;
+    const math::Vec3 from = c.getVec3("toFielder.position", math::Vec3(0.0f, 0.8f, 9.0f));
+    auto range = [&](const char* key, float lo, float hi) {
+        const nlohmann::json* r = nullptr;
+        if (auto t = c.root().find("toFielder"); t != c.root().end())
+            if (auto it = t->find(key); it != t->end() && it->is_array() && it->size() == 2) r = &*it;
+        if (r) lo = (*r)[0].get<float>(), hi = (*r)[1].get<float>();
+        return std::uniform_real_distribution<float>(lo, std::max(lo, hi))(rng_);
+    };
+    const float elevation = math::radians(range("elevationDeg", 10.0f, 55.0f));
+    const float landShare = range("landFraction", 0.2f, 1.6f);
+
+    // Along the ground line to the fielder: the speed (no drag) puts the first
+    // landing at landShare of the way, so the ball bounces before them (< 1),
+    // reaches them in the air (~1) or goes over them (> 1).
+    const math::Vec3 target = sim_.fielder().root().position;
+    math::Vec3 flat(target.x - from.x, 0.0f, target.z - from.z);
+    const float dist = math::length(flat);
+    flat = math::safeNormalize(flat, -math::kForward);
+    const float g = std::fabs(sim_.physicsWorld().world().gravity.y);
+    const float speed = std::sqrt(g * landShare * dist / std::max(0.1f, std::sin(2.0f * elevation)));
+    sim_.fielder().clearReach();
+    sim_.fielder().setReachTarget(from);  // lets go of a held ball
+    sim_.launchBall(from, (flat * std::cos(elevation) + math::kUp * std::sin(elevation)) * speed);
+    LOG_INFO("ball released at the fielder: {:.0f} km/h, {:.0f} deg, {:.1f} m away", speed * 3.6f,
+             math::degrees(elevation), dist);
 }
 
 void CricketApp::shutdown() {
@@ -253,11 +282,7 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::Pick)) sim_.fielder().startPick();
     for (int i = 0; i < 5; ++i)
         if (actions_.pressed(input_, static_cast<core::Action>(static_cast<int>(core::Action::LaunchBall1) + i))) launchBall(i);
-    if (actions_.pressed(input_, core::Action::ThrowBall)) {
-        sim_.stopBall();
-        sim_.fielder().clearReach();
-        feeder_.throwAt(sim_.fielder().root(), cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi);
-    }
+    if (actions_.pressed(input_, core::Action::ThrowBall)) releaseToFielder();
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
@@ -271,22 +296,15 @@ bool CricketApp::pumpEvents() {
 }
 
 void CricketApp::fixedUpdate(double dt) {
-    // A thrown ball is the fielder's target every tick until it is caught
-    // (then it rides in the hand) or has gone past.
-    if (feeder_.active() && sim_.fielder().holding()) feeder_.stop();
+    // A moving ball is the fielder's target every tick until it is picked
+    // (then it rides in the hand).
     if (sim_.ballInFlight() && sim_.fielder().holding()) sim_.stopBall();
     if (sim_.ballInFlight()) sim_.fielder().setReachTarget(sim_.ball().position, sim_.ball().velocity);
-    if (feeder_.active()) {
-        feeder_.tick(static_cast<float>(dt));
-        sim_.fielder().setReachTarget(feeder_.position(), feeder_.velocity());
-    }
     sim_.tick(dt);
 }
 
 void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
-
-    updateReachBall(static_cast<float>(frameSeconds));
 
     // --- Cameras (render-side, real frame time); the orbit follows the fielder ---
     camera_.setFollowPoint(sim_.fielder().interpolatedRoot(alpha).position);
@@ -344,61 +362,13 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     }
 }
 
-void CricketApp::updateReachBall(float dt) {
-    const float radius = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
-    bool moved = false;
-
-    // E / Q: raise or lower the ball (never below the ground).
-    const float lift = (actions_.down(input_, core::Action::BallUp) ? 1.0f : 0.0f) -
-                       (actions_.down(input_, core::Action::BallDown) ? 1.0f : 0.0f);
-    if (lift != 0.0f && !sim_.fielder().holding() && !feeder_.active()) {  // held or thrown: not ours
-        ballPos_.y = std::max(radius, ballPos_.y + lift * cfg_.input.getFloat("ballLiftSpeed", 1.0f) * dt);
-        moved = true;
-    }
-
-    // Left-drag: ray through the cursor from the camera (vertical FOV, window
-    // aspect), hit with the level plane through the ball.
-    const float w = static_cast<float>(window_.width()), h = static_cast<float>(window_.height());
-    if (input_.down(core::MouseButton::Left) && !input_.uiWantsMouse && !mouseLook_ && w > 0.0f && h > 0.0f) {
-        const camera::CameraPose view = camera_.pose();
-        const math::Vec3 forward = math::normalize(view.target - view.eye);
-        const math::Vec3 right = math::normalize(math::cross(forward, view.up));
-        const math::Vec3 up = math::cross(right, forward);
-        const float tanHalf = std::tan(0.5f * math::radians(cfg_.engine.getFloat("camera.fovY", 50.0f)));
-        const float x = (2.0f * input_.mouseX / w - 1.0f) * tanHalf * (w / h);
-        const float y = (1.0f - 2.0f * input_.mouseY / h) * tanHalf;
-        const math::Vec3 ray = math::normalize(forward + right * x + up * y);
-        float t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
-        feeder_.stop();  // manual placement takes over from a throw or a flight
-        sim_.stopBall();
-        // A click on a held ball takes it from the hand and puts it down there.
-        if (sim_.fielder().holding()) {
-            ballPos_.y = radius;
-            t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
-        }
-        if (t > 0.0f) {
-            const math::Vec3 hit = view.eye + ray * t;
-            ballPos_.x = hit.x;
-            ballPos_.z = hit.z;
-            moved = true;
-        }
-    }
-
-    // Placing the ball only sets it; Space makes the fielder pick it.
-    if (!moved) return;
-    math::Transform ball;
-    ball.position = ballPos_;
-    world_.setTransform(scene_.ball, ball);
-    sim_.fielder().setReachTarget(ballPos_);
-}
-
 void CricketApp::updateFielder(float alpha) {
     const agents::Fielder& fielder = sim_.fielder();
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
     fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
-    if (sim_.ballInFlight() || feeder_.active()) {
-        ballPos_ = sim_.ballInFlight() ? sim_.ballPosition(alpha) : feeder_.position(alpha);
+    if (sim_.ballInFlight()) {
+        ballPos_ = sim_.ballPosition(alpha);
         math::Transform ball;
         ball.position = ballPos_;
         world_.setTransform(scene_.ball, ball);

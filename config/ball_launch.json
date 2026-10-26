@@ -2,6 +2,17 @@
 // degrees: elevation above horizontal, azimuth from +Z toward +X. The bowler's
 // end is -Z, the batter's +Z. Values: docs/BALL_PHYSICS.md section 7.
 {
+  // T: a throw from the batting position toward the fielder, random each time.
+  // landFraction is where it would first land, as a share of the way to the
+  // fielder: 0.2-0.5 many bounces, 0.5-0.8 about one bounce, around 1-1.2 it
+  // reaches them in the air, above ~1.3 it goes over them. Low
+  // elevation gives flat throws and skimming bounces, high gives lobs. The
+  // speed follows from both.
+  "toFielder": {
+    "position": [0.0, 0.8, 9.0],
+    "elevationDeg": [10, 55],
+    "landFraction": [0.2, 1.6]
+  },
   "presets": [
     { "name": "fast delivery",  "position": [0.3, 2.2, -9.0], "speedKmh": 140, "elevationDeg": -6,  "azimuthDeg": 0 },
     { "name": "slow delivery",  "position": [0.3, 2.0, -9.0], "speedKmh": 80,  "elevationDeg": 3,   "azimuthDeg": 0 },

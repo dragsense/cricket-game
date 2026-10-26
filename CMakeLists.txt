@@ -81,7 +81,6 @@ cricket_warnings(cricket_physics)
 # ---- game executable --------------------------------------------------------
 add_executable(CricketGame
     src/main.cpp
-    src/game/ball_feeder.cpp
     src/game/cricket_app.cpp
     src/game/test_scene.cpp
     src/game/world.cpp

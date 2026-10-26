@@ -17,23 +17,18 @@
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
-    // Ball: hold the left button to drag it on a level plane at its height;
-    // E raises it, Q lowers it. Space: the fielder picks it (reach, grip,
-    // carry back) with the hand on the ball's side; R abandons the pick.
+    // Space: the fielder picks the ball (reach, grip, carry back) with the hand
+    // on the ball's side; R abandons the pick.
     "ClearReach": ["R"],
-    "BallUp": ["E"],
-    "BallDown": ["Q"],
     "Pick": ["Space"],
-    // T: the feeder throws the ball at the fielder (config/engine.json "feeder");
-    // press Space in time to pick it, else it passes. Clicking stops a throw.
+    // T: releases the ball from the batting position toward the fielder
+    // (config/ball_launch.json "toFielder"); walk to it and press Space.
     "ThrowBall": ["T"],
     // 1-5: launch the ball with a physics preset (config/ball_launch.json).
-    // A left click puts it down again (stops the flight).
     "LaunchBall1": ["1"],
     "LaunchBall2": ["2"],
     "LaunchBall3": ["3"],
     "LaunchBall4": ["4"],
     "LaunchBall5": ["5"]
-  },
-  "ballLiftSpeed": 1.0  // m/s while E/Q is held
+  }
 }

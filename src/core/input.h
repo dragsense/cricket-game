@@ -57,9 +57,8 @@ enum class Action : uint8_t {
     Run, Jog,  // hold to run / jog; otherwise walk
     ToggleMouseLook,
     ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)
-    BallUp, BallDown,  // raise / lower the ball (the hand target)
     Pick,              // reach for the ball, grip it, carry it back
-    ThrowBall,         // the feeder throws the ball toward the fielder
+    ThrowBall,         // release the ball from the batting position toward the fielder
     LaunchBall1, LaunchBall2, LaunchBall3, LaunchBall4, LaunchBall5,  // ball physics presets
     Count
 };
