@@ -29,9 +29,9 @@
     // circle); B again goes back.
     "BowlAim": ["B"],
     // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,
-    // left foot, right hand, left hand) and its target follows the mouse at
-    // once on a level plane (hold Shift to move it up/down); a click lets go
-    // (it stays there), another picks it up again. R resets the pose.
+    // left foot, right hand, left hand); hold the left button to drag its
+    // target on a level plane (also hold Shift to move it up/down); let go and
+    // it stays there. R resets the pose.
     "PoseLimb": ["F"],
     // 1-5: launch the ball with a physics preset (config/ball_launch.json).
     "LaunchBall1": ["1"],

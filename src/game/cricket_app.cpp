@@ -394,20 +394,17 @@ void CricketApp::updatePose() {
         fielder.clearPose();
         poseDragging_ = false;
     }
-    // F switches limb and its target follows the mouse at once; a click lets
-    // go (it stays there) or picks it up again.
-    const bool next = actions_.pressed(input_, core::Action::PoseLimb);
-    if (next) poseLimb_ = (poseLimb_ + 1) % 4;
+    // F switches limb; holding the left button drags its target (from where
+    // the limb is), letting go leaves it there.
+    if (actions_.pressed(input_, core::Action::PoseLimb)) poseLimb_ = (poseLimb_ + 1) % 4;
     const bool hand = poseLimb_ >= 2;
     const bool left = poseLimb_ % 2 == 1;
-    const bool click = input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse;
-    if ((next || click) && (next || !poseDragging_)) {
+    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse) {
         poseTarget_ = hand ? fielder.wrist(left, fielderModels_, fielder.root())
                            : (left ? fielder.targets().footL : fielder.targets().footR);
         poseDragging_ = true;
-    } else if (click) {
-        poseDragging_ = false;
     }
+    if (!input_.down(core::MouseButton::Left)) poseDragging_ = false;
     if (!poseDragging_) return;
 
     // The mouse ray meets a plane through the target: level (it keeps its
