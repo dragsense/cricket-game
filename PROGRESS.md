@@ -1,6 +1,28 @@
 # Progress
 
-## Current milestone: M2 Hand-Driven Body Repositioning (Reaching) — IN PROGRESS
+## Current milestone: M3 Physics and Ball Physics — IN PROGRESS (branch milestone-3)
+
+Goal: general ball physics: gravity, air drag, bounce, rolling, hitting the stumps. Jolt
+Physics (wrapped in src/physics/core) for stumps, bails and later bodies; our own ball
+solver (src/physics/ball) with force generators (gravity, drag), shared by the
+predictor. World settings in config/physics_world.json. Out of scope: spin, swing,
+pitch-specific behaviour, players, bat, fielding, dive, game logic. One step at a time;
+stop after each.
+
+- [x] **3.0 Research** (awaiting the user's review) → docs/BALL_PHYSICS.md (ball size and
+  mass, drag, bounce and friction on pitch and grass, rolling resistance, stumps, speeds,
+  integrator notes, sources).
+- [ ] **3.1 Jolt setup**: Jolt pinned, stepped on the 120 Hz loop, shared world config;
+  stumps and bails as Jolt bodies.
+- [ ] **3.2 Ball flight**: gravity and drag force generators, substepped integrator, no
+  tunnelling, interpolated rendering.
+- [ ] **3.3 Ball contacts**: bounce, friction, rolling on pitch and outfield (materials in
+  config); comes to rest; ball pushes the Jolt stumps and bails.
+- [ ] **3.4 Prediction and boundary**: predictor using the same solver (bounces, stop
+  point and time); boundary detection. Launch presets in config/ball_launch.json (keys,
+  reset, slow motion).
+
+## Previous milestone: M2 Hand-Driven Body Repositioning (Reaching) — built, awaiting the user's visual review (not finished)
 
 Goal: a hand target (a ball on the ground, placed by mouse click) drives the whole body,
 the same way foot targets drive the body in `repositionBody`. Solved continuously every
@@ -103,7 +125,7 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   removed; the hand on the ball's side picks (auto). Left/Right stay in the API.
 - [-] **2.6** folded into 2.5 (user's choice): timing via the eased goal, balance from 2.4.
 
-## Previous milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
+## Earlier milestone: M1 Procedural Fielder Body and Basic Locomotion — DONE (2026-10-25), awaiting the user's visual review
 
 Goal: a single fielder with an ozz skeleton that stands, walks, runs and jumps with fully
 procedural motion. Jumping was dropped (user's choice; it returns with catches and

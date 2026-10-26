@@ -180,3 +180,17 @@ Dated log. Format: decision, reason, alternatives rejected.
   fixed one case and broke another.
 - **Rejected:** bisection guards on feet/balance, iterative hip-sliding helpers,
   knees-out pole hack.
+
+## 2026-10-26: M3 physics architecture
+- **Decision:** Jolt Physics handles all generic physics (gravity, rigid bodies,
+  collisions, materials): stumps, bails, later player bodies and dives. It is wrapped in
+  `src/physics/core` behind our own thin interface. The ball uses our own solver in
+  `src/physics/ball`, built from reusable force generators (gravity, drag; spin and swing
+  added later as new generators without changing the solver). The trajectory predictor
+  calls the exact same step code. Gravity, air density and wind live in
+  `config/physics_world.json`, shared by Jolt and the ball solver. Values come from
+  docs/BALL_PHYSICS.md.
+- **Reason:** the user's direction; prediction must match the simulation exactly, and
+  cricket-specific forces need to plug into the ball code.
+- **Also:** M3 starts on branch `milestone-3` while M2 still waits for the user's visual
+  review. The dive leaves M3 (no players in this milestone) and will be scheduled later.
