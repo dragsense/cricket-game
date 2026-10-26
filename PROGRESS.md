@@ -1,6 +1,26 @@
 # Progress
 
-## Current milestone: M3 Physics and Ball Physics — IN PROGRESS (branch milestone-3)
+## Current milestone: M4 Fielding — Throw — IN PROGRESS (branch milestone-4)
+
+Goal: after a pick, the fielder throws. The hand follows an arc (circle around the
+throwing shoulder); the user picks the release point on it (underarm … sidearm …
+overarm), the hand winds back along the arc, swings forward through that point and
+releases the ball tangent to the arc at a fixed speed (config) in the facing direction;
+the ball then flies with our physics. Procedural only; the existing reach chain follows
+the hand. Out of scope: chase, intercept, catch, aiming at targets, variable speed, new
+tests or collisions not asked for. One step at a time; stop after each.
+
+- [x] **4.0 Research** (awaiting the user's review): docs/BIOMECHANICS.md section 10
+  "Throwing" (arm slots, phases and timing, arm path and release point, ball speeds,
+  sources; planned `config/throw.json` values).
+- [ ] **4.1 Arc**: throw arc around the shoulder; the user picks a release point (arc and
+  point visible).
+- [ ] **4.2 Wind-up and swing**: hand back along the arc, then forward through the
+  release point; body follows via the reach chain.
+- [ ] **4.3 Release**: on click the ball leaves at the release point, tangent to the arc,
+  fixed speed, then flies with our physics.
+
+## Previous milestone: M3 Physics and Ball Physics — done to 3.3 (branch milestone-3)
 
 Goal: general ball physics: gravity, air drag, bounce, rolling, hitting the stumps. Jolt
 Physics (wrapped in src/physics/core) for stumps, bails and later bodies; our own ball
@@ -303,7 +323,7 @@ Scope:
 | M1 | Procedural fielder body and basic locomotion: ozz skeleton, IK, joint limits, stepping, walk, jog, run | done |
 | M2 | Hand-driven body repositioning (reaching) | in progress |
 | M3 | Basic ball flight (drag), bounce, roll; dive (needs ball arrival time) | not started |
-| M4 | Fielding: chase, intercept, pick-up, throw, catch | not started |
+| M4 | Fielding: throw (chase, intercept, catch later) | in progress |
 | M5 | Wicketkeeper | not started |
 | M6 | Bowling | not started |
 | M7 | Batting | not started |

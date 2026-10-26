@@ -760,6 +760,95 @@ hip-heavy late (9.1); side bend shared evenly.
 
 ---
 
+## 10. Throwing (M4)
+
+How a fielder throws after a pick-up: arm slots, the phases of the throw, where the hand
+travels, where it lets go, how long each part takes and how fast the ball leaves. Cricket
+throwing is much less studied than baseball pitching, so phase timings and arm-slot
+definitions come mostly from baseball **[P]** and are adapted **[E]**.
+
+### 10.1 Arm slots
+- Arm angle is measured in the frontal plane at release. Statcast: **90° = straight over
+  the top, 0° = pure sidearm, negative = submarine** (e.g. -19°)
+  ([MLB, arm angles 2024](https://www.mlb.com/news/the-range-of-pitcher-arm-angles-in-the-2024-mlb-postseason))
+  **[P]**. Clock terms: overhand 12:00, three-quarter 1:30, sidearm 3:00, submarine 4:30;
+  the most common slot is "high three-quarter"
+  ([FanGraphs, playing the slots](https://tht.fangraphs.com/a-pitching-model-playing-the-slots1/))
+  **[T]**. Slots are a continuum; categories overlap.
+- Sidearm and three-quarter slots load the elbow more than overhand
+  ([OJSM 2023, 10.1177/23259671221147874](https://journals.sagepub.com/doi/10.1177/23259671221147874))
+  **[P]**: visually the same arm path, so no extra modelling.
+- **Underarm** (hand below the hip, swinging forward like a bowling action): fielders use
+  it for short flicks at the stumps. Speed comes from trunk-to-hand sequencing, with the
+  forearm and hand adding most of the release speed; windmill pitches release next to the
+  hip ([Auburn ETD, overhand vs underhand](https://etd.auburn.edu/handle/10415/136))
+  **[P]**.
+- Physics of the choice: for near, low targets underarm is more accurate; for far or high
+  targets overarm is
+  ([Venkadesan & Mahadevan, arXiv 1008.1442](https://arxiv.org/pdf/1008.1442)) **[P]**.
+
+### 10.2 Phases and timing
+Baseball phases (wind-up, stride, arm cocking, acceleration, deceleration, follow-through);
+a cricket throwing study uses the same split: wind-up, late cocking, arm acceleration,
+release ([Brunel, cricket throwing](https://bura.brunel.ac.uk/handle/2438/16239)) **[P]**.
+
+| Phase | Hand path | Duration | Source |
+|---|---|---|---|
+| Wind-up / cocking | back and up behind the shoulder until maximum shoulder external rotation | long, variable (pitch: ~1.5 s incl. leg lift) | [Pogo Physio](https://www.pogophysio.com.au/blog/bio-mechanics-throwing/) **[T]** |
+| Acceleration | forward past the shoulder to release | **~50 ms** | [PMC3445080](https://pmc.ncbi.nlm.nih.gov/articles/PMC3445080) **[P]** |
+| Follow-through | across the body, decelerating | ~350 ms | same **[P]** |
+
+- Peak shoulder internal rotation ~6,000–7,000 °/s, elbow extension ~4,600 °/s at the end
+  of acceleration (pitchers) **[P]**. The hand moves fastest at release.
+- A fielder's throw has no leg lift: after the pick-up the wind-up is short. We estimate
+  **0.25–0.4 s wind-up** and **0.08–0.15 s forward swing** for a quick throw (slower than
+  a pitcher's 50 ms, because the game's arc is a simple circle, not a whip) **[E]**.
+- **Proximal to distal:** pelvis, then trunk, then upper arm, forearm, hand; both overhand
+  and underhand throws follow it
+  ([Auburn ETD](https://etd.auburn.edu/handle/10415/136)) **[P]**. In the game the hand
+  target leads and the reach chain follows (section 9), which matches the look but not
+  the cause; a later step can add pelvis/trunk rotation leading the arm.
+
+### 10.3 Arm path and release point
+- The hand path is close to an arc around the shoulder in the slot's plane; the elbow
+  flexes during cocking and extends through release, so the real radius varies **[T]**.
+  We use a circle of radius about arm reach (0.9–0.97 × arm length) around the throwing
+  shoulder **[E]**.
+- Release is **ahead of the shoulder**, not at the top: dart throwers release 17–37°
+  before the arm is vertical
+  ([Venkadesan & Mahadevan](https://arxiv.org/pdf/1008.1442)) **[P]**. The ball leaves
+  along the hand's velocity, i.e. tangent to the arc at that point **[P]** (physics).
+- Underarm releases are near or in front of the hip; sidearm at about shoulder height,
+  out to the side; overarm above and in front of the head **[T]**.
+
+### 10.4 Ball speeds
+- Elite-programme cricketers: **30.5 ± 2.4 m/s** from a set position, **31.8 ± 2.1 m/s**
+  after a 3 m shuffle; elite seniors are faster still, baseball pros faster again
+  ([Freeston et al. 2007, EJSS](https://onlinelibrary.wiley.com/doi/10.1080/17461390701733793);
+  [Throwing speed and accuracy, baseball and cricket](https://www.researchgate.net/publication/264390731_Throwing_Speed_and_Accuracy_in_Baseball_and_Cricket_Players))
+  **[P]**. Radar over-reads by ~1.7 m/s head-on
+  ([Sports Biomech 2021](https://www.tandfonline.com/doi/abs/10.1080/14763141.2021.1887343))
+  **[P]**.
+- **Accuracy is best at 75–85 % of maximum speed** (Freeston et al.) **[P]**, so a
+  normal return is ~23–27 m/s.
+- Maximum-distance throws are slower than maximum-speed throws (higher launch)
+  ([Murdoch thesis 2021](https://researchportal.murdoch.edu.au/esploro/outputs/graduate/Determinants-of-throwing-speed-in-elite/991005542162807891))
+  **[P]**. Stride length and shoulder internal rotation speed predict throw speed **[P]**.
+- Underarm flicks at the stumps: no measured data; ~8–15 m/s **[E]**.
+
+### Implementation notes (`config/throw.json`, planned)
+- Arc: circle around the throwing shoulder, radius `arcRadiusFactor` × arm length (0.95),
+  in the plane through the shoulder that contains the throw direction and is tilted by the
+  slot. Release point = an angle on the arc, chosen by the user (from low underarm through
+  sidearm to overarm).
+- Wind-up `windupTime` 0.3 s (hand goes back along the arc), swing `swingTime` 0.12 s
+  (forward through the release point), follow-through continues past it **[E]**.
+- Release: ball velocity = `throwSpeed` (25 m/s, 80 % of ~31 m/s) along the arc tangent
+  at the release point.
+- The body follows through the existing reach chain (section 9); no new body system.
+
+---
+
 ## Gaps and follow-ups
 - These numbers were not found online and rely on standard textbook values: the exact
   Winter / Perry joint-angle curves, arm-swing shoulder ranges, and running hip and knee
@@ -767,5 +856,7 @@ hip-heavy late (9.1); side bend shared evenly.
 - Diving and penultimate-step data are deferred to M3.
 - Reaching: no kinematic source for half-kneeling pickups; the pelvis axial turn and the
   spine split are estimates **[E]**.
+- Throwing: phase timings and arm slots are from baseball; the fielder wind-up and
+  swing times, the circular arc and underarm speeds are estimates **[E]**.
 - All values are male-referenced. Female and other body types can be added later by
   swapping the ratio and mass tables in config.
