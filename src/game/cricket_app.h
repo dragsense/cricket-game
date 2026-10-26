@@ -13,6 +13,7 @@
 #include "game/test_scene.h"
 #include "game/world.h"
 #include "match/sim_world.h"
+#include "motion/throw_arc.h"
 #include "platform/sdl_window.h"
 #include "render/renderer.h"
 
@@ -31,6 +32,7 @@ struct AppConfigs {
     core::Config physicsWorld;     // config/physics_world.json
     core::Config ball;             // config/ball.json
     core::Config ballLaunch;       // config/ball_launch.json
+    core::Config throwing;         // config/throw.json
     std::string dir = "config";    // where the files above were loaded from
     bool liveReload = false;       // dev builds: watch `dir` and re-apply changes
 };
@@ -60,6 +62,9 @@ private:
     // T: releases the ball from the batting position toward the fielder
     // (config/ball_launch.json "toFielder"), to be picked.
     void releaseToFielder();
+    // While the ball is held: the throw arc around the holding shoulder and the
+    // release point under the mouse (drawn), from the interpolated pose.
+    void updateThrowArc(float alpha);
 
     AppConfigs cfg_;
     platform::Window window_;
@@ -78,6 +83,8 @@ private:
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
     math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
+    motion::ThrowArc throwArc_;
+    float releaseAngle_ = 0.0f;  // radians on throwArc_ (0 sidearm, +pi/2 overarm)
     std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot
     float heading_ = 0.0f;    // fielder's W heading; follows the camera only while stopped
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)

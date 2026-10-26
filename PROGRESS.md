@@ -13,10 +13,15 @@ tests or collisions not asked for. One step at a time; stop after each.
 - [x] **4.0 Research** (awaiting the user's review): docs/BIOMECHANICS.md section 10
   "Throwing" (arm slots, phases and timing, arm path and release point, ball speeds,
   sources; planned `config/throw.json` values).
-- [ ] **4.1 Arc**: throw arc around the shoulder; the user picks a release point (arc and
-  point visible).
-- [ ] **4.2 Wind-up and swing**: hand back along the arc, then forward through the
-  release point; body follows via the reach chain.
+- [x] **4.1 Arc** (built; the user checked it): `motion::ThrowArc` (src/motion/throw_arc)
+  is a circle around the holding shoulder, square to the facing direction (angle -90°
+  underarm, 0° sidearm, +90° overarm), radius `config/throw.json` arc.radiusFactor (0.95)
+  x arm length. While the ball is held, the mouse ray picks the nearest point on it; the
+  circle (cyan) and point (magenta) are drawn. Angle not limited yet.
+- [ ] **4.2 Wind-up and swing** (curved, the user's choice): the arm rotates back about
+  the shoulder from the chosen point (axis square to the arm and the facing direction;
+  less for low points, most for overhead), then swings forward along the same curve
+  through the point; body follows via the reach chain.
 - [ ] **4.3 Release**: on click the ball leaves at the release point, tangent to the arc,
   fixed speed, then flies with our physics.
 

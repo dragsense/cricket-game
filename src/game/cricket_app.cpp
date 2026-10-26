@@ -154,6 +154,8 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             sim_.initBall(cfg_.ball, cfg_.scene);
         } else if (name == "ball_launch.json") {
             cfg_.ballLaunch = std::move(fresh);
+        } else if (name == "throw.json") {
+            cfg_.throwing = std::move(fresh);
         } else if (name == "fielder_skeleton.json") {
             cfg_.fielderSkeleton = std::move(fresh);
             LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
@@ -289,7 +291,7 @@ bool CricketApp::pumpEvents() {
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
         changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json", "locomotion.json",
-                          "physics_world.json", "ball.json", "ball_launch.json"};
+                          "physics_world.json", "ball.json", "ball_launch.json", "throw.json"};
     else if (cfg_.liveReload)
         configWatcher_.poll(changedConfigs_);
     if (!changedConfigs_.empty()) reloadConfig(changedConfigs_);
@@ -346,6 +348,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     math::Transform probe = sim_.probeTransform(alpha);
     for (auto e : world_.registry().view<FollowsProbe>()) world_.setTransform(e, probe);
     updateFielder(alpha);
+    updateThrowArc(alpha);
     updateWickets(alpha);
     world_.syncToRenderer(*renderer_);
 
@@ -393,6 +396,29 @@ void CricketApp::updateFielder(float alpha) {
     }
 }
 
+void CricketApp::updateThrowArc(float alpha) {
+    const agents::Fielder& fielder = sim_.fielder();
+    if (!fielder.holding()) return;
+    const math::Transform root = fielder.interpolatedRoot(alpha);
+    throwArc_ = motion::makeThrowArc(fielder.holdingShoulder(fielderModels_, root), root.rotation, fielder.holdingLeft(),
+                                     cfg_.throwing.getFloat("arc.radiusFactor", 0.95f) * fielder.armLength());
+    if (input_.uiWantsMouse) return;
+
+    // Mouse ray from the camera (screen centre in mouse-look), onto the arc.
+    const camera::CameraPose pose = camera_.pose();
+    const float w = static_cast<float>(std::max(1, window_.width()));
+    const float h = static_cast<float>(std::max(1, window_.height()));
+    const float x = mouseLook_ ? 0.0f : 2.0f * input_.mouseX / w - 1.0f;
+    const float y = mouseLook_ ? 0.0f : 1.0f - 2.0f * input_.mouseY / h;
+    const float tanHalf = std::tan(0.5f * math::radians(cfg_.engine.getFloat("camera.fovY", 50.0f)));
+    const math::Vec3 ahead = math::safeNormalize(pose.target - pose.eye, -math::kForward);
+    const math::Vec3 right = math::safeNormalize(math::cross(ahead, pose.up), math::kRight);
+    const math::Vec3 up = math::cross(right, ahead);
+    const math::Vec3 dir = math::normalize(ahead + right * (x * tanHalf * w / h) + up * (y * tanHalf));
+    float angle = 0.0f;
+    if (throwArc_.rayAngle(pose.eye, dir, angle)) releaseAngle_ = angle;
+}
+
 void CricketApp::drawDebugGeometry(float alpha) {
     render::DebugDraw& dd = renderer_->debugDraw();
     if (debugSettings_.showGrid) dd.grid(math::Vec3(0, 0.02f, 0), 30.0f, 5.0f, render::rgba(255, 255, 255, 60));
@@ -405,6 +431,12 @@ void CricketApp::drawDebugGeometry(float alpha) {
 
     // Player's local axes at its root: X red (left), Y green (up), Z blue (forward).
     dd.axes(sim_.fielder().interpolatedRoot(alpha), 0.5f);
+
+    // Throw arc and the chosen release point while the ball is held.
+    if (sim_.fielder().holding()) {
+        dd.circle(throwArc_.centre, throwArc_.forward, throwArc_.radius, render::colors::kCyan, 48);
+        dd.sphere(throwArc_.point(releaseAngle_), 0.04f, render::colors::kMagenta);
+    }
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

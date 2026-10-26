@@ -148,6 +148,13 @@ public:
     // Held ball's centre in world space from a model-space pose (e.g. the
     // interpolated render pose); valid while holding().
     math::Vec3 ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const;
+    bool holdingLeft() const { return reachLeft_; }  // the hand that holds (or last reached)
+    // Shoulder of the holding arm in world space, from a model-space pose.
+    math::Vec3 holdingShoulder(const std::vector<math::Mat4>& models, const math::Transform& root) const {
+        const ik::TwoBoneChain& arm = reachLeft_ ? joints_.armL : joints_.armR;
+        return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.start)][3]));
+    }
+    float armLength() const { return armLength_; }  // shoulder to wrist (m)
     const ReachSettings& reachSettings() const { return reach_; }
     void setReachSettings(const ReachSettings& s) { reach_ = s; }
     // Distance (m) from the reaching hand's wrist to its goal after the last

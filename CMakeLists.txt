@@ -62,6 +62,7 @@ add_library(cricket_motion STATIC
     src/motion/body_reposition.cpp
     src/motion/foot_stepper.cpp
     src/motion/reach.cpp
+    src/motion/throw_arc.cpp
     src/motion/walk_controller.cpp
 )
 target_link_libraries(cricket_motion PUBLIC cricket_core)

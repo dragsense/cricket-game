@@ -1,0 +1,8 @@
+// Fielder throw (M4). Values: docs/BIOMECHANICS.md section 10.
+{
+  "arc": {
+    // Circle around the throwing shoulder, radius = factor x arm length
+    // (shoulder to wrist); 0.95 keeps the elbow just short of locking.
+    "radiusFactor": 0.95
+  }
+}
