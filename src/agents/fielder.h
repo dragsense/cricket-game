@@ -125,8 +125,9 @@ public:
         reachVelocity_ = velocity;
         holding_ = false;
     }
-    // Reach for the ball at once (the hand follows it if it moves), grip it
-    // on contact and carry it back to the standing pose. With `step`, the
+    // Reach for the ball at once (the hand follows it if it moves); when the
+    // reach is done, a hand on the ball grips it, and either way the body
+    // goes back to the standing pose (an out-of-reach ball is left). With `step`, the
     // foot nearer the ball lunges first and the reach starts as it lands.
     // Walking input is ignored meanwhile; clearReach() abandons it.
     void startPick(bool step = false);

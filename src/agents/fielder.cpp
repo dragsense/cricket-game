@@ -900,10 +900,10 @@ void Fielder::updatePick(float dt) {
 }
 
 void Fielder::finishPick(float) {
-    // On the ball: grip and carry it back. Short of it, the hand keeps
-    // following it until clearReach().
-    if (phase_ != Phase::Reach || pickTime_ < 1.0f || reachError_ > reach_.gripTolerance) return;
-    holding_ = true;
+    // The reach is done (at full stretch if the ball is out of reach): a hand
+    // on the ball grips it; either way it goes back to the standing pose.
+    if (phase_ != Phase::Reach || pickTime_ < 1.0f) return;
+    holding_ = reachError_ <= reach_.gripTolerance;
     startReturn();
 }
 
