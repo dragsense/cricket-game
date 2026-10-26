@@ -29,6 +29,8 @@ struct AppConfigs {
     core::Config fielderJoints;    // config/fielder_joints.json
     core::Config locomotion;       // config/locomotion.json
     core::Config physicsWorld;     // config/physics_world.json
+    core::Config ball;             // config/ball.json
+    core::Config ballLaunch;       // config/ball_launch.json
     std::string dir = "config";    // where the files above were loaded from
     bool liveReload = false;       // dev builds: watch `dir` and re-apply changes
 };
@@ -54,6 +56,8 @@ private:
     // to the running game. A file that fails to parse keeps its previous values.
     void reloadConfig(const std::vector<std::string>& files);
     void applyEngineConfig();
+    // Launches the ball with preset `index` of config/ball_launch.json.
+    void launchBall(int index);
 
     AppConfigs cfg_;
     platform::Window window_;

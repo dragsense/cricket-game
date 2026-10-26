@@ -60,6 +60,7 @@ enum class Action : uint8_t {
     BallUp, BallDown,  // raise / lower the ball (the hand target)
     Pick,              // reach for the ball, grip it, carry it back
     ThrowBall,         // the feeder throws the ball toward the fielder
+    LaunchBall1, LaunchBall2, LaunchBall3, LaunchBall4, LaunchBall5,  // ball physics presets
     Count
 };
 

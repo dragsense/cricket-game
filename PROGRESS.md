@@ -20,10 +20,25 @@ stop after each.
   Bodies keep previous/current transforms for interpolation. No bodies, ground or
   collisions yet (the user's choice: stumps and bails wait for 3.3). `physics_tests`:
   settings from config, free fall under the shared gravity, interpolation and reset.
-- [ ] **3.2 Ball flight**: gravity and drag force generators, substepped integrator, no
-  tunnelling, interpolated rendering.
-- [ ] **3.3 Ball contacts**: bounce, friction, rolling on pitch and outfield (materials in
-  config); comes to rest; ball pushes the Jolt stumps and bails.
+- [x] **3.2 Ball flight, collision and bounce** (built; tests pass; awaiting the user's
+  visual check). Scope set by the user: gravity, collision detection with simple boxes and
+  spheres, bounce; no friction yet; everything generic, so other objects (e.g. players)
+  can reuse it. Generic code in `src/physics/sim`: `BodyState`/`SphereBody`,
+  `ForceGenerator` with `GravityForce` and `DragForce` (shared world settings),
+  `BoxCollider`/`SphereCollider` with sphere contact tests in a fixed-capacity
+  `ColliderSet`, and `SphereSolver` (sums generators, semi-implicit Euler in substeps of at
+  most 0.5 radius of travel, so no tunnelling; normal restitution bounce, slow bounces
+  absorbed so it settles). Ball-only setup in `src/physics/ball/ball_setup` (size/mass
+  from scene.json, drag, solver and colliders from `config/ball.json`; the ground is one
+  box, top at y = 0, restitution 0.45). `SimWorld` steps the ball each tick; rendering
+  interpolates. Keys 1-5 launch the presets of `config/ball_launch.json` (fast and slow
+  delivery, ground shot, lofted shot, high catch); a left click puts the ball down, T
+  still throws with the feeder, Space can pick a flying ball. Without friction the ball
+  slides on after its bounces (3.3). Tests (`test_sphere_solver.cpp`): free fall, drag
+  (~13 % over 20 m, terminal 37 m/s), bounce apex e², comes to rest, no tunnelling through
+  a 1 cm wall at 45 m/s, sphere and rotated box colliders, ball config.
+- [ ] **3.3 Ball contacts**: friction and rolling on pitch and outfield (surface materials
+  in config); comes to rest; stumps and bails as Jolt bodies, pushed by the ball.
 - [ ] **3.4 Prediction and boundary**: predictor using the same solver (bounces, stop
   point and time); boundary detection. Launch presets in config/ball_launch.json (keys,
   reset, slow motion).

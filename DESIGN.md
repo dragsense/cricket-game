@@ -301,9 +301,13 @@ arm, Step 2.1); left click places the target (the ball), R clears it.
 previous/current transform per body for interpolation, preallocated temp allocator
 (no per-tick heap use), single-threaded job system by default. Jolt stays inside the .cpp.
 
-### Ball physics (M3): not started
-Our own code (src/physics/ball): force generators (gravity, drag), substepped solver,
-bounce and rolling, predictor using the same step code. Fixed-step.
+### Own sphere physics (M3): in progress
+Generic, reusable by any object we simulate ourselves (ball now; e.g. players' contact
+queries later), in `src/physics/sim`: force generators (gravity, drag; spin and swing
+later as new generators), box and sphere colliders with sphere contact tests
+(`ColliderSet`, fixed capacity), and `SphereSolver` (substepped semi-implicit Euler,
+restitution bounce; friction and rolling in 3.3). `src/physics/ball` only configures it
+for the cricket ball. The predictor (3.4) will call the same `step()`.
 
 ### Agents / AI (M4+): not started
 Player bodies (agents) driven by fielding, bowling and batting decisions (ai).

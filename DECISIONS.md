@@ -206,3 +206,13 @@ Dated log. Format: decision, reason, alternatives rejected.
   writing rigid bodies ourselves (library-first rule).
 - **Also:** Step 3.1 has no bodies or collisions (the user's choice); stumps and bails
   as Jolt bodies move to 3.3 with ball contacts.
+
+## 2026-10-26: Generic sphere physics; Step 3.2 scope
+- **Decision:** forces, colliders, contact tests and the substepped solver live in
+  `src/physics/sim` as generic code (`SphereSolver`, `ColliderSet`, `ForceGenerator`), not
+  tied to the ball, so other objects (e.g. players) can reuse them. `src/physics/ball` only
+  holds the ball's configuration. Step 3.2 covers gravity, drag, collision detection
+  (boxes, spheres; the ground is a box) and restitution bounce; no friction until 3.3.
+- **Reason:** the user's direction.
+- **Rejected:** Jolt for the ball (prediction must run the same code); a separate ground
+  plane type (a large box covers it).

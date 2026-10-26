@@ -26,7 +26,14 @@
     "Pick": ["Space"],
     // T: the feeder throws the ball at the fielder (config/engine.json "feeder");
     // press Space in time to pick it, else it passes. Clicking stops a throw.
-    "ThrowBall": ["T"]
+    "ThrowBall": ["T"],
+    // 1-5: launch the ball with a physics preset (config/ball_launch.json).
+    // A left click puts it down again (stops the flight).
+    "LaunchBall1": ["1"],
+    "LaunchBall2": ["2"],
+    "LaunchBall3": ["3"],
+    "LaunchBall4": ["4"],
+    "LaunchBall5": ["5"]
   },
   "ballLiftSpeed": 1.0  // m/s while E/Q is held
 }

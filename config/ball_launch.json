@@ -1,0 +1,12 @@
+// Ball launch presets (keys 1-5, config/input.json). Speeds in km/h, angles in
+// degrees: elevation above horizontal, azimuth from +Z toward +X. The bowler's
+// end is -Z, the batter's +Z. Values: docs/BALL_PHYSICS.md section 7.
+{
+  "presets": [
+    { "name": "fast delivery",  "position": [0.3, 2.2, -9.0], "speedKmh": 140, "elevationDeg": -6,  "azimuthDeg": 0 },
+    { "name": "slow delivery",  "position": [0.3, 2.0, -9.0], "speedKmh": 80,  "elevationDeg": 3,   "azimuthDeg": 0 },
+    { "name": "ground shot",    "position": [0.0, 0.5, 9.0],  "speedKmh": 110, "elevationDeg": -8,  "azimuthDeg": 210 },
+    { "name": "lofted shot",    "position": [0.0, 1.0, 9.0],  "speedKmh": 145, "elevationDeg": 32,  "azimuthDeg": 165 },
+    { "name": "high catch",     "position": [0.0, 1.0, 9.0],  "speedKmh": 100, "elevationDeg": 75,  "azimuthDeg": 180 }
+  ]
+}

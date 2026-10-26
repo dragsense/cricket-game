@@ -1,6 +1,7 @@
 #include "match/sim_world.h"
 
 #include "core/config.h"
+#include "physics/ball/ball_setup.h"
 
 namespace match {
 
@@ -20,11 +21,27 @@ bool SimWorld::initPhysics(const core::Config& physicsWorld) {
     return physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld));
 }
 
+void SimWorld::initBall(const core::Config& ball, const core::Config& scene) {
+    physics::configureBallSolver(ballSolver_, ball, scene, physics_.world());
+    ballSolver_.clearForces();
+    ballSolver_.addForce(&gravity_);
+    ballSolver_.addForce(&drag_);
+}
+
+void SimWorld::launchBall(math::Vec3 position, math::Vec3 velocity) {
+    ball_.position = position;
+    ball_.velocity = velocity;
+    ballPrevious_ = ball_;
+    ballInFlight_ = true;
+}
+
 void SimWorld::tick(double dt) {
     previous_ = current_;
     time_ += dt;
     fielder_.tick(dt);
     physics_.step(static_cast<float>(dt));
+    ballPrevious_ = ball_;
+    if (ballInFlight_) ballSolver_.step(ball_, static_cast<float>(dt));
     if (!probeEnabled_) return;
 
     float a = static_cast<float>(time_) * pathSpeed_;

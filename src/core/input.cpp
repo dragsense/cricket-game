@@ -33,6 +33,7 @@ constexpr const char* kActionNames[] = {
     "BallUp", "BallDown",
     "Pick",
     "ThrowBall",
+    "LaunchBall1", "LaunchBall2", "LaunchBall3", "LaunchBall4", "LaunchBall5",
 };
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == static_cast<int>(Action::Count));
 
@@ -92,6 +93,11 @@ ActionMap::ActionMap() {
     bind(Action::BallDown, Key::Q);
     bind(Action::Pick, Key::Space);
     bind(Action::ThrowBall, Key::T);
+    bind(Action::LaunchBall1, Key::Num1);
+    bind(Action::LaunchBall2, Key::Num2);
+    bind(Action::LaunchBall3, Key::Num3);
+    bind(Action::LaunchBall4, Key::Num4);
+    bind(Action::LaunchBall5, Key::Num5);
 }
 
 void ActionMap::load(const Config& config) {

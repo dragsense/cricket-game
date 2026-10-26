@@ -67,9 +67,13 @@ add_library(cricket_motion STATIC
 target_link_libraries(cricket_motion PUBLIC cricket_core)
 cricket_warnings(cricket_motion)
 
-# ---- physics: Jolt behind our own thin interface ------------------------------------
+# ---- physics: Jolt behind our own thin interface; our sphere solver; ball setup ----
 add_library(cricket_physics STATIC
     src/physics/core/physics_world.cpp
+    src/physics/sim/colliders.cpp
+    src/physics/sim/forces.cpp
+    src/physics/sim/sphere_solver.cpp
+    src/physics/ball/ball_setup.cpp
 )
 target_link_libraries(cricket_physics PUBLIC cricket_core PRIVATE Jolt)
 cricket_warnings(cricket_physics)
@@ -154,7 +158,7 @@ if(CRICKET_BUILD_TESTS)
     cricket_warnings(agents_tests)
     add_test(NAME agents_tests COMMAND agents_tests)
 
-    add_executable(physics_tests tests/test_main.cpp tests/test_physics_world.cpp)
+    add_executable(physics_tests tests/test_main.cpp tests/test_physics_world.cpp tests/test_sphere_solver.cpp)
     target_link_libraries(physics_tests PRIVATE cricket_physics doctest::doctest)
     target_compile_definitions(physics_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
     cricket_warnings(physics_tests)

@@ -1,0 +1,23 @@
+// Ball solver (our own code, src/physics/ball). Mass and size come from
+// config/scene.json "ball"; gravity and air from config/physics_world.json.
+// Values: docs/BALL_PHYSICS.md.
+{
+  "drag": {
+    "coefficient": 0.45              // C_d, new ball, subcritical (BALL_PHYSICS 3)
+  },
+  "solver": {
+    "maxTravelPerSubstep": 0.5,      // ball radii per substep: no tunnelling (BALL_PHYSICS 8)
+    "maxSubsteps": 64,
+    "restSpeed": 0.05                // m/s: slower bounces are absorbed (BALL_PHYSICS 5)
+  },
+  // Static shapes the ball bounces off (no friction yet). Boxes: centre,
+  // halfExtents, rotationDeg (x, y, z); spheres: centre, radius.
+  "colliders": {
+    "boxes": [
+      // The ground, top face at y = 0. Restitution between hard pitch (0.45-0.55)
+      // and outfield (0.30-0.45) until 3.3 adds surfaces (BALL_PHYSICS 4, 5).
+      { "centre": [0.0, -1.0, 0.0], "halfExtents": [200.0, 1.0, 200.0], "restitution": 0.45 }
+    ],
+    "spheres": []
+  }
+}

@@ -91,6 +91,7 @@ bool CricketApp::init() {
     feeder_.configure(e);
 
     if (!sim_.initPhysics(cfg_.physicsWorld)) return false;
+    sim_.initBall(cfg_.ball, cfg_.scene);
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
     ballPos_ = cfg_.scene.getVec3("ball.restPosition", math::Vec3(0.15f, 0.0f, 5.0f));
     ballPos_.y = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
@@ -140,12 +141,19 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             actions_.load(cfg_.input);
         } else if (name == "scene.json") {
             cfg_.scene = std::move(fresh);
+            sim_.initBall(cfg_.ball, cfg_.scene);
             destroyTestScene(world_, *renderer_, scene_);
             scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
             appliedSettings_.showProbe = !debugSettings_.showProbe;  // re-apply probe visibility
         } else if (name == "physics_world.json") {
             cfg_.physicsWorld = std::move(fresh);
             if (!sim_.initPhysics(cfg_.physicsWorld)) LOG_ERROR("reload: physics world could not be rebuilt");
+            sim_.initBall(cfg_.ball, cfg_.scene);
+        } else if (name == "ball.json") {
+            cfg_.ball = std::move(fresh);
+            sim_.initBall(cfg_.ball, cfg_.scene);
+        } else if (name == "ball_launch.json") {
+            cfg_.ballLaunch = std::move(fresh);
         } else if (name == "fielder_skeleton.json") {
             cfg_.fielderSkeleton = std::move(fresh);
             LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
@@ -162,6 +170,24 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         }
         LOG_INFO("reload: applied {}", name);
     }
+}
+
+void CricketApp::launchBall(int index) {
+    const nlohmann::json& presets = cfg_.ballLaunch.root().value("presets", nlohmann::json::array());
+    if (!presets.is_array() || index >= static_cast<int>(presets.size())) {
+        LOG_WARN("ball launch: no preset {} in ball_launch.json", index + 1);
+        return;
+    }
+    const nlohmann::json& p = presets[static_cast<size_t>(index)];
+    const auto pos = p.value("position", std::vector<float>{0.0f, 1.0f, 0.0f});
+    const float speed = p.value("speedKmh", 100.0f) / 3.6f;
+    const float elevation = math::radians(p.value("elevationDeg", 0.0f));
+    const float azimuth = math::radians(p.value("azimuthDeg", 0.0f));
+    const math::Vec3 dir(std::sin(azimuth) * std::cos(elevation), std::sin(elevation), std::cos(azimuth) * std::cos(elevation));
+    feeder_.stop();
+    sim_.fielder().clearReach();
+    sim_.launchBall(pos.size() == 3 ? math::Vec3(pos[0], pos[1], pos[2]) : math::Vec3(0, 1, 0), dir * speed);
+    LOG_INFO("ball launch: {} at {:.0f} km/h", p.value("name", std::string("preset")), speed * 3.6f);
 }
 
 void CricketApp::shutdown() {
@@ -225,7 +251,10 @@ bool CricketApp::pumpEvents() {
 
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
     if (actions_.pressed(input_, core::Action::Pick)) sim_.fielder().startPick();
+    for (int i = 0; i < 5; ++i)
+        if (actions_.pressed(input_, static_cast<core::Action>(static_cast<int>(core::Action::LaunchBall1) + i))) launchBall(i);
     if (actions_.pressed(input_, core::Action::ThrowBall)) {
+        sim_.stopBall();
         sim_.fielder().clearReach();
         feeder_.throwAt(sim_.fielder().root(), cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi);
     }
@@ -234,7 +263,7 @@ bool CricketApp::pumpEvents() {
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
         changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json", "locomotion.json",
-                          "physics_world.json"};
+                          "physics_world.json", "ball.json", "ball_launch.json"};
     else if (cfg_.liveReload)
         configWatcher_.poll(changedConfigs_);
     if (!changedConfigs_.empty()) reloadConfig(changedConfigs_);
@@ -245,6 +274,8 @@ void CricketApp::fixedUpdate(double dt) {
     // A thrown ball is the fielder's target every tick until it is caught
     // (then it rides in the hand) or has gone past.
     if (feeder_.active() && sim_.fielder().holding()) feeder_.stop();
+    if (sim_.ballInFlight() && sim_.fielder().holding()) sim_.stopBall();
+    if (sim_.ballInFlight()) sim_.fielder().setReachTarget(sim_.ball().position, sim_.ball().velocity);
     if (feeder_.active()) {
         feeder_.tick(static_cast<float>(dt));
         sim_.fielder().setReachTarget(feeder_.position(), feeder_.velocity());
@@ -338,7 +369,8 @@ void CricketApp::updateReachBall(float dt) {
         const float y = (1.0f - 2.0f * input_.mouseY / h) * tanHalf;
         const math::Vec3 ray = math::normalize(forward + right * x + up * y);
         float t = std::fabs(ray.y) > 1e-4f ? (ballPos_.y - view.eye.y) / ray.y : -1.0f;
-        feeder_.stop();  // manual placement takes over from a throw
+        feeder_.stop();  // manual placement takes over from a throw or a flight
+        sim_.stopBall();
         // A click on a held ball takes it from the hand and puts it down there.
         if (sim_.fielder().holding()) {
             ballPos_.y = radius;
@@ -365,8 +397,8 @@ void CricketApp::updateFielder(float alpha) {
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
     fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
-    if (feeder_.active()) {
-        ballPos_ = feeder_.position(alpha);
+    if (sim_.ballInFlight() || feeder_.active()) {
+        ballPos_ = sim_.ballInFlight() ? sim_.ballPosition(alpha) : feeder_.position(alpha);
         math::Transform ball;
         ball.position = ballPos_;
         world_.setTransform(scene_.ball, ball);
