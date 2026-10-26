@@ -14,8 +14,6 @@ namespace game {
 
 namespace {
 
-constexpr float kStoppedSpeed = 0.05f;  // m/s; below this the fielder counts as stopped
-
 core::LoopSettings loopSettings(const core::Config& c) {
     core::LoopSettings s;
     s.simHz = c.getFloat("sim.tickHz", 120.0f);
@@ -305,10 +303,9 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::ToggleOverlay)) debugSettings_.showOverlay = !debugSettings_.showOverlay;
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
 
-    // Fielder movement: W turns toward the camera's heading and walks forward;
-    // A/D sidestep and S backs up without turning (character space, +X left).
-    // The heading is taken from the camera only while stopped, so the camera
-    // can orbit a moving fielder without steering them.
+    // Fielder movement: the fielder always turns to the camera's heading,
+    // standing, walking or running; W walks forward, S backs up, A/D sidestep
+    // (character space, +X left).
     auto axis = [&](core::Action pos, core::Action neg) {
         return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
     };
@@ -317,7 +314,6 @@ bool CricketApp::pumpEvents() {
                                                  -math::kForward);
     math::Vec2 move(axis(core::Action::StepLeft, core::Action::StepRight),
                     axis(core::Action::StepForward, core::Action::StepBack));
-    if (limbTest_) move = math::Vec2(0.0f);
     // B switches the controlled player (fielder or bowler); the other stands.
     if (!limbTest_ && actions_.pressed(input_, core::Action::BowlAim)) {
         bowlAim_ = !bowlAim_;
@@ -325,8 +321,8 @@ bool CricketApp::pumpEvents() {
     }
     agents::Fielder& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
-    if (controlled.speed() < kStoppedSpeed) heading_ = std::atan2(ahead.x, ahead.z);
-    controlled.setMoveInput(move, !limbTest_ && actions_.down(input_, core::Action::StepForward), heading_);
+    heading_ = std::atan2(ahead.x, ahead.z);
+    controlled.setMoveInput(move, true, heading_);
 
     // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).
     controlled.setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
@@ -334,7 +330,8 @@ bool CricketApp::pumpEvents() {
                                                                   : motion::Gait::Walk);
 
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
-    if (actions_.pressed(input_, core::Action::Pick)) sim_.fielder().startPick();
+    if (actions_.pressed(input_, core::Action::Pick))
+        sim_.fielder().startPick(actions_.down(input_, core::Action::PickStep));
     for (int i = 0; i < 5; ++i)
         if (actions_.pressed(input_, static_cast<core::Action>(static_cast<int>(core::Action::LaunchBall1) + i))) launchBall(i);
     if (actions_.pressed(input_, core::Action::ThrowBall)) releaseToFielder();

@@ -6,7 +6,7 @@
     "ToggleDebugDraw": ["F2"],
     "ReloadConfig": ["F5"],
     "Quit": ["Escape"],
-    // Fielder: W forward (turns to the camera heading), S back, A/D sidestep.
+    // Fielder: always faces the camera's heading; W forward, S back, A/D sidestep.
     "StepForward": ["W"],
     "StepBack": ["S"],
     "StepLeft": ["A"],
@@ -17,10 +17,12 @@
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
-    // Space: the fielder picks the ball (reach, grip, carry back) with the hand
-    // on the ball's side; R abandons the pick.
+    // Space: the fielder reaches for the ball at once (grip, carry back) with
+    // the hand on the ball's side; Alt+Space steps toward it first. R abandons
+    // the pick.
     "ClearReach": ["R"],
     "Pick": ["Space"],
+    "PickStep": ["LeftAlt", "RightAlt"],
     // T: releases the ball from the batting position toward the fielder
     // (config/ball_launch.json "toFielder"); walk to it and press Space.
     "ThrowBall": ["T"],

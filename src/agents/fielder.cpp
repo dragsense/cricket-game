@@ -75,11 +75,7 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reach_.fittsA = joints.getFloat("reach.fittsA", reach_.fittsA);
     reach_.fittsB = joints.getFloat("reach.fittsB", reach_.fittsB);
     reach_.fittsWidth = joints.getFloat("reach.fittsWidth", reach_.fittsWidth);
-    reach_.pickRange = joints.getFloat("reach.pickRange", reach_.pickRange);
-    reach_.movingSpeed = joints.getFloat("reach.movingSpeed", reach_.movingSpeed);
-    reach_.holdTime = joints.getFloat("reach.holdTime", reach_.holdTime);
     reach_.gripTolerance = joints.getFloat("reach.gripTolerance", reach_.gripTolerance);
-    reach_.giveUpTime = joints.getFloat("reach.giveUpTime", reach_.giveUpTime);
     reach_.ballRadius = joints.getFloat("reach.ballRadius", reach_.ballRadius);
     reach_.relaxedCurl = joints.getFloat("reach.relaxedCurl", reach_.relaxedCurl);
     reach_.palmCentre = joints.getFloat("reach.palmCentre", reach_.palmCentre);
@@ -88,7 +84,6 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     reach_.thumbCurl = degs("reach.thumbCurlDeg", reach_.thumbCurl);
     reach_.maxLunge = joints.getFloat("reach.maxLunge", reach_.maxLunge);
     reach_.lungeShort = joints.getFloat("reach.lungeShort", reach_.lungeShort);
-    reach_.stepBeyond = joints.getFloat("reach.stepBeyond", reach_.stepBeyond);
     reach_.lungeDuration = joints.getFloat("reach.lungeDuration", reach_.lungeDuration);
     reach_.lungeHeight = joints.getFloat("reach.lungeHeight", reach_.lungeHeight);
     reach_.elbowPole = joints.getVec3("reach.elbowPole", reach_.elbowPole);
@@ -314,9 +309,9 @@ void Fielder::tick(double dt) {
     if (reachNow) {
         reachArm(reachLeft_, goal_);
     }
-    // Fingers: closed around the ball once the hand is on it and while it is
-    // held (walking and running too), relaxed otherwise.
-    const bool closed = holding_ || (phase_ == Phase::Reach && holdTimer_ > 0.0f);
+    // Fingers: closed around the ball while it is held (walking and running
+    // too), relaxed otherwise.
+    const bool closed = holding_;
     grip(true, closed && reachLeft_ ? 1.0f : reach_.relaxedCurl);
     grip(false, closed && !reachLeft_ ? 1.0f : reach_.relaxedCurl);
     limits_.apply(current_);
@@ -721,17 +716,20 @@ void Fielder::grip(bool left, float amount) {
     }
 }
 
-void Fielder::startPick() {
-    // The decision to reach (and when) is made in updatePick: a still ball is
-    // picked at once if in range; a moving one is waited for.
+void Fielder::startPick(bool step) {
+    // At once, whatever the ball is doing: the hand on the ball's side
+    // (rest shoulders), unless a fixed one is set.
     if (holding_ || phase_ != Phase::Idle) return;
-    phase_ = Phase::Wait;
-    holdTimer_ = stuckTimer_ = 0.0f;
-    lunged_ = false;
+    const math::Vec3 ball = math::inverse(root_).transformPoint(reachTarget_);
+    reachLeft_ = handMode_ == HandMode::Left ||
+                 (handMode_ != HandMode::Right && math::distance(restShoulderL_, ball) <= math::distance(restShoulderR_, ball));
+    pickDuration_ = handTime(math::distance(reachLeft_ ? restWristL_ : restWristR_, ball));
+    phase_ = Phase::Reach;
+    pickTime_ = 0.0f;
+    if (step && reach_.maxLunge > 0.0f) lungeToward(ball);  // the reach waits for the foot to land
 }
 
 void Fielder::clearReach() {
-    if (phase_ == Phase::Wait) phase_ = Phase::Idle;
     if (phase_ == Phase::Reach) startReturn();
 }
 
@@ -881,37 +879,6 @@ void Fielder::updatePick(float dt) {
     if (phase_ == Phase::Idle || phase_ == Phase::Throw || phase_ == Phase::Bowl || phase_ == Phase::Pose) return;
     const math::Transform toModel = math::inverse(root_);
     const math::Vec3 ball = toModel.transformPoint(reachTarget_);
-    const math::Vec3 mid = 0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right));
-    auto flat = [](math::Vec3 v) { return math::length(math::Vec2(v.x, v.z)); };
-
-    if (phase_ == Phase::Wait) {
-        // Where the hand meets the ball: where it passes closest to the
-        // middle of the feet (the line of control square to its path), or
-        // where it lies if it is still or has already passed.
-        const math::Vec3 velocity = toModel.transformDirection(reachVelocity_);
-        const bool moving = flat(velocity) > reach_.movingSpeed;
-        const float t = moving ? motion::timeToClosest(ball, velocity, mid) : 0.0f;
-        const math::Vec3 meet = ball + velocity * std::max(t, 0.0f);
-        if (flat(meet - mid) > reach_.pickRange) {
-            LOG_INFO("pick: ball out of range ({:.2f} m), not trying", flat(meet - mid));
-            phase_ = Phase::Idle;
-            return;
-        }
-        // Which hand: the one on the meeting point's side (rest shoulders),
-        // unless a fixed one is set.
-        reachLeft_ = handMode_ == HandMode::Left ||
-                     (handMode_ != HandMode::Right && math::distance(restShoulderL_, meet) <= math::distance(restShoulderR_, meet));
-        // Start so the hand arrives as the ball passes: the reach time for
-        // the hand's travel, plus the lunge's if one is needed first.
-        const bool lunge = reach_.maxLunge > 0.0f && flat(meet - mid) > reach_.stepBeyond;
-        pickDuration_ = handTime(math::distance(reachLeft_ ? restWristL_ : restWristR_, meet));
-        const float lead = pickDuration_ + (lunge ? reach_.lungeDuration : 0.0f);
-        if (moving && t > lead) return;  // not yet
-        meetPoint_ = meet;
-        phase_ = Phase::Reach;
-        pickTime_ = 0.0f;
-        if (lunge) lungeToward(meetPoint_);  // step first; the reach waits for the foot to land
-    }
 
     // Progress eases in and out (smoothstep) over the Fitts' law times, so
     // the hand leads and the body, driven by the same goal through every
@@ -932,39 +899,17 @@ void Fielder::updatePick(float dt) {
     goal_ = math::lerp(reachLeft_ ? restWristL_ : restWristR_, end, s);
 }
 
-void Fielder::finishPick(float dt) {
-    if (phase_ != Phase::Reach || pickTime_ < 1.0f) return;
-    if (reachError_ <= reach_.gripTolerance) {
-        // On the ball: grip, then carry it back. A moving ball is grabbed on
-        // contact; a still one after holdTime.
-        holdTimer_ += dt;
-        const bool moving = math::length(math::Vec2(reachVelocity_.x, reachVelocity_.z)) > reach_.movingSpeed;
-        if (moving || holdTimer_ >= reach_.holdTime) {
-            holding_ = true;
-            startReturn();
-        }
-        return;
-    }
-    if (stepper_.stepping()) return;
-    if (!lunged_ && reach_.maxLunge > 0.0f) {
-        // Fallback: the step-first estimate (stepBeyond) was short.
-        lungeToward(math::inverse(root_).transformPoint(reachTarget_));
-        pickTime_ = 0.0f;  // reach again from the new stance
-        return;
-    }
-    // Still out of reach after the lunge: hold the stretch briefly, then let
-    // go (this is where the dive will start).
-    stuckTimer_ += dt;
-    if (stuckTimer_ >= reach_.giveUpTime) {
-        LOG_INFO("reach: ball out of reach by {:.2f} m (dive case)", reachError_);
-        clearReach();
-    }
+void Fielder::finishPick(float) {
+    // On the ball: grip and carry it back. Short of it, the hand keeps
+    // following it until clearReach().
+    if (phase_ != Phase::Reach || pickTime_ < 1.0f || reachError_ > reach_.gripTolerance) return;
+    holding_ = true;
+    startReturn();
 }
 
 void Fielder::lungeToward(math::Vec3 ball) {
     // The foot nearer the ball steps to land beside it (BIOMECHANICS 8: low
     // pickups put the foot by the ball), lungeShort short of it, at most maxLunge.
-    lunged_ = true;
     const motion::Foot foot = math::distance(stepper_.foot(motion::Foot::Left), ball) <=
                                       math::distance(stepper_.foot(motion::Foot::Right), ball)
                                   ? motion::Foot::Left

@@ -2,7 +2,6 @@
 // body moves (side-to-side sway while running, reaching for a ball).
 
 #include "agents/fielder.h"
-#include "game/ball_feeder.h"
 #include "core/config.h"
 #include "rig/skeleton_def.h"
 
@@ -34,8 +33,7 @@ bool makeFielder(agents::Fielder& fielder, bool lunge = false) {
     fielder.setHandMode(agents::HandMode::Auto);  // these tests check the hand on the ball's side
     if (!lunge) {
         agents::ReachSettings r = fielder.reachSettings();
-        r.maxLunge = 0.0f;    // feet stay planted
-        r.pickRange = 100.0f;  // always try (these test the planted reach itself)
+        r.maxLunge = 0.0f;  // feet stay planted
         fielder.setReachSettings(r);
     }
     return true;
@@ -234,13 +232,13 @@ TEST_CASE("picking: grips the ball, carries it back, stands again") {
     CHECK(fielder.pose().locals[0].position.y == doctest::Approx(standY).epsilon(0.02));
 }
 
-TEST_CASE("picking: a ball out of planted reach is picked with a lunge step") {
+TEST_CASE("picking: a ball out of planted reach is picked with a step (Alt+Space)") {
     agents::Fielder fielder;
     REQUIRE(makeFielder(fielder, true));
     const math::Transform root = fielder.root();
     const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
     fielder.setReachTarget(root.transformPoint(math::Vec3(0.1f, 0.036f, 1.2f)));
-    fielder.startPick();
+    fielder.startPick(true);
     bool held = false, stepped = false;
     for (int i = 0; i < 4 * 120; ++i) {
         fielder.tick(1.0 / 120.0);
@@ -252,7 +250,7 @@ TEST_CASE("picking: a ball out of planted reach is picked with a lunge step") {
     CHECK(held);
 }
 
-TEST_CASE("picking: a far ball is stepped to first, before the body bends") {
+TEST_CASE("picking: with a step, the foot moves first, before the body bends") {
     agents::Fielder fielder;
     REQUIRE(makeFielder(fielder, true));
     fielder.tick(1.0 / 120.0);
@@ -260,7 +258,7 @@ TEST_CASE("picking: a far ball is stepped to first, before the body bends") {
     const float standY = fielder.pose().locals[0].position.y;
     const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
     fielder.setReachTarget(root.transformPoint(math::Vec3(0.1f, 0.036f, 1.2f)));
-    fielder.startPick();
+    fielder.startPick(true);
     for (int i = 0; i < 12; ++i) fielder.tick(1.0 / 120.0);  // 0.1 s in
     const bool stepping = math::distance(fielder.targets().footL, footL) > 0.01f ||
                           math::distance(fielder.targets().footR, footR) > 0.01f;
@@ -285,15 +283,6 @@ TEST_CASE("picking: hand mode Right uses the right hand for a ball on the left")
     CHECK(fielder.reachError() < 0.02f);
 }
 
-TEST_CASE("picking: a still ball out of range is not tried") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder, true));
-    fielder.setReachTarget(fielder.root().transformPoint(math::Vec3(0.0f, 0.036f, 2.5f)));
-    fielder.startPick();
-    fielder.tick(1.0 / 120.0);
-    CHECK_FALSE(fielder.reaching());
-}
-
 TEST_CASE("picking: a still ball in range is reached at once, a nearer one sooner") {
     auto timeToReach = [](float z) {
         agents::Fielder fielder;
@@ -303,41 +292,13 @@ TEST_CASE("picking: a still ball in range is reached at once, a nearer one soone
         int ticks = 0;
         for (; ticks < 240 && fielder.reachProgress() < 1.0f; ++ticks) {
             fielder.tick(1.0 / 120.0);
-            if (ticks == 0) CHECK(fielder.reachProgress() > 0.0f);  // no wait for a still ball
+            if (ticks == 0) CHECK(fielder.reachProgress() > 0.0f);  // no wait
         }
         return ticks / 120.0f;
     };
     const float near = timeToReach(0.3f), far = timeToReach(0.6f);
     MESSAGE("reach time: near ", near, " s, far ", far, " s");
     CHECK(near < far);  // Fitts' law
-}
-
-TEST_CASE("picking: a moving ball is waited for, then picked as it passes") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder, true));
-    game::FeederSettings s;
-    s.speedMin = s.speedMax = 4.0f;
-    s.groundShare = 1.0f;  // rolling
-    s.sideSpread = 0.0f;
-    game::BallFeeder feeder;
-    feeder.setSettings(s);
-    feeder.throwAt(fielder.root(), 0.036f);
-    // Pass 0.3 m to the side: shift the throw sideways.
-    const math::Vec3 side = fielder.root().transformDirection(math::kRight) * 0.3f;
-    fielder.setReachTarget(feeder.position() + side, feeder.velocity());
-    fielder.startPick();  // pressed early, with the ball 12 m away
-    int waited = 0;
-    bool held = false;
-    for (int i = 0; i < 6 * 120 && !held; ++i) {
-        feeder.tick(1.0f / 120.0f);
-        fielder.setReachTarget(feeder.position() + side, feeder.velocity());
-        fielder.tick(1.0 / 120.0);
-        if (fielder.waiting()) ++waited;
-        held = fielder.holding();
-    }
-    MESSAGE("waited ", waited / 120.0f, " s");
-    CHECK(waited > 120);  // ~2.5 s before the reach starts
-    CHECK(held);
 }
 
 TEST_CASE("running fielder keeps the body and feet in their lanes") {

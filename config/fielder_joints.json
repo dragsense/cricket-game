@@ -109,32 +109,20 @@
     // made perpendicular to the shoulder-to-target line: the elbow bends away
     // from the body for any target (ground, side, air).
     "elbowPole": [0.4, -1.0, -0.6],
-    // Picking (Space), BIOMECHANICS 9.6: the wrist goal eases from its rest
-    // spot to the ball and back in Fitts' law time fittsA + fittsB log2(2D /
-    // fittsWidth) (s) for the hand's travel D (m); once within gripTolerance
-    // (m) for holdTime the ball is gripped and carried back. A ball whose
-    // meeting point (where it passes closest, or lies) is beyond pickRange m
-    // of the feet is not tried; one moving faster than movingSpeed m/s is
-    // waited for, so the hand arrives as it passes. Out of reach at full stretch:
-    // the foot nearer the ball lunges to land beside it, lungeShort m short of
-    // it (BIOMECHANICS 8), at most maxLunge m (0 = off); still out of reach
-    // after giveUpTime s, it lets go
-    // (the dive case, M3).
+    // Picking (Space), BIOMECHANICS 9.6: the reach starts at once; the wrist
+    // goal eases from its rest spot to the ball (following it if it moves)
+    // and back in Fitts' law time fittsA + fittsB log2(2D / fittsWidth) (s)
+    // for the hand's travel D (m); within gripTolerance (m) the ball is
+    // gripped and carried back. Alt+Space steps first: the foot nearer the
+    // ball lunges to land beside it, lungeShort m short of it (BIOMECHANICS
+    // 8), at most maxLunge m (0 = off).
     "fittsA": 0.1,
     "fittsB": 0.1,
     "fittsWidth": 0.1,
-    "pickRange": 1.5,
-    "movingSpeed": 0.2,
-    "holdTime": 0.15,
     "gripTolerance": 0.02,
-    "giveUpTime": 0.4,
     "ballRadius": 0.036,
     "maxLunge": 0.9,
     "lungeShort": 0.25,
-    // Step first: a ball further than stepBeyond m (horizontally) from the
-    // middle of the feet gets the lunge before the reach starts (the planted
-    // reach sweep covers 0.6 m; 0.9 m needs a step).
-    "stepBeyond": 0.65,
     "lungeDuration": 0.4,
     "lungeHeight": 0.06,
     // Grip: fingers and thumb close fully once the hand is on the ball and stay

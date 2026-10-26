@@ -66,20 +66,11 @@ struct ReachSettings {
     math::Vec3 elbowPole{0.4f, -1.0f, -0.6f};
     // Pick timing (BIOMECHANICS 9.6): the wrist goal eases from its rest spot
     // to the ball and back over Fitts' law times a + b log2(2D / W) for the
-    // distance D the hand travels; holdTime on the ball before carrying it.
+    // distance D the hand travels.
     float fittsA = 0.1f;      // s
     float fittsB = 0.1f;      // s per bit
     float fittsWidth = 0.1f;  // m, target width (hand around the ball)
-    float holdTime = 0.15f;
-    // Whether and when to pick: a ball whose meeting point (where it passes
-    // closest; for a still ball, where it lies) is further than pickRange (m,
-    // horizontally from the middle of the feet) is not tried. A moving ball
-    // (faster than movingSpeed m/s) is waited for: the reach starts so the
-    // hand arrives as it passes (plus the lunge time if a lunge is needed).
-    float pickRange = 1.5f;
-    float movingSpeed = 0.2f;
     float gripTolerance = 0.02f;  // m; the hand counts as on the ball within this
-    float giveUpTime = 0.4f;      // s at full stretch, out of reach, before letting go (the dive later)
     float ballRadius = 0.036f;    // m; a held ball sits this far out from the palm (plus its thickness)
     // Grip: full curl per joint [_01, _02, _03] once the hand is on the ball
     // and while holding it (degrees in config); relaxedCurl share otherwise.
@@ -91,11 +82,10 @@ struct ReachSettings {
     float palmThickness = 0.015f;
     math::Vec3 fingerCurl{math::radians(35.0f), math::radians(55.0f), math::radians(40.0f)};
     math::Vec3 thumbCurl{math::radians(10.0f), math::radians(30.0f), math::radians(25.0f)};
-    // Lunge: out of reach at full stretch, the foot nearer the ball steps to
-    // land lungeShort (m) short of it, at most maxLunge (m; 0 = off).
+    // Lunge (a pick with a step): the foot nearer the ball steps to land
+    // lungeShort (m) short of it, at most maxLunge (m; 0 = off).
     float maxLunge = 0.9f;
     float lungeShort = 0.25f;
-    float stepBeyond = 0.65f;     // m from the middle of the feet: step first, then reach
     float lungeDuration = 0.4f;   // s
     float lungeHeight = 0.06f;    // m swing arc apex
 };
@@ -135,13 +125,14 @@ public:
         reachVelocity_ = velocity;
         holding_ = false;
     }
-    // Reach for the ball, grip it, carry it back to the standing pose. A lunge
-    // step is taken if it is out of reach; walking input is ignored meanwhile.
-    void startPick();
+    // Reach for the ball at once (the hand follows it if it moves), grip it
+    // on contact and carry it back to the standing pose. With `step`, the
+    // foot nearer the ball lunges first and the reach starts as it lands.
+    // Walking input is ignored meanwhile; clearReach() abandons it.
+    void startPick(bool step = false);
     // Abandon the pick: ease back to standing (keeps a held ball).
     void clearReach();
     bool reaching() const { return phase_ != Phase::Idle; }
-    bool waiting() const { return phase_ == Phase::Wait; }  // for a moving ball to come
     float reachProgress() const { return pickTime_; }        // 0..1 of the reach (back to 0 on return)
     bool holding() const { return holding_; }
     // Puts the ball in the holding hand (e.g. a new ball for the bowler).
@@ -235,7 +226,7 @@ private:
     math::Vec3 clampPelvisToLegs(math::Vec3 pelvis);  // both feet planted, no squat limit
     math::Vec3 modelCentreOfMass();  // uses models_, which must be current
     // Picking: advances the phase and sets this tick's wrist goals; after the
-    // solve, grips, lunges or gives up.
+    // solve, grips once the hand is on the ball.
     void updatePick(float dt);
     void finishPick(float dt);
     void updateThrow(float dt);  // sets this tick's wrist goal on the throw path
@@ -275,7 +266,7 @@ private:
     math::Vec3 reachVelocity_{0.0f};  // world, m/s
     bool poseHand_ = false;           // limb test: a hand has a wrist goal
     math::Vec3 poseGoal_{0.0f};       // limb test wrist goal, world space
-    enum class Phase { Idle, Wait, Reach, Return, Throw, Bowl, Pose };
+    enum class Phase { Idle, Reach, Return, Throw, Bowl, Pose };
     motion::ThrowSettings throw_;
     motion::BowlSettings bowl_;
     float slotAngle_ = 0.0f, throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // radians
@@ -284,13 +275,9 @@ private:
     bool released_ = false;    // the ball left the hand this tick (takeRelease)
     math::Vec3 releasePosition_{0.0f}, releaseVelocity_{0.0f};  // world
     float pickDuration_ = 0.4f, returnDuration_ = 0.5f;  // s, Fitts' law per pick
-    math::Vec3 meetPoint_{0.0f};  // character space: where the hand meets the ball (lunge aim)
     Phase phase_ = Phase::Idle;
     HandMode handMode_ = HandMode::Auto;
     float pickTime_ = 0.0f;   // 0..1 progress of the reach (back to 0 on return)
-    float holdTimer_ = 0.0f;  // s on the ball
-    float stuckTimer_ = 0.0f; // s at full stretch, out of reach, after the lunge
-    bool lunged_ = false;
     bool holding_ = false;
     math::Vec3 carryFrom_{0.0f};  // wrist goal where the ball was gripped, character space
     bool reachLeft_ = true;       // this tick's (primary) reaching hand

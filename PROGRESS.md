@@ -43,6 +43,14 @@ each.
   another click lets go and it stays. Feet are placed directly (`FootStepper::place`),
   the body follows by `repositionBody`; a hand goal drives the reach stages
   (`Fielder::setPoseHand`, phase Pose). One hand goal at a time. R resets the pose.
+  Later (the user's call): the arrows move the target (camera-relative, Shift: up/down;
+  `debug.limbTestSpeed`) instead of the mouse; WASD walking is back on.
+- [x] **Pick rework** (built; tests pass; awaiting the user's check): the old pick logic
+  is removed (wait for a moving ball, pick range, hold time, auto lunge, give-up).
+  Space reaches at once (Fitts' law hand speed; the hand follows a moving ball) and
+  grips on contact; Alt+Space steps toward the ball first (the lunge), then reaches.
+  Whether to wait, walk up or step is the player's choice. The controlled player
+  always faces the camera's heading, standing, walking or running.
 
 ## Previous milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
 
