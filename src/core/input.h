@@ -61,6 +61,7 @@ enum class Action : uint8_t {
     ThrowBall,         // release the ball from the batting position toward the fielder
     BowlAim,           // switch control (move, camera, mouse aim) between fielder and bowler
     PoseLimb,          // limb test: choose the next limb (right foot, left foot, right hand, left hand)
+    PoseAway, PoseNear, PoseLeft, PoseRight,  // limb test: move the target (camera-relative; Shift: up/down)
     LaunchBall1, LaunchBall2, LaunchBall3, LaunchBall4, LaunchBall5,  // ball physics presets
     Count
 };

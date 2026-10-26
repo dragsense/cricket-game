@@ -364,7 +364,6 @@ bool CricketApp::pumpEvents() {
         tilt_ += input_.wheel * math::radians(cfg_.throwing.getFloat("aim.tiltStepDeg", 5.0f));
         input_.wheel = 0.0f;
     }
-    if (limbTest_) updatePose();
     if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && !limbTest_ && !bowlAim_ && fielder.holding() &&
         !fielder.throwing()) {
         if (!aimSwing_) {
@@ -388,37 +387,40 @@ bool CricketApp::pumpEvents() {
     return running;
 }
 
-void CricketApp::updatePose() {
+void CricketApp::updatePose(float seconds) {
     agents::Fielder& fielder = sim_.fielder();
     if (actions_.pressed(input_, core::Action::ClearReach)) {
         fielder.clearPose();
-        poseDragging_ = false;
+        poseActive_ = false;
     }
-    // F switches limb; holding the left button drags its target (from where
-    // the limb is), letting go leaves it there.
-    if (actions_.pressed(input_, core::Action::PoseLimb)) poseLimb_ = (poseLimb_ + 1) % 4;
+    if (actions_.pressed(input_, core::Action::PoseLimb)) {
+        poseLimb_ = (poseLimb_ + 1) % 4;
+        poseActive_ = false;
+    }
+    if (input_.uiWantsKeyboard) return;
+    auto axis = [&](core::Action pos, core::Action neg) {
+        return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
+    };
+    const float side = axis(core::Action::PoseRight, core::Action::PoseLeft);
+    const float ahead = axis(core::Action::PoseAway, core::Action::PoseNear);
+    if (side == 0.0f && ahead == 0.0f) return;
+
+    // The target starts where the limb is; the arrows move it relative to the
+    // camera on the ground plane, or up/down with Shift.
     const bool hand = poseLimb_ >= 2;
     const bool left = poseLimb_ % 2 == 1;
-    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse) {
+    if (!poseActive_) {
         poseTarget_ = hand ? fielder.wrist(left, fielderModels_, fielder.root())
                            : (left ? fielder.targets().footL : fielder.targets().footR);
-        poseDragging_ = true;
+        poseActive_ = true;
     }
-    if (!input_.down(core::MouseButton::Left)) poseDragging_ = false;
-    if (!poseDragging_) return;
-
-    // The mouse ray meets a plane through the target: level (it keeps its
-    // height), or with Shift upright, facing the camera (up/down and sideways).
-    math::Vec3 eye, dir;
-    mouseRay(eye, dir);
-    const math::Vec3 normal = actions_.down(input_, core::Action::Run)
-                                  ? math::safeNormalize(math::Vec3(dir.x, 0.0f, dir.z), math::kForward)
-                                  : math::kUp;
-    const float facing = math::dot(dir, normal);
-    if (std::fabs(facing) < 1e-4f) return;
-    const float t = math::dot(poseTarget_ - eye, normal) / facing;
-    if (t <= 0.0f) return;
-    poseTarget_ = eye + dir * t;
+    const camera::CameraPose view = camera_.pose();
+    const math::Vec3 forward =
+        math::safeNormalize(math::Vec3(view.target.x - view.eye.x, 0.0f, view.target.z - view.eye.z), -math::kForward);
+    const math::Vec3 right = math::cross(forward, math::kUp);
+    const math::Vec3 move = actions_.down(input_, core::Action::Run) ? math::kUp * ahead + right * side
+                                                                    : forward * ahead + right * side;
+    poseTarget_ += move * (cfg_.engine.getFloat("debug.limbTestSpeed", 0.5f) * seconds);
     poseTarget_.y = std::max(poseTarget_.y, 0.0f);
     if (hand) fielder.setPoseHand(left, poseTarget_);
     else fielder.setPoseFoot(left ? motion::Foot::Left : motion::Foot::Right, poseTarget_);
@@ -485,6 +487,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     // --- Interpolated sim state -> entities -> renderer scene ---
     math::Transform probe = sim_.probeTransform(alpha);
     for (auto e : world_.registry().view<FollowsProbe>()) world_.setTransform(e, probe);
+    if (limbTest_) updatePose(static_cast<float>(frameSeconds));
     updateFielder(alpha);
     updateThrowArc(alpha);
     updateBowlArc(alpha);
@@ -603,17 +606,17 @@ void CricketApp::drawDebugGeometry(float alpha) {
     // Player's local axes at its root: X red (left), Y green (up), Z blue (forward).
     dd.axes(sim_.fielder().interpolatedRoot(alpha), 0.5f);
 
-    // Limb test: the chosen limb's target (red while it follows the mouse,
-    // yellow otherwise); the throw and bowling arcs are hidden.
+    // Limb test: the chosen limb's target (red once moved, yellow at the
+    // limb before that); the throw and bowling arcs are hidden.
     const agents::Fielder& fielder = sim_.fielder();
     if (limbTest_) {
         const bool hand = poseLimb_ >= 2;
         const bool left = poseLimb_ % 2 == 1;
-        const math::Vec3 at = poseDragging_ ? poseTarget_
+        const math::Vec3 at = poseActive_ ? poseTarget_
                               : hand        ? fielder.wrist(left, fielderModels_, fielder.interpolatedRoot(alpha))
                               : left        ? fielder.targets().footL
                                             : fielder.targets().footR;
-        dd.sphere(at, 0.05f, poseDragging_ ? render::colors::kRed : render::colors::kYellow);
+        dd.sphere(at, 0.05f, poseActive_ ? render::colors::kRed : render::colors::kYellow);
     } else {
         // Throw arcs (half circles) while the ball is held or thrown: the slot
         // arc (cyan) with the slot point (magenta); once the slot is fixed, the

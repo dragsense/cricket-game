@@ -69,9 +69,9 @@ private:
     // The bowler's circle around the bowling shoulder; with B on, the release
     // point under the mouse (drawn), from the interpolated pose.
     void updateBowlArc(float alpha);
-    // Limb test: F chooses the limb, a click grabs or lets go of its target,
-    // which follows the mouse meanwhile (Shift: up/down); R resets the pose.
-    void updatePose();
+    // Limb test: F chooses the limb, the arrows move its target (Shift:
+    // up/down) over `seconds`; R resets the pose.
+    void updatePose(float seconds);
     // World ray from the camera through the mouse (screen centre in mouse-look).
     void mouseRay(math::Vec3& origin, math::Vec3& direction) const;
 
@@ -110,7 +110,7 @@ private:
     // hidden; limb 0 right foot, 1 left foot, 2 right hand, 3 left hand.
     bool limbTest_ = false;
     int poseLimb_ = 0;
-    bool poseDragging_ = false;    // the target follows the mouse
+    bool poseActive_ = false;      // poseTarget_ belongs to the chosen limb
     math::Vec3 poseTarget_{0.0f};  // world
     float ballBackTimer_ = -1.0f;  // s until the bowled ball returns to the bowler; < 0 off
     std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot

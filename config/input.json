@@ -29,10 +29,14 @@
     // circle); B again goes back.
     "BowlAim": ["B"],
     // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,
-    // left foot, right hand, left hand); hold the left button to drag its
-    // target on a level plane (also hold Shift to move it up/down); let go and
-    // it stays there. R resets the pose.
+    // left foot, right hand, left hand); the arrows move its target relative
+    // to the camera (Up away, Down near, Left/Right sideways; with Shift,
+    // Up/Down raise/lower it); it stays where it is left. R resets the pose.
     "PoseLimb": ["F"],
+    "PoseAway": ["Up"],
+    "PoseNear": ["Down"],
+    "PoseLeft": ["Left"],
+    "PoseRight": ["Right"],
     // 1-5: launch the ball with a physics preset (config/ball_launch.json).
     "LaunchBall1": ["1"],
     "LaunchBall2": ["2"],
