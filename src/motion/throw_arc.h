@@ -37,6 +37,13 @@ ThrowArc makeThrowArc(math::Vec3 shoulder, math::Quat rootRotation, bool leftArm
 // Swing arc through the slot arc's point at `slotAngle`, tilted by `tilt` radians.
 ThrowArc makeSwingArc(const ThrowArc& slotArc, float slotAngle, float tilt);
 
+// Bowling circle (M5): a full circle around the bowling shoulder through the
+// top and the facing direction; the swing arc of the slot point leaned
+// `tilt` radians from vertical toward the bowling-arm side. Angle 0 is the
+// top, +90 deg in front, -90 behind, +-180 below; the hand travels toward
+// larger angles (BIOMECHANICS 11.2).
+ThrowArc makeBowlingArc(math::Vec3 shoulder, math::Quat rootRotation, bool leftArm, float radius, float tilt);
+
 // config/throw.json (BIOMECHANICS 10).
 struct ThrowSettings {
     float radiusFactor = 0.95f;  // x arm length

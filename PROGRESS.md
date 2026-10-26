@@ -15,8 +15,14 @@ each.
 - [x] **5.0 Research** (awaiting the user's review): docs/BIOMECHANICS.md section 11
   "Bowling arm action" (Law 21 elbow limit, arm circle, timing, release point and height,
   speeds, sources; planned `config/bowling.json` values).
-- [ ] **5.1 Arc**: full bowling circle around the shoulder; release point and tilt picked
-  by the user, drawn.
+- [x] **5.1 Arc** (built; awaiting the user's check): a bowler (a second `agents::Fielder`,
+  `SimWorld::initBowler`) stands at the bowling crease (`config/bowling.json` bowler).
+  B switches control between fielder and bowler (WASD moves, the camera follows). With
+  the bowler: `motion::makeBowlingArc` draws a full circle around the bowling shoulder
+  (radius `arc.radiusFactor` 0.97 x arm length; 0 top, +90 deg in front); the mouse picks
+  the release point (red; default `aim.releaseDeg` 15); after a click on the circle the
+  wheel leans it from vertical (`aim.tiltStepDeg`, -15..90 deg) instead of zooming; R or
+  B gives the wheel back. The ball still stays with the fielder (until 5.3).
 - [ ] **5.2 Arm circle**: hand goes front, down, back, over the top with a near-straight
   arm (elbow limit from config); the body follows via the reach chain.
 - [ ] **5.3 Release**: on click the ball leaves at the release point along the tangent at

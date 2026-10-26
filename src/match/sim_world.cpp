@@ -17,6 +17,14 @@ bool SimWorld::initFielder(const rig::SkeletonDef& def, const core::Config& join
     return fielder_.init(def, def.height, joints, locomotion);
 }
 
+bool SimWorld::initBowler(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion,
+                          math::Vec3 position, float yaw) {
+    rig::SkeletonDef placed = def;
+    placed.spawnPosition = position;
+    placed.spawnYaw = yaw;
+    return bowler_.init(placed, placed.height, joints, locomotion);
+}
+
 bool SimWorld::initPhysics(const core::Config& physicsWorld, const core::Config& scene) {
     wickets_.destroy(physics_);
     if (!physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld))) return false;
@@ -46,6 +54,7 @@ void SimWorld::tick(double dt) {
     previous_ = current_;
     time_ += dt;
     fielder_.tick(dt);
+    if (bowler_.rig().numJoints() > 0) bowler_.tick(dt);
     ballPrevious_ = ball_;
     if (ballInFlight_) ballSolver_.step(ball_, static_cast<float>(dt));
     physics_.step(static_cast<float>(dt));

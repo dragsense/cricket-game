@@ -24,6 +24,10 @@
     // T: releases the ball from the batting position toward the fielder
     // (config/ball_launch.json "toFielder"); walk to it and press Space.
     "ThrowBall": ["T"],
+    // B: control the bowler instead of the fielder (WASD moves, the camera
+    // follows, the mouse picks the release point; after a click the wheel leans the
+    // circle); B again goes back.
+    "BowlAim": ["B"],
     // 1-5: launch the ball with a physics preset (config/ball_launch.json).
     "LaunchBall1": ["1"],
     "LaunchBall2": ["2"],

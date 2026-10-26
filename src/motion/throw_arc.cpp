@@ -50,4 +50,8 @@ ThrowArc makeSwingArc(const ThrowArc& slotArc, float slotAngle, float tilt) {
     return arc;
 }
 
+ThrowArc makeBowlingArc(math::Vec3 shoulder, math::Quat rootRotation, bool leftArm, float radius, float tilt) {
+    return makeSwingArc(makeThrowArc(shoulder, rootRotation, leftArm, radius), math::kHalfPi - tilt, 0.0f);
+}
+
 } // namespace motion

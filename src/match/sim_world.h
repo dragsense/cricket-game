@@ -55,6 +55,12 @@ public:
 
     agents::Fielder& fielder() { return fielder_; }
     const agents::Fielder& fielder() const { return fielder_; }
+    // The bowler (M5): the same body, standing at `position` facing `yaw`
+    // radians, holding a ball. Load-time only.
+    bool initBowler(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion,
+                    math::Vec3 position, float yaw);
+    agents::Fielder& bowler() { return bowler_; }
+    const agents::Fielder& bowler() const { return bowler_; }
 
     // Interpolated probe transform for rendering.
     math::Transform probeTransform(float alpha) const {
@@ -67,6 +73,7 @@ public:
 private:
     ProbeState previous_, current_;
     agents::Fielder fielder_;
+    agents::Fielder bowler_;
     physics::PhysicsWorld physics_;
     Wickets wickets_;
     physics::GravityForce gravity_;

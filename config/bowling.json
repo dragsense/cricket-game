@@ -1,0 +1,24 @@
+// Standing bowler (M5). Values: docs/BIOMECHANICS.md section 11.
+{
+  "bowler": {
+    // Standing at the bowling end behind the popping crease (8.84 m from the
+    // pitch centre), facing the batter (+Z). Restart to reset; WASD moves the bowler.
+    "position": [0.4, 0.0, -9.4],
+    "yawDeg": 0
+  },
+  "arc": {
+    // Full circle around the bowling shoulder, radius = factor x arm length:
+    // near-straight arm (Law 21: elbow extension at most 15 deg; 11.1).
+    "radiusFactor": 0.97
+  },
+  "aim": {
+    // B switches control to the bowler. The mouse picks the release point;
+    // after a click on the circle the wheel leans it from vertical (0 = straight over the top,
+    // + = toward the bowling-arm side, round-arm at large values), per notch.
+    "tiltStepDeg": 5,
+    "minTiltDeg": -15,
+    "maxTiltDeg": 90,
+    // Default release: ahead of the vertical over the shoulder (11.3).
+    "releaseDeg": 15
+  }
+}

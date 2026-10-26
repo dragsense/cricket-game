@@ -33,6 +33,7 @@ struct AppConfigs {
     core::Config ball;             // config/ball.json
     core::Config ballLaunch;       // config/ball_launch.json
     core::Config throwing;         // config/throw.json
+    core::Config bowling;          // config/bowling.json
     std::string dir = "config";    // where the files above were loaded from
     bool liveReload = false;       // dev builds: watch `dir` and re-apply changes
 };
@@ -65,6 +66,11 @@ private:
     // While the ball is held: the throw arc around the holding shoulder and the
     // release point under the mouse (drawn), from the interpolated pose.
     void updateThrowArc(float alpha);
+    // The bowler's circle around the bowling shoulder; with B on, the release
+    // point under the mouse (drawn), from the interpolated pose.
+    void updateBowlArc(float alpha);
+    // World ray from the camera through the mouse (screen centre in mouse-look).
+    void mouseRay(math::Vec3& origin, math::Vec3& direction) const;
 
     AppConfigs cfg_;
     platform::Window window_;
@@ -81,6 +87,9 @@ private:
     FielderVisual fielderVisual_;
     rig::Pose fielderPose_;                  // interpolated, render side
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
+    FielderVisual bowlerVisual_;
+    rig::Pose bowlerPose_;
+    std::vector<math::Mat4> bowlerModels_;
     debug::DebugSettings debugSettings_;
     math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
     // Throw aim (radians): slot point on slotArc_ (0 sidearm, +pi/2 overarm),
@@ -88,6 +97,12 @@ private:
     motion::ThrowArc slotArc_, swingArc_;
     float slotAngle_ = 0.0f, tilt_ = 0.0f, releaseAngle_ = 0.0f;
     bool aimSwing_ = false;  // the slot is fixed; aiming the release point
+    // Bowling aim (radians): the circle's lean from vertical and the release
+    // point on it (0 top, + in front); bowlAim_: the bowler is controlled.
+    motion::ThrowArc bowlArc_;
+    float bowlTilt_ = 0.0f, bowlRelease_ = 0.0f;
+    bool bowlAim_ = false;
+    bool bowlTilting_ = false;  // clicked on the circle: the wheel leans it
     std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot
     float heading_ = 0.0f;    // fielder's W heading; follows the camera only while stopped
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)

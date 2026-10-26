@@ -112,6 +112,14 @@ bool CricketApp::init() {
     const agents::Fielder& fielder = sim_.fielder();
     fielderVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.fielderSkeleton);
     fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
+    if (!sim_.initBowler(skeletonDef, cfg_.fielderJoints, cfg_.locomotion,
+                         cfg_.bowling.getVec3("bowler.position", math::Vec3(0.4f, 0.0f, -9.4f)),
+                         math::radians(cfg_.bowling.getFloat("bowler.yawDeg", 0.0f))))
+        return false;
+    const agents::Fielder& bowler = sim_.bowler();
+    bowlerVisual_.build(world_, *renderer_, bowler.def(), bowler.rig(), cfg_.fielderSkeleton);
+    bowlerModels_.assign(static_cast<size_t>(bowler.rig().numJoints()), math::Mat4(1.0f));
+    bowlRelease_ = math::radians(cfg_.bowling.getFloat("aim.releaseDeg", 15.0f));
 
     debugSettings_.shadows = e.getBool("render.shadows", false);
     debugSettings_.debugDraw = e.getBool("debug.debugDraw", true);
@@ -168,6 +176,8 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         } else if (name == "throw.json") {
             cfg_.throwing = std::move(fresh);
             sim_.fielder().setThrowSettings(readThrowSettings(cfg_.throwing));
+        } else if (name == "bowling.json") {
+            cfg_.bowling = std::move(fresh);  // aim values apply live; the bowler's place on restart
         } else if (name == "fielder_skeleton.json") {
             cfg_.fielderSkeleton = std::move(fresh);
             LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
@@ -176,6 +186,8 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             cfg_.fielderJoints = std::move(fresh);
             agents::Fielder& f = sim_.fielder();
             f.init(f.def(), f.rig().height(), cfg_.fielderJoints, cfg_.locomotion);  // limits + IK settings
+            agents::Fielder& b = sim_.bowler();
+            b.init(b.def(), b.rig().height(), cfg_.fielderJoints, cfg_.locomotion);
         } else if (name == "locomotion.json") {
             cfg_.locomotion = std::move(fresh);
             sim_.fielder().loadLocomotion(cfg_.locomotion);
@@ -285,13 +297,20 @@ bool CricketApp::pumpEvents() {
                                                  -math::kForward);
     const math::Vec2 move(axis(core::Action::StepLeft, core::Action::StepRight),
                           axis(core::Action::StepForward, core::Action::StepBack));
-    if (sim_.fielder().speed() < kStoppedSpeed) heading_ = std::atan2(ahead.x, ahead.z);
-    sim_.fielder().setMoveInput(move, actions_.down(input_, core::Action::StepForward), heading_);
+    // B switches the controlled player (fielder or bowler); the other stands.
+    if (actions_.pressed(input_, core::Action::BowlAim)) {
+        bowlAim_ = !bowlAim_;
+        bowlTilting_ = false;
+    }
+    agents::Fielder& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
+    (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
+    if (controlled.speed() < kStoppedSpeed) heading_ = std::atan2(ahead.x, ahead.z);
+    controlled.setMoveInput(move, actions_.down(input_, core::Action::StepForward), heading_);
 
     // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).
-    sim_.fielder().setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
-                           : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
-                                                                      : motion::Gait::Walk);
+    controlled.setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
+                       : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
+                                                                  : motion::Gait::Walk);
 
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
     if (actions_.pressed(input_, core::Action::Pick)) sim_.fielder().startPick();
@@ -302,13 +321,25 @@ bool CricketApp::pumpEvents() {
     // slot arc; then the wheel turns the swing arc about it (the camera does
     // not zoom meanwhile) and a second click throws, releasing at the point
     // picked on the swing arc. R goes back to choosing the slot.
+    // With the bowler controlled, the mouse aims the bowling circle; a click
+    // on it hands the wheel to the circle's lean (until R or B), so the
+    // camera can zoom in first. The fielder's throw aim waits meanwhile.
+    if (bowlAim_ && actions_.pressed(input_, core::Action::ClearReach)) bowlTilting_ = false;
+    if (bowlAim_ && !input_.uiWantsMouse && input_.pressed(core::MouseButton::Left)) bowlTilting_ = true;
+    if (bowlTilting_ && !input_.uiWantsMouse) {
+        bowlTilt_ = math::clamp(bowlTilt_ + input_.wheel * math::radians(cfg_.bowling.getFloat("aim.tiltStepDeg", 5.0f)),
+                                math::radians(cfg_.bowling.getFloat("aim.minTiltDeg", -15.0f)),
+                                math::radians(cfg_.bowling.getFloat("aim.maxTiltDeg", 90.0f)));
+        input_.wheel = 0.0f;
+    }
     agents::Fielder& fielder = sim_.fielder();
     if (!fielder.holding() || actions_.pressed(input_, core::Action::ClearReach)) aimSwing_ = false;
-    if (aimSwing_ && !input_.uiWantsMouse) {
+    if (aimSwing_ && !bowlAim_ && !input_.uiWantsMouse) {
         tilt_ += input_.wheel * math::radians(cfg_.throwing.getFloat("aim.tiltStepDeg", 5.0f));
         input_.wheel = 0.0f;
     }
-    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && fielder.holding() && !fielder.throwing()) {
+    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && !bowlAim_ && fielder.holding() &&
+        !fielder.throwing()) {
         if (!aimSwing_) {
             aimSwing_ = true;
             tilt_ = 0.0f;
@@ -322,7 +353,8 @@ bool CricketApp::pumpEvents() {
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
         changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json", "locomotion.json",
-                          "physics_world.json", "ball.json", "ball_launch.json", "throw.json"};
+                          "physics_world.json", "ball.json", "ball_launch.json", "throw.json",
+                          "bowling.json"};
     else if (cfg_.liveReload)
         configWatcher_.poll(changedConfigs_);
     if (!changedConfigs_.empty()) reloadConfig(changedConfigs_);
@@ -353,8 +385,8 @@ void CricketApp::updateWickets(float alpha) {
 void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
 
-    // --- Cameras (render-side, real frame time); the orbit follows the fielder ---
-    camera_.setFollowPoint(sim_.fielder().interpolatedRoot(alpha).position);
+    // --- Cameras (render-side, real frame time); the orbit follows the controlled player ---
+    camera_.setFollowPoint((bowlAim_ ? sim_.bowler() : sim_.fielder()).interpolatedRoot(alpha).position);
     camera_.setMouseLook(mouseLook_);
     camera_.update(input_, static_cast<float>(frameSeconds));
     camera::CameraPose pose = camera_.pose();
@@ -382,6 +414,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     for (auto e : world_.registry().view<FollowsProbe>()) world_.setTransform(e, probe);
     updateFielder(alpha);
     updateThrowArc(alpha);
+    updateBowlArc(alpha);
     updateWickets(alpha);
     world_.syncToRenderer(*renderer_);
 
@@ -427,6 +460,10 @@ void CricketApp::updateFielder(float alpha) {
         ball.position = ballPos_;
         world_.setTransform(scene_.ball, ball);
     }
+    const agents::Fielder& bowler = sim_.bowler();
+    bowler.interpolatedPose(alpha, bowlerPose_);
+    if (bowler.rig().localToModel(bowlerPose_, bowlerModels_))
+        bowlerVisual_.update(world_, bowler.rig(), bowlerModels_, bowler.interpolatedRoot(alpha));
 }
 
 void CricketApp::updateThrowArc(float alpha) {
@@ -436,10 +473,31 @@ void CricketApp::updateThrowArc(float alpha) {
     slotArc_ = motion::makeThrowArc(fielder.holdingShoulder(fielderModels_, root), root.rotation, fielder.holdingLeft(),
                                     cfg_.throwing.getFloat("arc.radiusFactor", 0.95f) * fielder.armLength());
     swingArc_ = motion::makeSwingArc(slotArc_, slotAngle_, tilt_);
-    if (input_.uiWantsMouse || fielder.throwing()) return;  // the points stay put during a throw
+    if (input_.uiWantsMouse || bowlAim_ || fielder.throwing()) return;  // the points stay put during a throw
 
-    // Mouse ray from the camera (screen centre in mouse-look), onto the arc
-    // being aimed; both are half circles (-90..+90 deg).
+    // Mouse ray onto the arc being aimed; both are half circles (-90..+90 deg).
+    math::Vec3 eye, dir;
+    mouseRay(eye, dir);
+    float angle = 0.0f;
+    if (!(aimSwing_ ? swingArc_ : slotArc_).rayAngle(eye, dir, angle)) return;
+    angle = math::clamp(angle, -math::kHalfPi, math::kHalfPi);
+    if (aimSwing_) releaseAngle_ = angle;
+    else slotAngle_ = angle;
+}
+
+void CricketApp::updateBowlArc(float alpha) {
+    const agents::Fielder& bowler = sim_.bowler();
+    const math::Transform root = bowler.interpolatedRoot(alpha);
+    bowlArc_ = motion::makeBowlingArc(bowler.holdingShoulder(bowlerModels_, root), root.rotation, bowler.holdingLeft(),
+                                      cfg_.bowling.getFloat("arc.radiusFactor", 0.97f) * bowler.armLength(), bowlTilt_);
+    if (!bowlAim_ || input_.uiWantsMouse) return;
+    math::Vec3 eye, dir;
+    mouseRay(eye, dir);
+    float angle = 0.0f;
+    if (bowlArc_.rayAngle(eye, dir, angle)) bowlRelease_ = angle;
+}
+
+void CricketApp::mouseRay(math::Vec3& origin, math::Vec3& direction) const {
     const camera::CameraPose pose = camera_.pose();
     const float w = static_cast<float>(std::max(1, window_.width()));
     const float h = static_cast<float>(std::max(1, window_.height()));
@@ -449,12 +507,8 @@ void CricketApp::updateThrowArc(float alpha) {
     const math::Vec3 ahead = math::safeNormalize(pose.target - pose.eye, -math::kForward);
     const math::Vec3 right = math::safeNormalize(math::cross(ahead, pose.up), math::kRight);
     const math::Vec3 up = math::cross(right, ahead);
-    const math::Vec3 dir = math::normalize(ahead + right * (x * tanHalf * w / h) + up * (y * tanHalf));
-    float angle = 0.0f;
-    if (!(aimSwing_ ? swingArc_ : slotArc_).rayAngle(pose.eye, dir, angle)) return;
-    angle = math::clamp(angle, -math::kHalfPi, math::kHalfPi);
-    if (aimSwing_) releaseAngle_ = angle;
-    else slotAngle_ = angle;
+    origin = pose.eye;
+    direction = math::normalize(ahead + right * (x * tanHalf * w / h) + up * (y * tanHalf));
 }
 
 void CricketApp::drawDebugGeometry(float alpha) {
@@ -490,6 +544,17 @@ void CricketApp::drawDebugGeometry(float alpha) {
             dd.sphere(swingArc_.point(releaseAngle_), 0.04f, render::colors::kRed);
         }
     }
+
+    // Bowling circle (full): yellow while the mouse aims the bowler, grey
+    // otherwise; the top (white) and the release point (red).
+    constexpr int kCircleSegments = 48;
+    const render::Color circleColor = bowlAim_ ? render::colors::kYellow : render::colors::kGrey;
+    for (int i = 0; i < kCircleSegments; ++i) {
+        const float a = math::kTwoPi * static_cast<float>(i) / kCircleSegments;
+        dd.line(bowlArc_.point(a), bowlArc_.point(a + math::kTwoPi / kCircleSegments), circleColor);
+    }
+    dd.sphere(bowlArc_.point(0.0f), 0.03f, render::colors::kWhite);
+    dd.sphere(bowlArc_.point(bowlRelease_), 0.04f, render::colors::kRed);
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);
