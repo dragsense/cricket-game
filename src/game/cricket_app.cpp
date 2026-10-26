@@ -36,14 +36,22 @@ render::LightingDesc readLighting(const core::Config& c) {
 motion::ThrowSettings readThrowSettings(const core::Config& c) {
     motion::ThrowSettings s;
     s.slotRadiusFactor = c.getFloat("slot.radiusFactor", s.slotRadiusFactor);
+    s.swingRadiusFactor = c.getFloat("chest.radiusFactor", s.swingRadiusFactor);
     s.maxBack = math::radians(c.getFloat("chest.maxBackDeg", math::degrees(s.maxBack)));
+    s.turnShare = c.getFloat("chest.turnShare", s.turnShare);
     s.pelvisShare = c.getFloat("chest.pelvisShare", s.pelvisShare);
     s.untwistRate = c.getFloat("chest.untwistRate", s.untwistRate);
+    s.push = c.getFloat("timing.push", s.push);
+    s.blendShare = c.getFloat("timing.blendShare", s.blendShare);
     s.readyTime = c.getFloat("timing.readyTime", s.readyTime);
     s.windTime = c.getFloat("timing.windTime", s.windTime);
     s.swingTime = c.getFloat("timing.swingTime", s.swingTime);
     s.followAngle = math::radians(c.getFloat("timing.followDeg", math::degrees(s.followAngle)));
     s.followTime = c.getFloat("timing.followTime", s.followTime);
+    s.strideForce = c.getFloat("stride.minForce", s.strideForce);
+    s.minStride = c.getFloat("stride.minLength", s.minStride);
+    s.maxStride = c.getFloat("stride.maxLength", s.maxStride);
+    s.pauseAtRelease = c.getBool("test.pauseAtRelease", s.pauseAtRelease);
     s.minSpeed = c.getFloat("release.minSpeed", s.minSpeed);
     s.maxSpeed = c.getFloat("release.maxSpeed", s.maxSpeed);
     return s;
@@ -367,6 +375,17 @@ bool CricketApp::pumpEvents() {
                                 math::radians(cfg_.bowling.getFloat("aim.maxTiltDeg", 90.0f)));
         input_.wheel = 0.0f;
     }
+    // Throw: once the hand is at the slot point, the wheel leans the chest
+    // circle, before the force click and after it (the wound-up chest turns
+    // with it); here, before the camera would zoom with it.
+    if (throwStep_ >= 1 && sim_.fielder().throwing() && !bowlAim_ && !input_.uiWantsMouse) {
+        const float maxTilt = math::radians(cfg_.throwing.getFloat("aim.maxTiltDeg", 30.0f));
+        tilt_ = math::clamp(tilt_ + input_.wheel * math::radians(cfg_.throwing.getFloat("aim.tiltStepDeg", 5.0f)), -maxTilt,
+                            maxTilt);
+        input_.wheel = 0.0f;
+        sim_.fielder().tiltThrow(tilt_);
+    }
+
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
@@ -541,15 +560,18 @@ void CricketApp::updateFielder(float alpha) {
 }
 
 void CricketApp::updateThrowAim(float alpha) {
-    // With the ball held: a click on the height circle (cyan) picks the slot
-    // point; the wheel then leans the chest circle (yellow); a click on it
-    // picks the force point (behind: how far the chest winds back) and a
-    // second the release point, which throws. R goes back a step.
+    // With the ball held, three clicks, each acting at once: on the height
+    // circle (cyan) the hand goes to the slot point; a click on the throw
+    // circle (yellow) turns the chest back to the force point (behind: how
+    // far it winds back), the hand riding with it; the wheel leans the circle
+    // before and after; a click on it is the release point, and the chest
+    // throws. R lets go of the throw.
     agents::Fielder& fielder = sim_.fielder();
     if (bowlAim_ || (!fielder.holding() && !fielder.throwing())) {
         throwStep_ = 0;
         return;
     }
+    if (!fielder.throwing()) throwStep_ = 0;
     const math::Transform root = fielder.interpolatedRoot(alpha);
     auto toWorld = [&](motion::ThrowArc arc) {
         arc.centre = root.transformPoint(arc.centre);
@@ -560,29 +582,35 @@ void CricketApp::updateThrowAim(float alpha) {
     };
     slotArc_ = toWorld(fielder.slotArc());
     chestArc_ = toWorld(fielder.chestArc(slotAngle_, tilt_));
-    if (fielder.throwing() || input_.uiWantsMouse) return;  // the points stay put during a throw
+    // Test (throw.json test.pauseAtRelease): a click lets the waiting ball go.
+    if (fielder.throwPaused() && input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse) fielder.letGo();
+    if (fielder.throwSwinging() || input_.uiWantsMouse) return;  // the points stay put during the swing
 
-    if (actions_.pressed(input_, core::Action::ClearReach) && throwStep_ > 0) --throwStep_;
-    if (throwStep_ > 0) {
-        tilt_ += input_.wheel * math::radians(cfg_.throwing.getFloat("aim.tiltStepDeg", 5.0f));
-        input_.wheel = 0.0f;
+    if (actions_.pressed(input_, core::Action::ClearReach) && fielder.throwing()) {
+        fielder.cancelThrow();
+        throwStep_ = 0;
+        return;
     }
     math::Vec3 eye, dir;
     mouseRay(eye, dir);
     float angle = 0.0f;
     if ((throwStep_ == 0 ? slotArc_ : chestArc_).rayAngle(eye, dir, angle)) {
-        if (throwStep_ == 0) slotAngle_ = math::clamp(angle, -math::kHalfPi, math::kHalfPi);
-        else if (throwStep_ == 1) backAngle_ = math::clamp(angle, -fielder.maxThrowBack(), 0.0f);
-        else releaseAngle_ = math::clamp(angle, backAngle_ + 0.1f, math::radians(cfg_.throwing.getFloat("aim.maxReleaseDeg", 90.0f)));
+        if (throwStep_ == 0) slotAngle_ = angle;
+        // Anywhere on the full circle: the force point counts back from the
+        // slot point (0 .. -360 deg), the release point forward from it.
+        else if (throwStep_ == 1) backAngle_ = angle > 0.0f ? angle - math::kTwoPi : angle;
+        else releaseAngle_ = angle > backAngle_ ? angle : angle + math::kTwoPi;
     }
     if (!input_.pressed(core::MouseButton::Left)) return;
-    if (throwStep_ == 0) tilt_ = 0.0f;
-    if (throwStep_ < 2) {
-        ++throwStep_;
-        return;
+    if (throwStep_ == 0) {
+        fielder.beginThrow(slotAngle_);
+        tilt_ = 0.0f;
+    } else if (throwStep_ == 1) {
+        fielder.windThrow(tilt_, backAngle_);
+    } else {
+        fielder.releaseThrow(releaseAngle_);
     }
-    fielder.startThrow(slotAngle_, tilt_, backAngle_, releaseAngle_);
-    throwStep_ = 0;
+    throwStep_ = (throwStep_ + 1) % 3;
 }
 
 void CricketApp::updateBowlArc(float alpha) {
@@ -637,9 +665,10 @@ void CricketApp::drawDebugGeometry(float alpha) {
         dd.sphere(at, 0.05f, poseActive_ ? render::colors::kRed : render::colors::kYellow);
     }
     {
-        // Throw aim while the ball is held or thrown: the height circle (cyan,
-        // half) with the slot point (magenta); then the chest circle (yellow,
-        // full) with the force point (white) and the release point (red).
+        // Throw aim while the ball is held or thrown: the height circle (cyan)
+        // around the chest with the slot point (magenta); then the throw
+        // circle (yellow, around the shoulder) with the force point (white)
+        // and the release point (red).
         if (fielder.holding() || fielder.throwing()) {
             constexpr int kSegments = 32;
             auto arcLine = [&](const motion::ThrowArc& arc, float from, float to, render::Color color) {
@@ -648,7 +677,7 @@ void CricketApp::drawDebugGeometry(float alpha) {
                     dd.line(arc.point(a), arc.point(a + (to - from) / kSegments), color);
                 }
             };
-            arcLine(slotArc_, -math::kHalfPi, math::kHalfPi, render::colors::kCyan);
+            arcLine(slotArc_, -math::kPi, math::kPi, render::colors::kCyan);
             dd.sphere(slotArc_.point(slotAngle_), 0.04f, render::colors::kMagenta);
             if (throwStep_ > 0 || fielder.throwing()) {
                 arcLine(chestArc_, -math::kPi, math::kPi, render::colors::kYellow);

@@ -150,18 +150,34 @@ public:
         return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.start)][3]));
     }
     float armLength() const { return armLength_; }  // shoulder to wrist (m)
-    // Throw: with the ball held and standing, the hand goes to the slot point
-    // (`slotAngle` on slotArc(): around the shoulder, half an arm's length)
-    // and the whole trunk turns it round chestArc(slotAngle, tilt): back to
-    // `backAngle` (< 0; the farther back, the more force), then forward,
-    // speeding up, to `releaseAngle`, where the ball leaves along the
-    // circle's tangent; on through the follow-through, then the hand returns
-    // and the chest turns back square. Arcs in character space.
-    void startThrow(float slotAngle, float tilt, float backAngle, float releaseAngle);
+    // Throw, in three steps, each acting at once (with the ball held and
+    // standing): beginThrow moves the hand to the slot point (`slotAngle` on
+    // slotArc(), a full circle around the chest) and holds it; windThrow
+    // turns the whole trunk back to `backAngle` on chestArc(slotAngle, tilt),
+    // the hand keeping its place on the trunk,
+    // (motion::makeSwingArc: through the slot point and the facing direction)
+    // (< 0; the farther back, the more force) and holds; releaseThrow turns
+    // it forward, speeding up, the hand moving out onto the circle and on
+    // along it, pushing out, to `releaseAngle`,
+    // where the ball leaves along the circle's tangent; then the
+    // follow-through, the hand returns and the chest turns back square.
+    // cancelThrow returns the hand before the release. Arcs in character
+    // space.
+    void beginThrow(float slotAngle);
+    void windThrow(float tilt, float backAngle);
+    // Before the release: leans the chest circle (`tilt`), a wound-up chest
+    // and hand turning with it.
+    void tiltThrow(float tilt);
+    void releaseThrow(float releaseAngle);
+    void cancelThrow();
+    // Test (ThrowSettings::pauseAtRelease): the hand waits at the release
+    // point; letGo lets the ball go and the throw carries on.
+    bool throwPaused() const { return throwing() && throwStage_ == ThrowStage::Swing && holding_ && throwHeld_; }
+    void letGo() { letGo_ = true; }
     motion::ThrowArc slotArc() const;
     motion::ThrowArc chestArc(float slotAngle, float tilt) const;
-    float maxThrowBack() const { return throw_.maxBack; }
     bool throwing() const { return phase_ == Phase::Throw; }
+    bool throwSwinging() const { return phase_ == Phase::Throw && throwStage_ == ThrowStage::Swing; }
     // True once, on the tick the ball leaves the hand: its centre and
     // velocity in world space. holding() is false from then on.
     bool takeRelease(math::Vec3& position, math::Vec3& velocity) {
@@ -223,6 +239,7 @@ private:
     // Reaching, one pass per stage (each takes the error left by the ones
     // before it): spine, pelvis, body before the leg IK; clavicle and arm last.
     void twistChest();  // applies chestTwist_ over the pelvis and spine
+    math::Vec3 heldHand(float twist) const;  // slot point carried by the trunk's turn, character space
     void reachSpine();
     void reachPelvis();
     void reachBody();
@@ -268,7 +285,7 @@ private:
     ReachSettings reach_;
     float armLength_ = 0.6f;  // shoulder to wrist (m), from the skeleton
     math::Vec3 restShoulderL_{0.0f}, restShoulderR_{0.0f};  // character space, rest pose
-    math::Vec3 restSpineBase_{0.0f};  // character space, rest pose (chest turn pivot)
+    math::Vec3 restChest_{0.0f};  // character space, rest pose (centre of both throw circles)
     math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
     math::Vec3 reachTarget_{0.0f};  // the ball, world space
     math::Vec3 reachVelocity_{0.0f};  // world, m/s
@@ -280,8 +297,13 @@ private:
     float throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // bowling circle lean and release (radians)
     float throwTime_ = 0.0f;   // s since the throw started
     math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space
-    float throwSlot_ = 0.0f, throwBack_ = 0.0f;  // radians (startThrow)
-    float chestTwist_ = 0.0f;     // current trunk turn about twistAxis_ (radians)
+    enum class ThrowStage { Ready, Wind, Swing };
+    ThrowStage throwStage_ = ThrowStage::Ready;
+    float throwSlot_ = 0.0f, throwBack_ = 0.0f;  // radians (beginThrow, windThrow)
+    float twistFrom_ = 0.0f;      // chest turn when the current stage began
+    bool strideWaiting_ = false;  // the swing waits for the stride foot to land
+    bool throwHeld_ = false, letGo_ = false;  // pauseAtRelease: waiting, and asked to go on
+    float chestTwist_ = 0.0f;     // current throw angle on the circle; the trunk turns turnShare of it
     math::Vec3 twistAxis_{0.0f, 1.0f, 0.0f};  // character space
     bool released_ = false;    // the ball left the hand this tick (takeRelease)
     math::Vec3 releasePosition_{0.0f}, releaseVelocity_{0.0f};  // world

@@ -2,37 +2,67 @@
 // Values: docs/BIOMECHANICS.md section 10.
 {
   "slot": {
-    // Height circle (cyan) around the throwing shoulder, radius = factor x
-    // arm length; its point sets the hand's height (arm slot).
-    "radiusFactor": 0.5
+    // Height circle (cyan, full) around the chest, radius = factor x arm
+    // length; the first click sends the hand to its point (arm slot).
+    "radiusFactor": 1.0
   },
   "aim": {
-    // Mouse wheel leans the chest circle's axis forward/back, per notch.
+    // The chest circle passes through the slot point and the facing
+    // direction (horizontal for sidearm, upright for over- and underarm);
+    // the wheel turns it about the chest-to-slot line, per notch, at most
+    // maxTiltDeg either way.
     "tiltStepDeg": 5,
-    // Farthest release point ahead on the chest circle.
-    "maxReleaseDeg": 90
+    "maxTiltDeg": 30
   },
   "chest": {
-    // Farthest force point behind (deg of chest turn; full force there).
+    // Throw circle (yellow) around the throwing shoulder, radius = factor x
+    // arm length; the hand follows it in the swing.
+    "radiusFactor": 1.0,
+    // Force point this far behind gives full force (deg); the force and
+    // release points can be anywhere on the full circle.
     "maxBackDeg": 120,
-    // Share of the turn taken by the pelvis; the spine takes the rest.
+    // The chest circle is around the throwing shoulder; the trunk turns this
+    // share of the throw angle (carrying the shoulder and the circle round
+    // the chest) and the arm swings round the shoulder for the rest.
+    "turnShare": 0.5,
+    // Share of the trunk turn taken by the pelvis; the spine takes the rest.
     "pelvisShare": 0.4,
     // How fast the chest turns back square after the throw (1/s).
     "untwistRate": 6
   },
   "timing": {
     // Hand to the slot point, chest back to the force point, force point
-    // to release (speeding up), then on by followDeg slowing (s).
+    // to release (speeding up, the hand pushing out `push` m along the
+    // throw), then on by followDeg slowing (s).
     "readyTime": 0.25,
     "windTime": 0.35,
     "swingTime": 0.15,
+    "push": 0.15,
+    // While the chest winds back the hand keeps its place on the trunk; in
+    // the swing it moves out onto the throw circle, on it by this share of
+    // the way to the release, then follows it.
+    "blendShare": 0.6,
     "followDeg": 60,
     "followTime": 0.35
+  },
+  "stride": {
+    // On the release click, with force (wind-up share of maxBackDeg) at
+    // least minForce, the foot opposite the throwing hand steps along the
+    // throw, minLength .. maxLength (m) at full force; the swing starts when
+    // it lands. Lighter throws are made standing.
+    "minForce": 0.3,
+    "minLength": 0.3,
+    "maxLength": 0.9
   },
   "release": {
     // Ball speed along the circle's tangent: no wind-up .. maxBackDeg (m/s);
     // an elite fielder's maximum is ~31 m/s (10.4).
     "minSpeed": 10,
     "maxSpeed": 31
+  },
+  "test": {
+    // The swing stops with the hand at the release point, still holding the
+    // ball; the next left click lets it go.
+    "pauseAtRelease": true
   }
 }

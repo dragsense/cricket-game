@@ -259,7 +259,7 @@ bool Fielder::setHeight(float height) {
     rig_.localToModel(current_, models_);
     restShoulderL_ = modelPos(models_, joints_.armL.start);
     restShoulderR_ = modelPos(models_, joints_.armR.start);
-    restSpineBase_ = modelPos(models_, joints_.spine[0] >= 0 ? joints_.spine[0] : joints_.pelvis);
+    restChest_ = modelPos(models_, joints_.spine[2] >= 0 ? joints_.spine[2] : joints_.pelvis);
     restWristL_ = modelPos(models_, joints_.armL.end);
     restWristR_ = modelPos(models_, joints_.armR.end);
     armLength_ = math::distance(modelPos(models_, joints_.armL.start), modelPos(models_, joints_.armL.mid)) +
@@ -747,55 +747,144 @@ void Fielder::startReturn() {
 }
 
 motion::ThrowArc Fielder::slotArc() const {
-    return motion::makeThrowArc(reachLeft_ ? restShoulderL_ : restShoulderR_, math::identityQuat(), reachLeft_,
-                                throw_.slotRadiusFactor * armLength_);
+    return motion::makeThrowArc(restChest_, math::identityQuat(), reachLeft_, throw_.slotRadiusFactor * armLength_);
 }
 
 motion::ThrowArc Fielder::chestArc(float slotAngle, float tilt) const {
-    return motion::makeChestArc(restSpineBase_, slotArc().point(slotAngle), math::identityQuat(), reachLeft_, tilt);
+    // Around the throwing shoulder, radius swingRadiusFactor x arm length,
+    // toward the slot point (angle 0), in the plane of
+    // the slot point and the facing direction (horizontal for a sidearm slot,
+    // upright for over- and underarm) turned by `tilt` about the chest-to-slot
+    // line. The trunk's current turn carries the shoulder, and so the circle,
+    // round the chest; the circle's angles stay those of the hand.
+    const motion::ThrowArc swing = motion::makeSwingArc(slotArc(), slotAngle, tilt);
+    const math::Vec3 shoulder = reachLeft_ ? restShoulderL_ : restShoulderR_;
+    const math::Vec3 toHand = slotArc().point(slotAngle) - shoulder;
+    motion::ThrowArc arc = swing;
+    arc.radius = throw_.swingRadiusFactor * armLength_;
+    arc.side = math::safeNormalize(toHand, swing.side);
+    arc.up = math::safeNormalize(swing.up - arc.side * math::dot(swing.up, arc.side), swing.up);
+    arc.normal = math::cross(arc.side, arc.up);
+    arc.centre = restChest_ + math::fromAxisAngle(twistAxis_, chestTwist_ * throw_.turnShare) * (shoulder - restChest_);
+    return arc;
 }
 
-void Fielder::startThrow(float slotAngle, float tilt, float backAngle, float releaseAngle) {
+math::Vec3 Fielder::heldHand(float twist) const {
+    // The hand stays where the slot click put it relative to the trunk: the
+    // trunk's turn (turnShare of the throw angle, about twistAxis_ through
+    // the chest) carries it, as it carries the shoulder.
+    return restChest_ + math::fromAxisAngle(twistAxis_, twist * throw_.turnShare) * (slotArc().point(throwSlot_) - restChest_);
+}
+
+void Fielder::beginThrow(float slotAngle) {
     if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
     throwSlot_ = slotAngle;
-    throwTilt_ = tilt;
-    throwBack_ = math::clamp(backAngle, -throw_.maxBack, 0.0f);
-    releaseAngle_ = std::max(releaseAngle, throwBack_ + 0.1f);
-    twistAxis_ = chestArc(slotAngle, tilt).normal;
+    throwTilt_ = 0.0f;
+    throwBack_ = 0.0f;
+    throwStage_ = ThrowStage::Ready;
     throwTime_ = 0.0f;
+    twistFrom_ = chestTwist_;
     released_ = false;
     throwFrom_ = phase_ == Phase::Return ? goal_ : (reachLeft_ ? restWristL_ : restWristR_);
     goal_ = throwFrom_;
     phase_ = Phase::Throw;
 }
 
+void Fielder::windThrow(float tilt, float backAngle) {
+    if (phase_ != Phase::Throw || throwStage_ == ThrowStage::Swing) return;
+    throwTilt_ = tilt;
+    throwBack_ = math::clamp(backAngle, -math::kTwoPi, 0.0f);
+    twistAxis_ = chestArc(throwSlot_, tilt).normal;
+    throwStage_ = ThrowStage::Wind;
+    throwTime_ = 0.0f;
+    twistFrom_ = chestTwist_;
+}
+
+void Fielder::tiltThrow(float tilt) {
+    if (phase_ != Phase::Throw || throwStage_ == ThrowStage::Swing) return;
+    throwTilt_ = tilt;
+    twistAxis_ = chestArc(throwSlot_, tilt).normal;
+}
+
+void Fielder::releaseThrow(float releaseAngle) {
+    if (phase_ != Phase::Throw || throwStage_ != ThrowStage::Wind) return;
+    releaseAngle_ = math::clamp(releaseAngle, throwBack_ + 0.1f, throwBack_ + math::kTwoPi);
+    throwStage_ = ThrowStage::Swing;
+    throwTime_ = 0.0f;
+    twistFrom_ = chestTwist_;
+    throwHeld_ = letGo_ = false;
+    // Stride (BIOMECHANICS 10.4: stride length goes with throw speed): with
+    // enough force the foot opposite the throwing hand steps along the
+    // throw's direction on the ground, longer the harder; the swing starts
+    // when it lands (front foot contact, then the trunk turns).
+    const float force = math::clamp(-throwBack_ / std::max(throw_.maxBack, 0.01f), 0.0f, 1.0f);
+    strideWaiting_ = false;
+    if (force >= throw_.strideForce && throw_.strideForce < 1.0f) {
+        const motion::Foot foot = reachLeft_ ? motion::Foot::Right : motion::Foot::Left;
+        const math::Vec3 along = chestArc(throwSlot_, throwTilt_).tangent(releaseAngle_);
+        const math::Vec3 flat = math::safeNormalize(math::Vec3(along.x, 0.0f, along.z), math::kForward);
+        const float share = (force - throw_.strideForce) / (1.0f - throw_.strideForce);
+        strideWaiting_ = stepper_.stepTo(foot, stepper_.foot(foot) + flat * math::lerp(throw_.minStride, throw_.maxStride, share));
+    }
+}
+
+void Fielder::cancelThrow() {
+    if (phase_ == Phase::Throw && throwStage_ != ThrowStage::Swing) startReturn();
+}
+
 void Fielder::updateThrow(float dt) {
-    // The trunk drives the throw (BIOMECHANICS 10.2, proximal to distal): the
-    // hand goes to the slot point, then the chest turn carries it round the
-    // chest circle: back to the force point, forward speeding up (s = t^2)
-    // to the release point, on past it slowing down; then the hand returns
-    // and the chest turns back square. Character space.
+    // The trunk drives the throw (BIOMECHANICS 10.2, proximal to distal):
+    // the hand goes to the slot point and holds; the chest winds back to the
+    // force point carrying the hand with it (its place on the trunk does not
+    // change) and holds; then forward speeding up (s = t^2), the hand
+    // blending out onto the throw circle (around the shoulder) and on along
+    // it to the release point while it pushes out along the throw, on past it slowing down; then the hand returns and the
+    // chest turns back square. Character space.
     if (phase_ != Phase::Throw) {
         chestTwist_ -= chestTwist_ * std::min(1.0f, dt * throw_.untwistRate);
         return;
     }
     throwTime_ += dt;
     const motion::ThrowArc arc = chestArc(throwSlot_, throwTilt_);
-    const float ready = std::max(throw_.readyTime, 0.01f), wind = std::max(throw_.windTime, 0.01f);
-    const float swing = std::max(throw_.swingTime, 0.01f), follow = std::max(throw_.followTime, 0.01f);
     auto smooth = [](float u) { return u * u * (3.0f - 2.0f * u); };
     float t = throwTime_;
-    if (t < ready) {
-        chestTwist_ = 0.0f;
-        goal_ = math::lerp(throwFrom_, arc.point(0.0f), smooth(t / ready));
+    if (throwStage_ == ThrowStage::Ready) {
+        const float u = smooth(std::min(1.0f, t / std::max(throw_.readyTime, 0.01f)));
+        chestTwist_ = twistFrom_ * (1.0f - u);
+        goal_ = math::lerp(throwFrom_, slotArc().point(throwSlot_), u);
         return;
     }
-    if ((t -= ready) < wind) {
-        chestTwist_ = throwBack_ * smooth(t / wind);
-    } else if ((t -= wind) < swing) {
+    if (throwStage_ == ThrowStage::Wind) {
+        // The hand keeps its place on the trunk as the chest winds back.
+        const float u = smooth(std::min(1.0f, t / std::max(throw_.windTime, 0.01f)));
+        chestTwist_ = math::lerp(twistFrom_, throwBack_, u);
+        goal_ = heldHand(chestTwist_);
+        return;
+    }
+    if (strideWaiting_) {
+        // The chest stays wound up while the stride foot is in the air.
+        throwTime_ = 0.0f;
+        strideWaiting_ = stepper_.stepping();
+        goal_ = heldHand(chestTwist_);
+        return;
+    }
+    const float swing = std::max(throw_.swingTime, 0.01f), follow = std::max(throw_.followTime, 0.01f);
+    const math::Vec3 pushDir = arc.tangent(releaseAngle_);
+    if (t < swing) {
+        // Forward with the trunk while blending out onto the throw circle, on
+        // it by blendShare of the way to the release; then on along it.
         const float u = t / swing;
-        chestTwist_ = math::lerp(throwBack_, releaseAngle_, u * u);
+        chestTwist_ = math::lerp(twistFrom_, releaseAngle_, u * u);
+        const float onOuter = smooth(std::min(1.0f, u * u / std::max(throw_.blendShare, 0.01f)));
+        goal_ = math::lerp(heldHand(chestTwist_), arc.point(chestTwist_), onOuter) + pushDir * (throw_.push * u * u);
+    } else if (holding_ && throw_.pauseAtRelease && !letGo_) {
+        // Test: wait at the release point with the ball.
+        throwHeld_ = true;
+        throwTime_ = swing;
+        chestTwist_ = releaseAngle_;
+        goal_ = arc.point(releaseAngle_) + pushDir * throw_.push;
     } else if ((t -= swing) < follow) {
+        throwHeld_ = false;
         if (holding_) {
             // The ball leaves at the release point along the circle; its
             // world position is taken from the solved hand (tick()). The
@@ -803,32 +892,32 @@ void Fielder::updateThrow(float dt) {
             holding_ = false;
             released_ = true;
             const float force = math::clamp(-throwBack_ / std::max(throw_.maxBack, 0.01f), 0.0f, 1.0f);
-            releaseVelocity_ = root_.transformDirection(arc.tangent(releaseAngle_)) *
-                               math::lerp(throw_.minSpeed, throw_.maxSpeed, force);
+            releaseVelocity_ = root_.transformDirection(pushDir) * math::lerp(throw_.minSpeed, throw_.maxSpeed, force);
         }
         const float u = 1.0f - t / follow;
         chestTwist_ = releaseAngle_ + throw_.followAngle * (1.0f - u * u);
+        goal_ = arc.point(chestTwist_) + pushDir * (throw_.push * u);
     } else {
         startReturn();
         pickTime_ = 1.0f;
-        return;
     }
-    goal_ = arc.point(chestTwist_);
 }
 
 void Fielder::twistChest() {
-    // The chest turn about twistAxis_: pelvisShare on the pelvis (clamped to
+    // The trunk turns turnShare of the throw angle about twistAxis_ (the arm
+    // swings round the shoulder for the rest): pelvisShare on the pelvis (clamped to
     // its limits), the rest over spine_01, spine_02 and chest by the reach
     // twist weights (9.3: mostly thoracic), each clamped to its limit.
     if (std::fabs(chestTwist_) < 1e-4f || joints_.spine[0] < 0 || joints_.spine[1] < 0 || joints_.spine[2] < 0) return;
     math::Quat& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].rotation;
     pelvis = motion::clampRotationVector(
-        math::normalize(math::fromAxisAngle(twistAxis_, chestTwist_ * throw_.pelvisShare) * pelvis), reach_.pelvisMin,
+        math::normalize(math::fromAxisAngle(twistAxis_, chestTwist_ * throw_.turnShare * throw_.pelvisShare) * pelvis),
+        reach_.pelvisMin,
         reach_.pelvisMax);
     rig_.localToModel(current_, models_);
     const float share[3] = {reach_.spineTwist.x, reach_.spineTwist.y, reach_.spineTwist.z};
     const float total = std::max(share[0] + share[1] + share[2], 1e-3f);
-    const float spine = chestTwist_ * (1.0f - throw_.pelvisShare);
+    const float spine = chestTwist_ * throw_.turnShare * (1.0f - throw_.pelvisShare);
     for (int i = 0; i < 3; ++i) {
         rotateInModel(joints_.spine[i], math::fromAxisAngle(twistAxis_, spine * share[i] / total));
         rig_.localToModel(current_, models_);

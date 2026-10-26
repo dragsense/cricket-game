@@ -1,6 +1,5 @@
 #include "motion/throw_arc.h"
 
-#include <algorithm>
 #include <cmath>
 
 namespace motion {
@@ -48,22 +47,6 @@ ThrowArc makeSwingArc(const ThrowArc& slotArc, float slotAngle, float tilt) {
     const math::Vec3 across = math::cross(arc.side, slotArc.normal);
     arc.up = math::normalize(std::cos(tilt) * slotArc.normal + std::sin(tilt) * across);
     arc.normal = math::cross(arc.side, arc.up);
-    return arc;
-}
-
-ThrowArc makeChestArc(math::Vec3 pivot, math::Vec3 hand, math::Quat rootRotation, bool leftArm, float tilt) {
-    // A right arm comes forward turning about +up (from the right side, -X,
-    // toward +Z), a left arm about -up; up = axis x side is the direction
-    // of travel at angle 0.
-    const math::Vec3 lean(0.0f, std::cos(tilt), std::sin(tilt));
-    ThrowArc arc;
-    arc.normal = math::safeNormalize(rootRotation * (leftArm ? -lean : lean), math::kUp);
-    const math::Vec3 d = hand - pivot;
-    const math::Vec3 along = arc.normal * math::dot(d, arc.normal);
-    arc.centre = pivot + along;
-    arc.radius = std::max(math::length(d - along), 0.01f);
-    arc.side = math::safeNormalize(d - along, math::kRight);
-    arc.up = math::cross(arc.normal, arc.side);
     return arc;
 }
 

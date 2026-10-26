@@ -70,6 +70,15 @@ status), [DECISIONS.md](DECISIONS.md) (decision log).
 - **Math:** use the `math::` aliases and helpers (`src/math`), never `glm::` directly
   outside `src/math`. Note that `math::Quat` is constructed as (w, x, y, z).
 
+## Controls (the user's design rule)
+- Never "classic" game controls: no target markers, predicted flight lines, power bars or
+  auto-solved aiming. The player gives body-level intent (hand position, wind-up, release
+  point, step) through on-body shapes such as circles around the chest/shoulder, and the
+  procedural body (reach chain, trunk twist, stepper, IK within joint limits) does the
+  rest; the ball's flight comes from that motion and our physics.
+- Each input should act at once and visibly (click = the body moves there), so the user
+  can see and correct it. Propose control schemes and confirm them before coding.
+
 ## Never
 - Prebuilt animations for gameplay characters.
 - Rewriting working systems without being asked.

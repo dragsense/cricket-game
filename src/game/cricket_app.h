@@ -63,8 +63,9 @@ private:
     // T: releases the ball from the batting position toward the fielder
     // (config/ball_launch.json "toFielder"), to be picked.
     void releaseToFielder();
-    // While the ball is held: three clicks pick the slot point, the force
-    // point and the release point (drawn), from the interpolated pose.
+    // While the ball is held: three clicks, each acting at once: slot point
+    // (hand there), force point (chest back), release point (throw); drawn
+    // from the interpolated pose.
     void updateThrowAim(float alpha);
     // The bowler's circle around the bowling shoulder; with B on, the release
     // point under the mouse (drawn), from the interpolated pose.
@@ -96,8 +97,8 @@ private:
     debug::DebugSettings debugSettings_;
     math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
     // Throw aim: arcs in world space; slot point on slotArc_, force and
-    // release points on chestArc_ (radians); throwStep_ 0 slot, 1 force,
-    // 2 release.
+    // release points on chestArc_ (radians); throwStep_: the next click is
+    // 0 slot, 1 force, 2 release.
     motion::ThrowArc slotArc_, chestArc_;
     float slotAngle_ = 0.0f, tilt_ = 0.0f, backAngle_ = 0.0f, releaseAngle_ = 0.0f;
     int throwStep_ = 0;

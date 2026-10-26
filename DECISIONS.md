@@ -235,3 +235,26 @@ Dated log. Format: decision, reason, alternatives rejected.
   ~0.18 s over the top, ~0.4 s follow-through, release ~5–25° before vertical.
 - **Reason:** no measured data for a standing delivery (docs/BIOMECHANICS.md section 11);
   35–45 m/s needs a run-up. The user left the choice to me; all values stay tunable.
+
+## 2026-10-26: Controls are body-level intent, never "classic" aiming
+- **Decision:** the player controls what a real player decides with their body (where the
+  hand is, how far the trunk winds up, where the ball leaves the hand) through on-body
+  circles and clicks; the procedural body (reach chain, trunk twist, stepper, IK, joint
+  limits) does the movement, and the ball's direction, height and speed come out of that
+  geometry and physics. No target markers, predicted flight lines, power bars or solved
+  "hit the target" speeds.
+- **Reason:** the user's design goal for the whole game: nothing classic, everything from
+  real mechanics. A target + prediction line was built and rejected; a free mouse hand was
+  rejected (no control over the angle).
+- **Rejected:** target/prediction aiming, mouse-as-hand, pull/flick power gestures.
+
+## 2026-10-26: The throw is driven by the trunk on three circles
+- **Decision:** height circle around the chest (slot point, hand goes there); throw circle
+  around the shoulder (full arm length, through the slot direction and the facing
+  direction, wheel-tilted) for the force point (trunk wind-up, the hand riding the trunk)
+  and the release point (hand blends out onto the circle, ball along its tangent, speed
+  from the wind-up); stride by force. Lives in `Fielder` (Throw phase) and
+  `config/throw.json`.
+- **Reason:** the user's design, iterated live; trunk rotation is where real throwing
+  speed comes from (BIOMECHANICS 10.2).
+

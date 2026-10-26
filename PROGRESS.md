@@ -51,18 +51,30 @@ each.
   grips on contact; Alt+Space steps toward the ball first (the lunge), then reaches.
   Whether to wait, walk up or step is the player's choice. The controlled player
   always faces the camera's heading, standing, walking or running.
-- [x] **Throw rework: chest turn** (built; the user checked it: "looks better", more to
-  improve). C puts the ball in the fielder's hand. Three clicks: the height circle (cyan,
-  radius `slot.radiusFactor` 0.5 x arm length around the shoulder) picks the slot point;
-  the chest circle (yellow, `motion::makeChestArc`: the hand's path when the trunk turns
-  about the spine base, axis leaned by the wheel) takes the force point (behind, up to
-  `chest.maxBackDeg` 120) and the release point. The trunk really turns
-  (`Fielder::twistChest`: pelvis `pelvisShare` 0.4, spine the rest, clamped) and carries
-  the hand: ready, wind back, swing forward speeding up, release along the tangent at
-  10..31 m/s by wind-up, follow-through, return. The throw circles and click also work in
-  the limb test. Tried and dropped (the user's call): straight-line pull-back, mouse
-  pull/flick, a target with a predicted flight (too "classic"), a free mouse hand.
-  Next: hips leading the chest, the stride foot, the glove arm.
+- [x] **Throw rework: player-driven chest throw** (built; the user checked it: "perfect").
+  C puts the ball in the fielder's hand. Three clicks, each acting at once:
+  1. Height circle (cyan, full, around the chest, radius `slot.radiusFactor` 1.0 x arm
+     length): the hand goes to the clicked point (arm slot).
+  2. Throw circle (yellow, `Fielder::chestArc`: around the throwing shoulder, radius
+     `chest.radiusFactor` 1.0 x arm length, in the plane of the slot point and the facing
+     direction: horizontal for sidearm, upright for over/underarm). The wheel leans it
+     (+-`aim.maxTiltDeg` 30) before and after the force click. Force click anywhere on it
+     (behind): the trunk winds back (`Fielder::twistChest`: `turnShare` 0.5 of the angle,
+     pelvis `pelvisShare` 0.4, spine the rest, clamped to joint limits); the hand keeps its
+     place on the trunk (`heldHand`); the circle follows the turning shoulder.
+  3. Release click on the yellow circle: with force >= `stride.minForce` the foot opposite
+     the throwing hand strides along the throw (0.3..0.9 m by force) and the swing waits
+     for it to land; the chest swings forward speeding up, the hand blends out onto the
+     yellow circle (`timing.blendShare` 0.6) with a push (`timing.push`), the ball leaves
+     along the tangent at 10..31 m/s by force (full at `chest.maxBackDeg` 120), then
+     follow-through and return; the chest turns back square.
+  Test: `test.pauseAtRelease` holds the hand at the release point until the next click.
+  The throw also works in the limb test. Tried and dropped (the user's call): pull-back
+  along an arc, mouse pull/flick, a target with a predicted flight (too "classic"), a free
+  mouse hand, a separate inner circle. Open: hips leading the chest in time, the glove
+  arm, the back foot in the follow-through.
+- [ ] **Next: bowling rework** in the same spirit (the user's call): see the bowling
+  prompt in the chat of 2026-10-26.
 
 ## Previous milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
 

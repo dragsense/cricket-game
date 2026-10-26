@@ -39,13 +39,6 @@ ThrowArc makeThrowArc(math::Vec3 shoulder, math::Quat rootRotation, bool leftArm
 // Swing arc through the slot arc's point at `slotAngle`, tilted by `tilt` radians.
 ThrowArc makeSwingArc(const ThrowArc& slotArc, float slotAngle, float tilt);
 
-// Chest circle: the path of a hand at `hand` when the whole trunk turns
-// about an axis through `pivot` (the spine base): up, leaned forward by
-// `tilt` radians (about the character's side), then by `rootRotation`.
-// Angle 0 is the hand; positive angles turn the throwing shoulder forward
-// (toward the facing direction), negative wind it back.
-ThrowArc makeChestArc(math::Vec3 pivot, math::Vec3 hand, math::Quat rootRotation, bool leftArm, float tilt);
-
 // Bowling circle (M5): a full circle around the bowling shoulder through the
 // top and the facing direction; the swing arc of the slot point leaned
 // `tilt` radians from vertical toward the bowling-arm side. Angle 0 is the
@@ -55,15 +48,30 @@ ThrowArc makeBowlingArc(math::Vec3 shoulder, math::Quat rootRotation, bool leftA
 
 // config/throw.json (BIOMECHANICS 10).
 struct ThrowSettings {
-    float slotRadiusFactor = 0.5f;  // height circle around the shoulder, x arm length
-    float maxBack = math::radians(120.0f);  // farthest force point behind
-    float pelvisShare = 0.4f;    // share of the chest turn taken by the pelvis
+    float slotRadiusFactor = 1.0f;  // height circle around the chest, x arm length
+    float swingRadiusFactor = 1.0f; // throw circle around the shoulder, x arm length
+    float maxBack = math::radians(120.0f);  // force point behind for full force
+    float turnShare = 0.5f;      // share of the throw angle the trunk turns (the arm the rest)
+    float pelvisShare = 0.4f;    // share of the trunk turn taken by the pelvis
     float readyTime = 0.25f;     // s, hand to the slot point
     float windTime = 0.35f;      // s, chest turns back to the force point
     float swingTime = 0.15f;     // s, force point -> release, speeding up
+    float push = 0.15f;          // m, the hand pushes out along the throw by the release
+    // In the swing the hand moves out from its place on the trunk onto the
+    // throw circle, on it by this share of the way to the release.
+    float blendShare = 0.6f;
     float followAngle = math::radians(60.0f);  // chest turn past the release
     float followTime = 0.35f;    // s, slowing down
     float untwistRate = 6.0f;    // 1/s, the chest turns back to square after the throw
+    // Stride: the foot opposite the throwing hand steps toward the throw
+    // when the force (wind-up share of maxBack) is at least strideForce, from
+    // minStride to maxStride (m) at full force; the swing starts when it lands.
+    float strideForce = 0.3f;
+    float minStride = 0.3f;
+    float maxStride = 0.9f;
+    // Test: the swing stops at the release point, the ball still held,
+    // until Fielder::letGo.
+    bool pauseAtRelease = false;
     float minSpeed = 10.0f;      // m/s at release with no wind-up
     float maxSpeed = 31.0f;      // m/s at release from maxBack
 };
