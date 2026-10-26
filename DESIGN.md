@@ -35,7 +35,7 @@ All versions are pinned in [cmake/dependencies.cmake](cmake/dependencies.cmake).
 | doctest | unit tests | M0 |
 | ozz-animation | skeletons, two-bone/aim IK, blending, skinning, clip playback | M1 |
 | ImGuizmo | dragging IK targets in the viewport | M1 |
-| Jolt Physics | player body collisions | later |
+| Jolt Physics | generic rigid bodies (stumps, bails, later player bodies), behind `src/physics/core` | M3 |
 | RmlUi | game menus / HUD | later |
 
 Anything else: ask first.
@@ -62,7 +62,7 @@ platform   SDL3 window, input, ImGui platform glue    (only place with SDL)
 render     Renderer interface, mesh generation, debug draw; render/filament = backend
 camera     debug cameras (camutils)
 debug      ImGui overlay
-physics    Jolt integration (later)
+physics    core: Jolt behind PhysicsWorld (M3); ball: our ball solver (M3)
 ui         game UI (later)
 game       CricketApp: wires everything; EnTT World; test scene
 ```
@@ -295,8 +295,15 @@ beyond that the body holds maximum reach. See docs/BIOMECHANICS.md "Reaching".
 Built: `motion::swingToward` (src/motion/reach.h) and `Fielder::reach()` (clavicle +
 arm, Step 2.1); left click places the target (the ball), R clears it.
 
+### Physics (M3): in progress
+`physics::PhysicsWorld` (src/physics/core) wraps Jolt: init from config/physics_world.json
+(shared gravity, air density, wind), stepped once per 120 Hz tick by `match::SimWorld`,
+previous/current transform per body for interpolation, preallocated temp allocator
+(no per-tick heap use), single-threaded job system by default. Jolt stays inside the .cpp.
+
 ### Ball physics (M3): not started
-Our own code: flight with drag, bounce off pitch and outfield, rolling. Fixed-step.
+Our own code (src/physics/ball): force generators (gravity, drag), substepped solver,
+bounce and rolling, predictor using the same step code. Fixed-step.
 
 ### Agents / AI (M4+): not started
 Player bodies (agents) driven by fielding, bowling and batting decisions (ai).

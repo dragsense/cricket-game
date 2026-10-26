@@ -16,10 +16,15 @@ bool SimWorld::initFielder(const rig::SkeletonDef& def, const core::Config& join
     return fielder_.init(def, def.height, joints, locomotion);
 }
 
+bool SimWorld::initPhysics(const core::Config& physicsWorld) {
+    return physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld));
+}
+
 void SimWorld::tick(double dt) {
     previous_ = current_;
     time_ += dt;
     fielder_.tick(dt);
+    physics_.step(static_cast<float>(dt));
     if (!probeEnabled_) return;
 
     float a = static_cast<float>(time_) * pathSpeed_;

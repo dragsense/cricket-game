@@ -9,6 +9,7 @@
 
 #include "agents/fielder.h"
 #include "math/math.h"
+#include "physics/core/physics_world.h"
 
 namespace core {
 class Config;
@@ -27,6 +28,12 @@ public:
 
     // Creates the fielder from its skeleton description. Load-time only.
     bool initFielder(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion);
+    // Creates the Jolt world from config/physics_world.json. Load time;
+    // calling again rebuilds it.
+    bool initPhysics(const core::Config& physicsWorld);
+    physics::PhysicsWorld& physicsWorld() { return physics_; }
+    const physics::PhysicsWorld& physicsWorld() const { return physics_; }
+
     agents::Fielder& fielder() { return fielder_; }
     const agents::Fielder& fielder() const { return fielder_; }
 
@@ -41,6 +48,7 @@ public:
 private:
     ProbeState previous_, current_;
     agents::Fielder fielder_;
+    physics::PhysicsWorld physics_;
     double time_ = 0;
     bool probeEnabled_ = true;
     float pathRadius_ = 12.0f;  // metres

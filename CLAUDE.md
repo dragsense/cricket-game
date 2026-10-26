@@ -13,9 +13,8 @@ status), [DECISIONS.md](DECISIONS.md) (decision log).
 - SDL3
 - Filament: scene, camutils, gltfio, filagui (not in the prebuilt release, see
   DECISIONS.md)
-- GLM, EnTT, nlohmann/json, spdlog, Dear ImGui (docking), doctest
-- Planned: ozz-animation and ImGuizmo (M1), Jolt Physics (later), RmlUi (game menus,
-  later)
+- GLM, EnTT, nlohmann/json, spdlog, Dear ImGui (docking), doctest, Jolt Physics (M3)
+- Planned: ozz-animation and ImGuizmo (M1), RmlUi (game menus, later)
 - All versions are pinned in `cmake/dependencies.cmake`.
 
 ## Library-first rule

@@ -12,10 +12,10 @@ set(ENTT_VERSION     "v3.15.0")
 set(DOCTEST_VERSION  "v2.5.2")
 set(OZZ_VERSION      "0.16.0")
 set(EFSW_VERSION     "1.4.1")            # file watcher: live config reload in dev builds
+set(JOLT_VERSION     "v5.3.0")           # rigid bodies: stumps, bails, later player bodies
 # Dev tool (not linked): watchexec (winget install watchexec.watchexec) drives `run watch`.
 # Planned, not integrated yet:
 #   Milestone 1: ImGuizmo (draggable IK targets, Step 1.2)
-#   Later:       Jolt Physics (player body collisions)
 # Model loading uses Filament's gltfio (ships with the Filament SDK).
 
 # Sources are cloned ONCE into third_party/deps/<name>-<version>/ and shared by
@@ -25,7 +25,7 @@ set(EFSW_VERSION     "1.4.1")            # file watcher: live config reload in d
 include(FetchContent)
 set(CRICKET_DEPS_DIR ${CMAKE_SOURCE_DIR}/third_party/deps)
 
-# cricket_dependency(<FetchContent name> <git repo> <tag>)
+# cricket_dependency(<FetchContent name> <git repo> <tag> [source subdir])
 function(cricket_dependency name repo tag)
     set(dir ${CRICKET_DEPS_DIR}/${name}-${tag})
     if(NOT EXISTS ${dir}/.cricket-complete)
@@ -43,7 +43,11 @@ function(cricket_dependency name repo tag)
     # Tell FetchContent the source is already present: no download step at all.
     string(TOUPPER ${name} upper)
     set(FETCHCONTENT_SOURCE_DIR_${upper} ${dir} PARENT_SCOPE)
-    FetchContent_Declare(${name} GIT_REPOSITORY ${repo} GIT_TAG ${tag} EXCLUDE_FROM_ALL)
+    if(ARGC GREATER 3)
+        FetchContent_Declare(${name} GIT_REPOSITORY ${repo} GIT_TAG ${tag} SOURCE_SUBDIR ${ARGV3} EXCLUDE_FROM_ALL)
+    else()
+        FetchContent_Declare(${name} GIT_REPOSITORY ${repo} GIT_TAG ${tag} EXCLUDE_FROM_ALL)
+    endif()
 endfunction()
 
 # --- SDL3 (shared library, copied next to the exe) ---
@@ -95,7 +99,19 @@ set(EFSW_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 cricket_dependency(efsw https://github.com/SpartanJ/efsw.git ${EFSW_VERSION})
 
-FetchContent_MakeAvailable(SDL3 glm imgui nlohmann_json spdlog EnTT doctest ozz_animation efsw)
+# --- Jolt Physics (generic rigid bodies; CMake project lives in Build/) ---
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)  # DLL CRT like the rest
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(TARGET_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(TARGET_HELLO_WORLD OFF CACHE BOOL "" FORCE)
+set(TARGET_PERFORMANCE_TEST OFF CACHE BOOL "" FORCE)
+set(TARGET_SAMPLES OFF CACHE BOOL "" FORCE)
+set(TARGET_VIEWER OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+cricket_dependency(JoltPhysics https://github.com/jrouwe/JoltPhysics.git ${JOLT_VERSION} Build)
+
+FetchContent_MakeAvailable(SDL3 glm imgui nlohmann_json spdlog EnTT doctest ozz_animation efsw JoltPhysics)
 
 add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp

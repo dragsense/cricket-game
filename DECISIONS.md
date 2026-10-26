@@ -194,3 +194,15 @@ Dated log. Format: decision, reason, alternatives rejected.
   cricket-specific forces need to plug into the ball code.
 - **Also:** M3 starts on branch `milestone-3` while M2 still waits for the user's visual
   review. The dive leaves M3 (no players in this milestone) and will be scheduled later.
+
+## 2026-10-26: Jolt Physics v5.3.0 added (M3 Step 3.1)
+- **Decision:** Jolt Physics v5.3.0 (MIT), cloned through `cricket_dependency` (CMake in
+  `Build/`), DLL CRT, no IPO, samples and tests off. Linked only to `cricket_physics`.
+  Default job system is single-threaded (tiny scene, mobile); `jolt.threads` enables the
+  thread pool.
+- **Reason:** the user's M3 brief named it; it was already the planned physics library
+  (popular, maintained, Windows/Android/iOS, deterministic option).
+- **Rejected:** Bullet (older API, heavier), PhysX (larger, more complex licence/build),
+  writing rigid bodies ourselves (library-first rule).
+- **Also:** Step 3.1 has no bodies or collisions (the user's choice); stumps and bails
+  as Jolt bodies move to 3.3 with ball contacts.

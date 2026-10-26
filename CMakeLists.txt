@@ -67,6 +67,13 @@ add_library(cricket_motion STATIC
 target_link_libraries(cricket_motion PUBLIC cricket_core)
 cricket_warnings(cricket_motion)
 
+# ---- physics: Jolt behind our own thin interface ------------------------------------
+add_library(cricket_physics STATIC
+    src/physics/core/physics_world.cpp
+)
+target_link_libraries(cricket_physics PUBLIC cricket_core PRIVATE Jolt)
+cricket_warnings(cricket_physics)
+
 # ---- game executable --------------------------------------------------------
 add_executable(CricketGame
     src/main.cpp
@@ -88,7 +95,7 @@ add_executable(CricketGame
     src/debug/skeleton_debug.cpp
     src/debug/axis_gizmo.cpp
 )
-target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig cricket_ik cricket_motion SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
+target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig cricket_ik cricket_motion cricket_physics SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
 cricket_warnings(CricketGame)
 # Debug builds read config/ straight from the source tree and hot-reload it.
 target_compile_definitions(CricketGame PRIVATE $<$<CONFIG:Debug>:CRICKET_DEV_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config">)
@@ -146,4 +153,10 @@ if(CRICKET_BUILD_TESTS)
     target_compile_definitions(agents_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
     cricket_warnings(agents_tests)
     add_test(NAME agents_tests COMMAND agents_tests)
+
+    add_executable(physics_tests tests/test_main.cpp tests/test_physics_world.cpp)
+    target_link_libraries(physics_tests PRIVATE cricket_physics doctest::doctest)
+    target_compile_definitions(physics_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
+    cricket_warnings(physics_tests)
+    add_test(NAME physics_tests COMMAND physics_tests)
 endif()

@@ -12,8 +12,14 @@ stop after each.
 - [x] **3.0 Research** (awaiting the user's review) → docs/BALL_PHYSICS.md (ball size and
   mass, drag, bounce and friction on pitch and grass, rolling resistance, stumps, speeds,
   integrator notes, sources).
-- [ ] **3.1 Jolt setup**: Jolt pinned, stepped on the 120 Hz loop, shared world config;
-  stumps and bails as Jolt bodies.
+- [x] **3.1 Jolt setup** (built; tests pass): Jolt v5.3.0 pinned (`cmake/dependencies.cmake`,
+  DLL CRT, no samples/tests), wrapped by `physics::PhysicsWorld` (src/physics/core; Jolt
+  only in the .cpp), created from `config/physics_world.json` ("world": gravity, air
+  density, wind, shared with the ball solver; "jolt": limits, temp allocator, threads,
+  slop) and stepped by `match::SimWorld::tick` at 120 Hz; F5/live reload rebuilds it.
+  Bodies keep previous/current transforms for interpolation. No bodies, ground or
+  collisions yet (the user's choice: stumps and bails wait for 3.3). `physics_tests`:
+  settings from config, free fall under the shared gravity, interpolation and reset.
 - [ ] **3.2 Ball flight**: gravity and drag force generators, substepped integrator, no
   tunnelling, interpolated rendering.
 - [ ] **3.3 Ball contacts**: bounce, friction, rolling on pitch and outfield (materials in

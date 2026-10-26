@@ -90,6 +90,7 @@ bool CricketApp::init() {
     sim_.configure(e);
     feeder_.configure(e);
 
+    if (!sim_.initPhysics(cfg_.physicsWorld)) return false;
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
     ballPos_ = cfg_.scene.getVec3("ball.restPosition", math::Vec3(0.15f, 0.0f, 5.0f));
     ballPos_.y = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
@@ -142,6 +143,9 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             destroyTestScene(world_, *renderer_, scene_);
             scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
             appliedSettings_.showProbe = !debugSettings_.showProbe;  // re-apply probe visibility
+        } else if (name == "physics_world.json") {
+            cfg_.physicsWorld = std::move(fresh);
+            if (!sim_.initPhysics(cfg_.physicsWorld)) LOG_ERROR("reload: physics world could not be rebuilt");
         } else if (name == "fielder_skeleton.json") {
             cfg_.fielderSkeleton = std::move(fresh);
             LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
@@ -229,7 +233,8 @@ bool CricketApp::pumpEvents() {
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
-        changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json", "locomotion.json"};
+        changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json", "locomotion.json",
+                          "physics_world.json"};
     else if (cfg_.liveReload)
         configWatcher_.poll(changedConfigs_);
     if (!changedConfigs_.empty()) reloadConfig(changedConfigs_);

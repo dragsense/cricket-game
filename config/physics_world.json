@@ -1,0 +1,21 @@
+// Shared physics world: Jolt (rigid bodies) and, from Step 3.2, the ball solver.
+// Units: metres, seconds, kg. Values: docs/BALL_PHYSICS.md.
+{
+  "world": {
+    "gravity": [0.0, -9.81, 0.0],   // m/s^2 (BALL_PHYSICS 1)
+    "airDensity": 1.225,            // kg/m^3, 15 °C at sea level (BALL_PHYSICS 1)
+    "wind": [0.0, 0.0, 0.0]         // m/s (BALL_PHYSICS 1)
+  },
+  "jolt": {
+    "maxBodies": 256,
+    "maxBodyPairs": 1024,
+    "maxContactConstraints": 1024,
+    "tempAllocatorKb": 2048,        // preallocated; no heap use while stepping
+    "threads": 0,                   // 0: single-threaded (tiny scene, mobile-friendly)
+    "collisionSteps": 1,            // per 120 Hz tick
+    "penetrationSlop": 0.001,       // small: bails are 13 mm thick
+    "speculativeContactDistance": 0.005,
+    "linearDamping": 0.0,           // air drag on rigid bodies is negligible
+    "angularDamping": 0.05
+  }
+}
