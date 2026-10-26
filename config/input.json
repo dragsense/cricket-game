@@ -17,6 +17,9 @@
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
+    // V: free view; the camera can be moved to any angle while the player keeps
+    // their heading. V again: the player turns with the camera again.
+    "FreeView": ["V"],
     // Space: the fielder reaches for the ball at once (grip, carry back) with
     // the hand on the ball's side; Alt+Space steps toward it first. R abandons
     // the pick.

@@ -304,7 +304,7 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
 
     // Fielder movement: the fielder always turns to the camera's heading,
-    // standing, walking or running; W walks forward, S backs up, A/D sidestep
+    // standing, walking or running, unless free view (V) holds the heading; W walks forward, S backs up, A/D sidestep
     // (character space, +X left).
     auto axis = [&](core::Action pos, core::Action neg) {
         return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
@@ -321,7 +321,8 @@ bool CricketApp::pumpEvents() {
     }
     agents::Fielder& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
-    heading_ = std::atan2(ahead.x, ahead.z);
+    if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
+    if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
     controlled.setMoveInput(move, true, heading_);
 
     // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).

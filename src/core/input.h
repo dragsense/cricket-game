@@ -56,6 +56,7 @@ enum class Action : uint8_t {
     StepForward, StepBack, StepLeft, StepRight,
     Run, Jog,  // hold to run / jog; otherwise walk
     ToggleMouseLook,
+    FreeView,    // the camera orbits freely; the player keeps their heading
     ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)
     Pick,              // reach for the ball, grip it, carry it back
     PickStep,          // held with Pick: step toward the ball first

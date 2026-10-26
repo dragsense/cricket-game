@@ -29,6 +29,7 @@ constexpr const char* kActionNames[] = {
     "StepForward", "StepBack", "StepLeft", "StepRight",
     "Run", "Jog",
     "ToggleMouseLook",
+    "FreeView",
     "ClearReach",
     "Pick",
     "PickStep",
@@ -91,6 +92,7 @@ ActionMap::ActionMap() {
     bind(Action::Run, Key::LeftShift, Key::RightShift);
     bind(Action::Jog, Key::LeftCtrl, Key::RightCtrl);
     bind(Action::ToggleMouseLook, Key::Tab);
+    bind(Action::FreeView, Key::V);
     bind(Action::ClearReach, Key::R);
     bind(Action::Pick, Key::Space);
     bind(Action::PickStep, Key::LeftAlt, Key::RightAlt);
