@@ -63,9 +63,9 @@ private:
     // T: releases the ball from the batting position toward the fielder
     // (config/ball_launch.json "toFielder"), to be picked.
     void releaseToFielder();
-    // While the ball is held: the throw arc around the holding shoulder and the
-    // release point under the mouse (drawn), from the interpolated pose.
-    void updateThrowArc(float alpha);
+    // While the ball is held: three clicks pick the slot point, the force
+    // point and the release point (drawn), from the interpolated pose.
+    void updateThrowAim(float alpha);
     // The bowler's circle around the bowling shoulder; with B on, the release
     // point under the mouse (drawn), from the interpolated pose.
     void updateBowlArc(float alpha);
@@ -95,11 +95,12 @@ private:
     std::vector<math::Mat4> bowlerModels_;
     debug::DebugSettings debugSettings_;
     math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
-    // Throw aim (radians): slot point on slotArc_ (0 sidearm, +pi/2 overarm),
-    // the swing arc's tilt about it and the release point on swingArc_.
-    motion::ThrowArc slotArc_, swingArc_;
-    float slotAngle_ = 0.0f, tilt_ = 0.0f, releaseAngle_ = 0.0f;
-    bool aimSwing_ = false;  // the slot is fixed; aiming the release point
+    // Throw aim: arcs in world space; slot point on slotArc_, force and
+    // release points on chestArc_ (radians); throwStep_ 0 slot, 1 force,
+    // 2 release.
+    motion::ThrowArc slotArc_, chestArc_;
+    float slotAngle_ = 0.0f, tilt_ = 0.0f, backAngle_ = 0.0f, releaseAngle_ = 0.0f;
+    int throwStep_ = 0;
     // Bowling aim (radians): the circle's lean from vertical and the release
     // point on it (0 top, + in front); bowlAim_: the bowler is controlled.
     motion::ThrowArc bowlArc_;

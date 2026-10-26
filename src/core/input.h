@@ -61,6 +61,7 @@ enum class Action : uint8_t {
     Pick,              // reach for the ball, grip it, carry it back
     PickStep,          // held with Pick: step toward the ball first
     ThrowBall,         // release the ball from the batting position toward the fielder
+    GiveBall,          // put the ball straight into the fielder's hand
     BowlAim,           // switch control (move, camera, mouse aim) between fielder and bowler
     PoseLimb,          // limb test: choose the next limb (right foot, left foot, right hand, left hand)
     PoseAway, PoseNear, PoseLeft, PoseRight,  // limb test: move the target (camera-relative; Shift: up/down)

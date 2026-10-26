@@ -34,6 +34,7 @@ constexpr const char* kActionNames[] = {
     "Pick",
     "PickStep",
     "ThrowBall",
+    "GiveBall",
     "BowlAim",
     "PoseLimb",
     "PoseAway", "PoseNear", "PoseLeft", "PoseRight",
@@ -97,6 +98,7 @@ ActionMap::ActionMap() {
     bind(Action::Pick, Key::Space);
     bind(Action::PickStep, Key::LeftAlt, Key::RightAlt);
     bind(Action::ThrowBall, Key::T);
+    bind(Action::GiveBall, Key::C);
     bind(Action::BowlAim, Key::B);
     bind(Action::PoseLimb, Key::F);
     bind(Action::PoseAway, Key::Up);

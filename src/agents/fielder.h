@@ -150,12 +150,17 @@ public:
         return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.start)][3]));
     }
     float armLength() const { return armLength_; }  // shoulder to wrist (m)
-    // Throw (M4): with the ball held and standing, the hand goes to the start
-    // of the swing arc (motion::makeSwingArc of the slot point `slotAngle`,
-    // turned by `tilt`), swings forward along it, lets the ball go at
-    // `releaseAngle` along the arc's tangent and follows through to the arc's
-    // end, then returns; the body follows through the reach stages.
-    void startThrow(float slotAngle, float tilt, float releaseAngle);
+    // Throw: with the ball held and standing, the hand goes to the slot point
+    // (`slotAngle` on slotArc(): around the shoulder, half an arm's length)
+    // and the whole trunk turns it round chestArc(slotAngle, tilt): back to
+    // `backAngle` (< 0; the farther back, the more force), then forward,
+    // speeding up, to `releaseAngle`, where the ball leaves along the
+    // circle's tangent; on through the follow-through, then the hand returns
+    // and the chest turns back square. Arcs in character space.
+    void startThrow(float slotAngle, float tilt, float backAngle, float releaseAngle);
+    motion::ThrowArc slotArc() const;
+    motion::ThrowArc chestArc(float slotAngle, float tilt) const;
+    float maxThrowBack() const { return throw_.maxBack; }
     bool throwing() const { return phase_ == Phase::Throw; }
     // True once, on the tick the ball leaves the hand: its centre and
     // velocity in world space. holding() is false from then on.
@@ -217,6 +222,7 @@ private:
     void solveIk();
     // Reaching, one pass per stage (each takes the error left by the ones
     // before it): spine, pelvis, body before the leg IK; clavicle and arm last.
+    void twistChest();  // applies chestTwist_ over the pelvis and spine
     void reachSpine();
     void reachPelvis();
     void reachBody();
@@ -262,6 +268,7 @@ private:
     ReachSettings reach_;
     float armLength_ = 0.6f;  // shoulder to wrist (m), from the skeleton
     math::Vec3 restShoulderL_{0.0f}, restShoulderR_{0.0f};  // character space, rest pose
+    math::Vec3 restSpineBase_{0.0f};  // character space, rest pose (chest turn pivot)
     math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
     math::Vec3 reachTarget_{0.0f};  // the ball, world space
     math::Vec3 reachVelocity_{0.0f};  // world, m/s
@@ -270,9 +277,12 @@ private:
     enum class Phase { Idle, Reach, Return, Throw, Bowl, Pose };
     motion::ThrowSettings throw_;
     motion::BowlSettings bowl_;
-    float slotAngle_ = 0.0f, throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // radians
+    float throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // bowling circle lean and release (radians)
     float throwTime_ = 0.0f;   // s since the throw started
     math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space
+    float throwSlot_ = 0.0f, throwBack_ = 0.0f;  // radians (startThrow)
+    float chestTwist_ = 0.0f;     // current trunk turn about twistAxis_ (radians)
+    math::Vec3 twistAxis_{0.0f, 1.0f, 0.0f};  // character space
     bool released_ = false;    // the ball left the hand this tick (takeRelease)
     math::Vec3 releasePosition_{0.0f}, releaseVelocity_{0.0f};  // world
     float pickDuration_ = 0.4f, returnDuration_ = 0.5f;  // s, Fitts' law per pick

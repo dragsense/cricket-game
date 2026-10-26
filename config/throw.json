@@ -1,29 +1,38 @@
-// Fielder throw (M4). Values: docs/BIOMECHANICS.md section 10.
+// Fielder throw: the trunk turns the hand round the chest circle.
+// Values: docs/BIOMECHANICS.md section 10.
 {
-  "arc": {
-    // Both arcs are half circles around the throwing shoulder, radius =
-    // factor x arm length (shoulder to wrist); 0.95 keeps the elbow just
-    // short of locking.
-    "radiusFactor": 0.95
+  "slot": {
+    // Height circle (cyan) around the throwing shoulder, radius = factor x
+    // arm length; its point sets the hand's height (arm slot).
+    "radiusFactor": 0.5
   },
   "aim": {
-    // Mouse wheel turns the swing arc about the slot point, per notch.
-    "tiltStepDeg": 5
+    // Mouse wheel leans the chest circle's axis forward/back, per notch.
+    "tiltStepDeg": 5,
+    // Farthest release point ahead on the chest circle.
+    "maxReleaseDeg": 90
   },
-  "swing": {
-    // Second click: the hand eases to the swing arc's start (behind), swings
-    // forward, fastest at the release point, and follows through to the
-    // arc's end. Times are estimates (10.2).
-    "windupTime": 0.3,
-    "swingTime": 0.12,
-    // At the start the elbow is bent (cocking, ~90 deg): the hand is this
-    // share of the radius from the shoulder, and the arm extends to full by
-    // the release point (the whip).
-    "cockReach": 0.6
+  "chest": {
+    // Farthest force point behind (deg of chest turn; full force there).
+    "maxBackDeg": 120,
+    // Share of the turn taken by the pelvis; the spine takes the rest.
+    "pelvisShare": 0.4,
+    // How fast the chest turns back square after the throw (1/s).
+    "untwistRate": 6
+  },
+  "timing": {
+    // Hand to the slot point, chest back to the force point, force point
+    // to release (speeding up), then on by followDeg slowing (s).
+    "readyTime": 0.25,
+    "windTime": 0.35,
+    "swingTime": 0.15,
+    "followDeg": 60,
+    "followTime": 0.35
   },
   "release": {
-    // Ball speed along the arc's tangent at release (m/s): ~80 % of an elite
-    // fielder's ~31 m/s maximum, where accuracy is best (10.4).
-    "speed": 25
+    // Ball speed along the circle's tangent: no wind-up .. maxBackDeg (m/s);
+    // an elite fielder's maximum is ~31 m/s (10.4).
+    "minSpeed": 10,
+    "maxSpeed": 31
   }
 }

@@ -51,6 +51,18 @@ each.
   grips on contact; Alt+Space steps toward the ball first (the lunge), then reaches.
   Whether to wait, walk up or step is the player's choice. The controlled player
   always faces the camera's heading, standing, walking or running.
+- [x] **Throw rework: chest turn** (built; the user checked it: "looks better", more to
+  improve). C puts the ball in the fielder's hand. Three clicks: the height circle (cyan,
+  radius `slot.radiusFactor` 0.5 x arm length around the shoulder) picks the slot point;
+  the chest circle (yellow, `motion::makeChestArc`: the hand's path when the trunk turns
+  about the spine base, axis leaned by the wheel) takes the force point (behind, up to
+  `chest.maxBackDeg` 120) and the release point. The trunk really turns
+  (`Fielder::twistChest`: pelvis `pelvisShare` 0.4, spine the rest, clamped) and carries
+  the hand: ready, wind back, swing forward speeding up, release along the tangent at
+  10..31 m/s by wind-up, follow-through, return. The throw circles and click also work in
+  the limb test. Tried and dropped (the user's call): straight-line pull-back, mouse
+  pull/flick, a target with a predicted flight (too "classic"), a free mouse hand.
+  Next: hips leading the chest, the stride foot, the glove arm.
 
 ## Previous milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
 

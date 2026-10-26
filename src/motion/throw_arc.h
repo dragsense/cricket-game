@@ -39,6 +39,13 @@ ThrowArc makeThrowArc(math::Vec3 shoulder, math::Quat rootRotation, bool leftArm
 // Swing arc through the slot arc's point at `slotAngle`, tilted by `tilt` radians.
 ThrowArc makeSwingArc(const ThrowArc& slotArc, float slotAngle, float tilt);
 
+// Chest circle: the path of a hand at `hand` when the whole trunk turns
+// about an axis through `pivot` (the spine base): up, leaned forward by
+// `tilt` radians (about the character's side), then by `rootRotation`.
+// Angle 0 is the hand; positive angles turn the throwing shoulder forward
+// (toward the facing direction), negative wind it back.
+ThrowArc makeChestArc(math::Vec3 pivot, math::Vec3 hand, math::Quat rootRotation, bool leftArm, float tilt);
+
 // Bowling circle (M5): a full circle around the bowling shoulder through the
 // top and the facing direction; the swing arc of the slot point leaned
 // `tilt` radians from vertical toward the bowling-arm side. Angle 0 is the
@@ -48,13 +55,17 @@ ThrowArc makeBowlingArc(math::Vec3 shoulder, math::Quat rootRotation, bool leftA
 
 // config/throw.json (BIOMECHANICS 10).
 struct ThrowSettings {
-    float radiusFactor = 0.95f;  // x arm length
-    float windupTime = 0.3f;     // s, hand eases to the swing arc's start
-    float swingTime = 0.12f;     // s, start to the release point, speeding up
-    // Shoulder-to-hand distance at the start, x radius: the elbow bends
-    // (cocking) and extends by the release point.
-    float cockReach = 0.6f;
-    float throwSpeed = 25.0f;    // m/s at release
+    float slotRadiusFactor = 0.5f;  // height circle around the shoulder, x arm length
+    float maxBack = math::radians(120.0f);  // farthest force point behind
+    float pelvisShare = 0.4f;    // share of the chest turn taken by the pelvis
+    float readyTime = 0.25f;     // s, hand to the slot point
+    float windTime = 0.35f;      // s, chest turns back to the force point
+    float swingTime = 0.15f;     // s, force point -> release, speeding up
+    float followAngle = math::radians(60.0f);  // chest turn past the release
+    float followTime = 0.35f;    // s, slowing down
+    float untwistRate = 6.0f;    // 1/s, the chest turns back to square after the throw
+    float minSpeed = 10.0f;      // m/s at release with no wind-up
+    float maxSpeed = 31.0f;      // m/s at release from maxBack
 };
 
 // config/bowling.json (BIOMECHANICS 11).

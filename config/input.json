@@ -29,6 +29,8 @@
     // T: releases the ball from the batting position toward the fielder
     // (config/ball_launch.json "toFielder"); walk to it and press Space.
     "ThrowBall": ["T"],
+    // C: the ball goes straight into the fielder's hand, ready to throw.
+    "GiveBall": ["C"],
     // B: control the bowler instead of the fielder (WASD moves, the camera
     // follows, the mouse picks the release point; after a click the wheel leans the
     // circle); B again goes back.
