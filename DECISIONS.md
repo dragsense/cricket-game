@@ -222,3 +222,9 @@ Dated log. Format: decision, reason, alternatives rejected.
   standing Jolt bodies). The ball does not collide with the stumps yet, and there are no
   stump tests; 3.4 (prediction, boundary) moves out of M3. Next: M4 on a new branch.
 - **Reason:** the user's choice; details later.
+
+## 2026-10-26: M5 is Bowling (arm action); Wicketkeeper moves to M6
+- **Decision:** swap M5 and M6 in the roadmap. M5 is the bowling arm action with a
+  standing bowler (no run-up), reusing the M4 throw arc and release code; the
+  wicketkeeper becomes M6.
+- **Reason:** the user's choice; bowling reuses the M4 arc work directly.

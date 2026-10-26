@@ -1,6 +1,28 @@
 # Progress
 
-## Current milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
+## Current milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
+
+Goal: a standing bowler (no run-up) delivers the ball. The bowling hand makes a full
+circle around the shoulder (front, down, back, over the top), releases near the top on
+the way forward along the arc's tangent at a fixed speed (config), then follows through
+across the body; the elbow stays near-straight (Law 21, 15° limit). The user picks the
+release point and the arc's tilt (as in M4) and clicks to bowl; the ball flies with our
+physics. Reuses the M4 throw code (`motion::ThrowArc`, `makeSwingArc`, Fielder Throw
+phase, `takeRelease` -> `SimWorld::launchBall`, reach chain). Out of scope: run-up,
+seam/spin, batter, new tests or collisions not asked for. One step at a time; stop after
+each.
+
+- [x] **5.0 Research** (awaiting the user's review): docs/BIOMECHANICS.md section 11
+  "Bowling arm action" (Law 21 elbow limit, arm circle, timing, release point and height,
+  speeds, sources; planned `config/bowling.json` values).
+- [ ] **5.1 Arc**: full bowling circle around the shoulder; release point and tilt picked
+  by the user, drawn.
+- [ ] **5.2 Arm circle**: hand goes front, down, back, over the top with a near-straight
+  arm (elbow limit from config); the body follows via the reach chain.
+- [ ] **5.3 Release**: on click the ball leaves at the release point along the tangent at
+  a fixed speed and flies with our physics.
+
+## Previous milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
 
 Goal: after a pick, the fielder throws. The hand follows an arc (circle around the
 throwing shoulder); the user picks the release point on it (underarm … sidearm …
@@ -34,7 +56,7 @@ tests or collisions not asked for. One step at a time; stop after each.
 
 M4 code done (to improve later: aiming controls, a target, body sequencing).
 
-## Previous milestone: M3 Physics and Ball Physics — done to 3.3 (branch milestone-3)
+## Earlier milestone: M3 Physics and Ball Physics — done to 3.3 (branch milestone-3)
 
 Goal: general ball physics: gravity, air drag, bounce, rolling, hitting the stumps. Jolt
 Physics (wrapped in src/physics/core) for stumps, bails and later bodies; our own ball
@@ -338,8 +360,8 @@ Scope:
 | M2 | Hand-driven body repositioning (reaching) | in progress |
 | M3 | Basic ball flight (drag), bounce, roll; dive (needs ball arrival time) | not started |
 | M4 | Fielding: throw (chase, intercept, catch later) | in progress |
-| M5 | Wicketkeeper | not started |
-| M6 | Bowling | not started |
+| M5 | Bowling: arm action (standing bowler) | in progress |
+| M6 | Wicketkeeper | not started |
 | M7 | Batting | not started |
 | M7 | Match rules | not started |
 | M8 | Broadcast cameras | not started |

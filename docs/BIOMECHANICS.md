@@ -848,6 +848,100 @@ release ([Brunel, cricket throwing](https://bura.brunel.ac.uk/handle/2438/16239)
   ~80 % of ~31 m/s).
 - The body follows through the existing reach chain (section 9); no new body system.
 
+## 11. Bowling arm action (M5)
+
+How a bowler's arm delivers the ball: the legal limit on the elbow, the arm circle, where
+the ball is released, how long it takes and how fast the ball leaves. M5 has a standing
+bowler (no run-up), so run-up and foot-contact data are listed for later milestones only.
+Fast bowling is well studied; spin less so, and wrist spin hardly at all **[P]**.
+
+### 11.1 Law: the straight arm
+- MCC Law 21.2 (fair delivery, the arm) forbids throwing; the ICC regulations put a number
+  on it: **elbow extension may not exceed 15°**, measured **from the moment the bowling
+  arm reaches the horizontal until release**; hyperextension is discounted, and the limit
+  is the same for all bowlers
+  ([ICC, illegal bowling actions](https://www.icc-cricket.com/about/cricket/rules-and-regulations/illegal-bowling-actions);
+  [ECB Bowling Review Regulations 2026](https://resources.ecb.co.uk/ecb/document/2026/03/24/b21ef749-7520-4734-9f40-1aa692cff18f/Bowling-Review-Regulations-2026.pdf);
+  [Wikipedia, Throwing (cricket)](https://en.wikipedia.org/wiki/Throwing_(cricket)))
+  **[P]**. 15° was chosen because larger extensions become visible to the naked eye and
+  look like a throw **[P]**.
+- So, unlike the throw (section 10), the bowling arm has **no cocked elbow and no
+  whip**: the elbow is nearly straight from the horizontal to release. Most legal actions
+  carry a small fixed bend (a few degrees) that changes far less than 15° **[T]**. For the
+  game: elbow bend at most ~10° (inside the limit, with margin), roughly constant **[E]**.
+
+### 11.2 Arm circle (circumduction)
+- The hand starts low in front of the body (in a run-up delivery, after the gather/jump),
+  goes **down and back** past the hip, **up behind** the shoulder, **over the top** and
+  releases on the way forward, then **follows through down across the body** to the
+  opposite hip **[T]**. The path is close to a circle around the bowling shoulder in a
+  plane near vertical, through the target line; the trunk's side-flexion tilts it
+  **[T]**.
+- Studies time the arm by its angle at events, not by duration: how far back the arm is
+  at front-foot contact (later arm in elite men goes with more speed; the opposite was
+  found in elite women)
+  ([Felton et al. 2019, male vs female](https://www.whit.com.au/cleanbowled/cricket-biomechanics/fast-bowling-technique-and-context/2019-felton-male-vs-female-elite-bowlers/);
+  [Felton 2015, female technique](https://www.whit.com.au/cleanbowled/cricket-biomechanics/fast-bowling-technique-and-context/2015-felton-female-technique-ball-speed/))
+  **[P]**.
+- Timing (elite men): back-foot contact to front-foot contact **~192 ms**, front-foot
+  contact to release **~103 ms** (women ~172 / 128 ms)
+  ([Felton et al. 2019](https://www.whit.com.au/cleanbowled/cricket-biomechanics/fast-bowling-technique-and-context/2019-felton-male-vs-female-elite-bowlers/))
+  **[P]**. The arm goes from about horizontal-behind to release in roughly the last
+  ~0.1 s **[E]** from these numbers.
+- For a standing bowler with no run-up the circle is slower: we estimate **~0.5 s for
+  the down-and-back part** and **~0.15–0.2 s from behind (horizontal) to release**, then
+  a **~0.4 s follow-through** **[E]**.
+- Proximal to distal, as in throwing: hips, trunk (flexion and rotation), then the arm
+  ([Lyons 2023](https://www.whit.com.au/cleanbowled/cricket-biomechanics/fast-bowling-technique-and-context/2023-lyons-female-kinematic-anthropometric-brs/))
+  **[P]**. In the game the hand target leads and the reach chain follows (section 9).
+
+### 11.3 Release point and height
+- Shoulder angle (arm relative to the trunk) at release is **~173–194°**, i.e. the arm is
+  about in line with the trunk, straight up; each extra degree of "arm lag" (arm still
+  behind) is worth ~0.22 m/s ball speed; an arm already past vertical pushes the ball
+  rather than slinging it
+  ([Lyons 2023](https://www.whit.com.au/cleanbowled/cricket-biomechanics/fast-bowling-technique-and-context/2023-lyons-female-kinematic-anthropometric-brs/))
+  **[P]**. Because the trunk leans forward at release, in world terms the hand is
+  slightly **ahead of the vertical over the shoulder**: we use **~5–25° before vertical**
+  (pace nearer vertical, spin a bit further forward) **[E]**. Like the throw, the ball
+  leaves along the hand's velocity, i.e. tangent to the arc **[P]** (physics).
+- Release height is mostly the sum of knee flexion, trunk flexion and upper-arm abduction
+  ([Manawadu 2022/2023](https://www.whit.com.au/cleanbowled/cricket-biomechanics/fast-bowling-variations-and-loading/2023-manawadu-phd-fast-bowling-variations/))
+  **[P]**. Academy fast bowlers release at **~107 % (bouncer) to ~112 % (yorker) of
+  standing height**; thoracic posture explains 55–60 % of the variance **[P]**. A 1.85 m
+  bowler releases at ~2.0–2.1 m.
+- Taller bowlers release higher; bowling-shoulder angle at release was the best
+  predictor of speed in female pace bowlers (89 % of variance, n = 11)
+  ([Cardiff Met](https://pure.cardiffmet.ac.uk/en/publications/anthropometric-and-kinematic-influences-on-release-speed-in-mens-/))
+  **[P]**.
+- Front-foot vs back-foot: legally the front foot lands with some part behind the popping
+  crease (Law 21.5) **[P]**; with no run-up, M5's bowler stands still with feet apart and
+  the front foot forward **[E]**.
+
+### 11.4 Ball speeds
+- Pace: elite men **34.9 ± 1.7 m/s**, elite women **27.9 ± 1.4 m/s**
+  ([Felton et al. 2019](https://www.whit.com.au/cleanbowled/cricket-biomechanics/fast-bowling-technique-and-context/2019-felton-male-vs-female-elite-bowlers/))
+  **[P]**; the fastest internationals reach ~40–44 m/s (145–160 km/h) **[T]**.
+- Finger spin: elite men **17.7–23.4 m/s, mean ~20.4 m/s**, spin 1,430–2,140 rpm
+  ([Sanders 2018](https://www.whit.com.au/cleanbowled/cricket-biomechanics/spin-bowling-and-batting/2018-sanders-kinematic-parameters-spin/))
+  **[P]**. Wrist spin: little data
+  ([UNESA wrist spin study](https://journal.unesa.ac.id/index.php/jses/article/view/53480/17357))
+  **[P]**; similar speed range **[T]**.
+- A run-up adds a large share of pace-bowling speed; a standing delivery is clearly
+  slower. No measured value found; we estimate ~20–25 m/s for a standing pace delivery
+  **[E]**.
+
+### Implementation notes (planned `config/bowling.json`)
+- Reuse the M4 arc (`motion::ThrowArc`, `makeSwingArc`) as a **full circle** around the
+  bowling shoulder, radius `arc.radiusFactor` (~0.97 x arm length, near-straight arm);
+  the user picks the release point and tilts the arc with the wheel, as in M4.
+- Elbow: `arm.maxElbowBendDeg` ~10 (inside Law 21's 15°), no cocking.
+- Timing **[E]**: `circle.downBackTime` ~0.5 s, `circle.overTime` ~0.18 s (horizontal
+  behind to release), `followThroughTime` ~0.4 s.
+- Release: fixed `release.speed` (default ~22 m/s for a standing delivery **[E]**; spin
+  ~20 m/s, pace 35 m/s with a run-up later), tangent to the arc, flown by our physics.
+- The body follows through the existing reach chain (section 9); no new body system.
+
 ---
 
 ## Gaps and follow-ups
@@ -859,5 +953,8 @@ release ([Brunel, cricket throwing](https://bura.brunel.ac.uk/handle/2438/16239)
   spine split are estimates **[E]**.
 - Throwing: phase timings and arm slots are from baseball; the fielder wind-up and
   swing times, the circular arc and underarm speeds are estimates **[E]**.
+- Bowling: no measured arm-circle duration or standing-delivery speed; the release angle
+  in world terms and the standing timings are estimates **[E]**. Spinner release height
+  not found.
 - All values are male-referenced. Female and other body types can be added later by
   swapping the ratio and mass tables in config.
