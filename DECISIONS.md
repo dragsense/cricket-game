@@ -228,3 +228,10 @@ Dated log. Format: decision, reason, alternatives rejected.
   standing bowler (no run-up), reusing the M4 throw arc and release code; the
   wicketkeeper becomes M6.
 - **Reason:** the user's choice; bowling reuses the M4 arc work directly.
+
+## 2026-10-26: M5 standing-delivery estimates
+- **Decision:** keep the research estimates for the standing bowler: release speed
+  ~22 m/s (`config/bowling.json` release.speed), arm circle ~0.5 s down and back,
+  ~0.18 s over the top, ~0.4 s follow-through, release ~5–25° before vertical.
+- **Reason:** no measured data for a standing delivery (docs/BIOMECHANICS.md section 11);
+  35–45 m/s needs a run-up. The user left the choice to me; all values stay tunable.
