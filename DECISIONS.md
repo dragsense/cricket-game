@@ -216,3 +216,9 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Reason:** the user's direction.
 - **Rejected:** Jolt for the ball (prediction must run the same code); a separate ground
   plane type (a large box covers it).
+
+## 2026-10-26: M3 ends at 3.3; no ball-stump contact yet
+- **Decision:** M3 stops after 3.3 (friction, rolling, stopping; stumps and bails as
+  standing Jolt bodies). The ball does not collide with the stumps yet, and there are no
+  stump tests; 3.4 (prediction, boundary) moves out of M3. Next: M4 on a new branch.
+- **Reason:** the user's choice; details later.

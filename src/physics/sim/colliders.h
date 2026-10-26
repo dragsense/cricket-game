@@ -2,7 +2,8 @@
 // Static collision shapes (boxes, spheres) and sphere-vs-shape contact tests,
 // shared by every sphere body we simulate (ball, later others). The ground is
 // one large box. Fixed capacity, so the sim never allocates. Each shape has
-// its own restitution (normal bounce); friction comes later (Step 3.3).
+// its own surface: restitution (normal bounce), sliding friction and rolling
+// resistance. Where shapes overlap, the one listed first wins.
 
 #include "math/math.h"
 
@@ -18,12 +19,16 @@ struct BoxCollider {
     math::Transform pose;  // centre and rotation (scale unused)
     math::Vec3 halfExtents{0.5f};
     float restitution = 0.5f;
+    float friction = 0.5f;           // Coulomb, sliding
+    float rollingResistance = 0.0f;  // C_rr: rolling deceleration = C_rr * normal gravity
 };
 
 struct SphereCollider {
     math::Vec3 centre{0.0f};
     float radius = 0.5f;
     float restitution = 0.5f;
+    float friction = 0.5f;
+    float rollingResistance = 0.0f;
 };
 
 // Where a sphere touches a shape: push its centre out along `normal` by
@@ -32,6 +37,8 @@ struct Contact {
     math::Vec3 normal{0.0f, 1.0f, 0.0f};  // from the shape toward the sphere
     float depth = 0.0f;
     float restitution = 0.0f;
+    float friction = 0.0f;
+    float rollingResistance = 0.0f;
 };
 
 bool collide(const BoxCollider& box, math::Vec3 centre, float radius, Contact& out);

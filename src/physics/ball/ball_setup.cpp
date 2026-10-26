@@ -11,6 +11,7 @@ SphereBody readBallBody(const core::Config& ball, const core::Config& scene) {
     b.mass = scene.getFloat("ball.mass", 0.160f);
     b.radius = scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
     b.dragCoefficient = ball.getFloat("drag.coefficient", 0.45f);
+    b.inertiaFactor = ball.getFloat("inertiaFactor", b.inertiaFactor);
     return b;
 }
 

@@ -43,11 +43,21 @@ stop after each.
   (0.2-1.6 of the way), so throws vary between many bounces, one bounce, in the air and
   over the fielder; Space picks it. The straight-line `BallFeeder` is no longer used by
   the game (kept for its fielder test).
-- [ ] **3.3 Ball contacts**: friction and rolling on pitch and outfield (surface materials
-  in config); comes to rest; stumps and bails as Jolt bodies, pushed by the ball.
-- [ ] **3.4 Prediction and boundary**: predictor using the same solver (bounces, stop
-  point and time); boundary detection. Launch presets in config/ball_launch.json (keys,
-  reset, slow motion).
+- [x] **3.3 Ball contacts** (built; tests pass; awaiting the user's visual check). Generic
+  solver: each collider has a surface (restitution, sliding friction, rolling resistance);
+  grip-slip Coulomb friction spins the body up until it rolls (5/7 of the speed for a
+  solid sphere), rolling resistance (C_rr x normal gravity) slows it and it stops below
+  `restSpeed`; the body has spin and orientation (the ball visibly rolls). `config/ball.json`:
+  pitch box (e 0.5, mu 0.3, C_rr 0.05) listed before the outfield box (e 0.38, mu 0.5,
+  C_rr 0.15). Stumps and bails are Jolt bodies (`match::Wickets`, sizes from scene.json,
+  masses in physics_world.json "wicket", Jolt ground restored) that stand on the ground;
+  their visuals follow the bodies. No ball-stump collision and no stump tests yet (the
+  user's choice: later). Tests: slide to roll at 5/7, roll distance v^2/(2 C_rr g) and
+  stop. Known issue (later): untouched bails/stumps creep up to ~1 cm (round bails roll on
+  flat stump tops; real ones sit in grooves).
+- [-] **3.4 Prediction and boundary**: moved out of M3 (user's choice); later.
+
+M3 code done (user's choice: only up to 3.3); next is M4 on a new branch.
 
 ## Previous milestone: M2 Hand-Driven Body Repositioning (Reaching) — built, awaiting the user's visual review (not finished)
 

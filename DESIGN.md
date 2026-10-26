@@ -305,8 +305,10 @@ previous/current transform per body for interpolation, preallocated temp allocat
 Generic, reusable by any object we simulate ourselves (ball now; e.g. players' contact
 queries later), in `src/physics/sim`: force generators (gravity, drag; spin and swing
 later as new generators), box and sphere colliders with sphere contact tests
-(`ColliderSet`, fixed capacity), and `SphereSolver` (substepped semi-implicit Euler,
-restitution bounce; friction and rolling in 3.3). `src/physics/ball` only configures it
+(`ColliderSet`, fixed capacity, a surface per shape), and `SphereSolver` (substepped
+semi-implicit Euler, restitution bounce, grip-slip friction to rolling, rolling
+resistance to rest; spin and orientation). Stumps and bails are Jolt bodies
+(`match::Wickets`); the ball does not hit them yet. `src/physics/ball` only configures it
 for the cricket ball. The predictor (3.4) will call the same `step()`.
 
 ### Agents / AI (M4+): not started

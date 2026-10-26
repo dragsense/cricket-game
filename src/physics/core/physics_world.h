@@ -26,7 +26,7 @@ struct WorldSettings {
     math::Vec3 wind{0.0f};      // m/s
 };
 
-// config/physics_world.json "jolt".
+// config/physics_world.json "jolt" and "ground".
 struct PhysicsSettings {
     int maxBodies = 256;
     int maxBodyPairs = 1024;
@@ -38,6 +38,8 @@ struct PhysicsSettings {
     float speculativeContactDistance = 0.005f;
     float linearDamping = 0.0f;
     float angularDamping = 0.05f;
+    float groundFriction = 0.6f;
+    float groundRestitution = 0.2f;
 };
 
 WorldSettings readWorldSettings(const core::Config& c);
@@ -65,7 +67,7 @@ public:
     PhysicsWorld(const PhysicsWorld&) = delete;
     PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
-    // Creates the Jolt system (no bodies yet).
+    // Creates the Jolt system and a static ground whose top is y = 0.
     bool init(const WorldSettings& world, const PhysicsSettings& settings);
     void shutdown();
     bool ready() const { return impl_ != nullptr; }

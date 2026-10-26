@@ -2,9 +2,10 @@
 // Our own solver for a sphere body (the ball; any other small object we
 // simulate ourselves): sums the force generators, integrates with
 // semi-implicit Euler in substeps short enough that a fast body never skips
-// through a collider, and bounces off boxes and spheres (normal restitution,
-// no friction yet). step() is a pure function of the state, so a predictor
-// (Step 3.4) runs the exact same code. Jolt handles rigid bodies.
+// through a collider, and bounces off boxes and spheres: normal restitution,
+// grip-slip Coulomb friction that spins the body up until it rolls, and
+// rolling resistance until it stops. step() is a pure function of the state,
+// so a predictor runs the exact same code. Jolt handles rigid bodies.
 
 #include "physics/sim/colliders.h"
 #include "physics/sim/forces.h"
@@ -16,8 +17,9 @@ namespace physics {
 struct SolverSettings {
     float maxTravelPerSubstep = 0.5f;  // in body radii
     int maxSubsteps = 64;
-    float restSpeed = 0.05f;  // m/s; slower normal bounces are absorbed (body settles)
+    float restSpeed = 0.05f;  // m/s; slower bounces are absorbed, slower rolling stops
 };
+
 
 class SphereSolver {
 public:
@@ -46,7 +48,7 @@ public:
 
 private:
     math::Vec3 acceleration(const BodyState& s) const;
-    void resolveContacts(BodyState& s) const;
+    void resolveContact(BodyState& s, const Contact& c, float h) const;
 
     SphereBody body_;
     WorldSettings world_;

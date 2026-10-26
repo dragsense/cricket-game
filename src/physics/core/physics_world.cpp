@@ -33,6 +33,9 @@ constexpr JPH::ObjectLayer kLayerStatic = 0;
 constexpr JPH::ObjectLayer kLayerMoving = 1;
 constexpr JPH::uint kNumLayers = 2;
 
+constexpr float kGroundHalfSize = 400.0f;  // covers the whole ground
+constexpr float kGroundHalfDepth = 1.0f;
+
 void joltTrace(const char* fmt, ...) {
     char buffer[512];
     va_list args;
@@ -96,6 +99,8 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     s.speculativeContactDistance = c.getFloat("jolt.speculativeContactDistance", s.speculativeContactDistance);
     s.linearDamping = c.getFloat("jolt.linearDamping", s.linearDamping);
     s.angularDamping = c.getFloat("jolt.angularDamping", s.angularDamping);
+    s.groundFriction = c.getFloat("ground.friction", s.groundFriction);
+    s.groundRestitution = c.getFloat("ground.restitution", s.groundRestitution);
     return s;
 }
 
@@ -107,11 +112,13 @@ struct PhysicsWorld::Impl {
 
     JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers{kNumLayers, kNumLayers};
     JPH::ObjectLayerPairFilterTable layerPairs{kNumLayers};
-    JPH::ObjectVsBroadPhaseLayerFilterTable layerVsBroadPhase{broadPhaseLayers, kNumLayers, layerPairs, kNumLayers};
+    // Built from the two tables above at construction, so only after they are filled.
+    std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> layerVsBroadPhase;
     std::unique_ptr<JPH::TempAllocatorImpl> tempAllocator;
     std::unique_ptr<JPH::JobSystem> jobs;
     JPH::PhysicsSystem system;
     std::vector<Slot> slots;  // sized once at init
+    JPH::BodyID ground;
     PhysicsSettings settings;
 
     Impl() {
@@ -119,6 +126,8 @@ struct PhysicsWorld::Impl {
         broadPhaseLayers.MapObjectToBroadPhaseLayer(kLayerMoving, JPH::BroadPhaseLayer(1));
         layerPairs.EnableCollision(kLayerMoving, kLayerStatic);
         layerPairs.EnableCollision(kLayerMoving, kLayerMoving);
+        layerVsBroadPhase = std::make_unique<JPH::ObjectVsBroadPhaseLayerFilterTable>(broadPhaseLayers, kNumLayers,
+                                                                                       layerPairs, kNumLayers);
     }
 
     const Slot* slot(BodyId id) const {
@@ -156,7 +165,7 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
         m.jobs = std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
 
     m.system.Init(static_cast<JPH::uint>(settings.maxBodies), 0, static_cast<JPH::uint>(settings.maxBodyPairs),
-                  static_cast<JPH::uint>(settings.maxContactConstraints), m.broadPhaseLayers, m.layerVsBroadPhase,
+                  static_cast<JPH::uint>(settings.maxContactConstraints), m.broadPhaseLayers, *m.layerVsBroadPhase,
                   m.layerPairs);
     m.system.SetGravity(toJolt(world.gravity));
     JPH::PhysicsSettings ps = m.system.GetPhysicsSettings();
@@ -164,6 +173,19 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     ps.mSpeculativeContactDistance = settings.speculativeContactDistance;
     m.system.SetPhysicsSettings(ps);
     m.slots.resize(static_cast<size_t>(settings.maxBodies));
+
+    // Static ground slab, top face at y = 0.
+    JPH::BodyCreationSettings ground(new JPH::BoxShape(JPH::Vec3(kGroundHalfSize, kGroundHalfDepth, kGroundHalfSize)),
+                                     JPH::RVec3(0, -kGroundHalfDepth, 0), JPH::Quat::sIdentity(),
+                                     JPH::EMotionType::Static, kLayerStatic);
+    ground.mFriction = settings.groundFriction;
+    ground.mRestitution = settings.groundRestitution;
+    m.ground = m.system.GetBodyInterface().CreateAndAddBody(ground, JPH::EActivation::DontActivate);
+    if (m.ground.IsInvalid()) {
+        LOG_ERROR("physics: could not create the ground");
+        shutdown();
+        return false;
+    }
 
     return true;
 }
@@ -175,6 +197,10 @@ void PhysicsWorld::shutdown() {
         if (s.body.IsInvalid()) continue;
         bi.RemoveBody(s.body);
         bi.DestroyBody(s.body);
+    }
+    if (!impl_->ground.IsInvalid()) {
+        bi.RemoveBody(impl_->ground);
+        bi.DestroyBody(impl_->ground);
     }
     impl_.reset();
     releaseJolt();

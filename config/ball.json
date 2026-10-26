@@ -1,22 +1,29 @@
-// Ball solver (our own code, src/physics/ball). Mass and size come from
-// config/scene.json "ball"; gravity and air from config/physics_world.json.
-// Values: docs/BALL_PHYSICS.md.
+// Ball solver (generic sphere solver, src/physics/sim; set up in
+// src/physics/ball). Mass and size come from config/scene.json "ball"; gravity
+// and air from config/physics_world.json. Values: docs/BALL_PHYSICS.md.
 {
   "drag": {
     "coefficient": 0.45              // C_d, new ball, subcritical (BALL_PHYSICS 3)
   },
+  "inertiaFactor": 0.4,              // I = k m r^2, near-solid core (BALL_PHYSICS 2)
   "solver": {
     "maxTravelPerSubstep": 0.5,      // ball radii per substep: no tunnelling (BALL_PHYSICS 8)
     "maxSubsteps": 64,
-    "restSpeed": 0.05                // m/s: slower bounces are absorbed (BALL_PHYSICS 5)
+    "restSpeed": 0.05                // m/s: slower bounces absorbed, slower rolling stops (BALL_PHYSICS 5)
   },
-  // Static shapes the ball bounces off (no friction yet). Boxes: centre,
-  // halfExtents, rotationDeg (x, y, z); spheres: centre, radius.
+  // Static shapes the ball bounces off. Boxes: centre, halfExtents, rotationDeg
+  // (x, y, z); spheres: centre, radius. Surface: restitution (normal bounce),
+  // friction (sliding), rollingResistance (C_rr). Where shapes overlap the one
+  // listed first wins, so the pitch comes before the outfield.
   "colliders": {
     "boxes": [
-      // The ground, top face at y = 0. Restitution between hard pitch (0.45-0.55)
-      // and outfield (0.30-0.45) until 3.3 adds surfaces (BALL_PHYSICS 4, 5).
-      { "centre": [0.0, -1.0, 0.0], "halfExtents": [200.0, 1.0, 200.0], "restitution": 0.45 }
+      // Pitch: 20.12 m + 1.22 m overrun each end, 3.05 m wide (scene.json), top at y = 0.
+      // Hard dry pitch (BALL_PHYSICS 4).
+      { "centre": [0.0, -0.05, 0.0], "halfExtents": [1.525, 0.05, 11.28],
+        "restitution": 0.5, "friction": 0.3, "rollingResistance": 0.05 },
+      // Outfield grass, top at y = 0 (BALL_PHYSICS 5).
+      { "centre": [0.0, -1.0, 0.0], "halfExtents": [200.0, 1.0, 200.0],
+        "restitution": 0.38, "friction": 0.5, "rollingResistance": 0.15 }
     ],
     "spheres": []
   }

@@ -10,14 +10,17 @@
 namespace physics {
 
 struct BodyState {
-    math::Vec3 position{0.0f};  // centre, world space
-    math::Vec3 velocity{0.0f};  // m/s
+    math::Vec3 position{0.0f};         // centre, world space
+    math::Vec3 velocity{0.0f};         // m/s
+    math::Vec3 angularVelocity{0.0f};  // rad/s, world space
+    math::Quat orientation{1.0f, 0.0f, 0.0f, 0.0f};
 };
 
 struct SphereBody {
     float mass = 1.0f;              // kg
     float radius = 0.1f;            // m
     float dragCoefficient = 0.47f;  // C_d (smooth sphere)
+    float inertiaFactor = 0.4f;     // I = k m r^2 (0.4 solid sphere)
     float area() const { return math::kPi * radius * radius; }
 };
 

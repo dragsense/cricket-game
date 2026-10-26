@@ -90,9 +90,9 @@ bool CricketApp::init() {
     camera_.configure(e, rd.width, rd.height);
     sim_.configure(e);
 
-    if (!sim_.initPhysics(cfg_.physicsWorld)) return false;
+    if (!sim_.initPhysics(cfg_.physicsWorld, cfg_.scene)) return false;
     sim_.initBall(cfg_.ball, cfg_.scene);
-    scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
+    scene_ = buildTestScene(world_, *renderer_, cfg_.scene, sim_.wickets().layout());
     ballPos_ = cfg_.scene.getVec3("ball.restPosition", math::Vec3(0.15f, 0.0f, 5.0f));
     ballPos_.y = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
 
@@ -142,11 +142,12 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             cfg_.scene = std::move(fresh);
             sim_.initBall(cfg_.ball, cfg_.scene);
             destroyTestScene(world_, *renderer_, scene_);
-            scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
+            sim_.rebuildWickets(cfg_.physicsWorld, cfg_.scene);
+            scene_ = buildTestScene(world_, *renderer_, cfg_.scene, sim_.wickets().layout());
             appliedSettings_.showProbe = !debugSettings_.showProbe;  // re-apply probe visibility
         } else if (name == "physics_world.json") {
             cfg_.physicsWorld = std::move(fresh);
-            if (!sim_.initPhysics(cfg_.physicsWorld)) LOG_ERROR("reload: physics world could not be rebuilt");
+            if (!sim_.initPhysics(cfg_.physicsWorld, cfg_.scene)) LOG_ERROR("reload: physics world could not be rebuilt");
             sim_.initBall(cfg_.ball, cfg_.scene);
         } else if (name == "ball.json") {
             cfg_.ball = std::move(fresh);
@@ -303,6 +304,17 @@ void CricketApp::fixedUpdate(double dt) {
     sim_.tick(dt);
 }
 
+void CricketApp::updateWickets(float alpha) {
+    const match::Wickets& wickets = sim_.wickets();
+    if (!wickets.built()) return;
+    const physics::PhysicsWorld& physics = sim_.physicsWorld();
+    for (int i = 0; i < match::kWicketPieces; ++i) {
+        entt::entity e = scene_.wicketPieces[static_cast<size_t>(i)];
+        if (e == entt::null) continue;
+        world_.setTransform(e, wicketPieceVisual(wickets.layout(), i, physics.interpolated(wickets.body(i), alpha)));
+    }
+}
+
 void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
 
@@ -334,6 +346,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     math::Transform probe = sim_.probeTransform(alpha);
     for (auto e : world_.registry().view<FollowsProbe>()) world_.setTransform(e, probe);
     updateFielder(alpha);
+    updateWickets(alpha);
     world_.syncToRenderer(*renderer_);
 
     if (debugSettings_.debugDraw) drawDebugGeometry(alpha);
@@ -368,9 +381,8 @@ void CricketApp::updateFielder(float alpha) {
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
     fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
     if (sim_.ballInFlight()) {
-        ballPos_ = sim_.ballPosition(alpha);
-        math::Transform ball;
-        ball.position = ballPos_;
+        const math::Transform ball = sim_.ballTransform(alpha);  // rolls and spins
+        ballPos_ = ball.position;
         world_.setTransform(scene_.ball, ball);
     } else if (fielder.holding()) {
         // The ball rides in the hand; a later drag starts from here.

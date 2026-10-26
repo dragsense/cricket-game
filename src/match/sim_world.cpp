@@ -17,8 +17,14 @@ bool SimWorld::initFielder(const rig::SkeletonDef& def, const core::Config& join
     return fielder_.init(def, def.height, joints, locomotion);
 }
 
-bool SimWorld::initPhysics(const core::Config& physicsWorld) {
-    return physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld));
+bool SimWorld::initPhysics(const core::Config& physicsWorld, const core::Config& scene) {
+    wickets_.destroy(physics_);
+    if (!physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld))) return false;
+    return wickets_.build(physics_, scene, physicsWorld);
+}
+
+bool SimWorld::rebuildWickets(const core::Config& physicsWorld, const core::Config& scene) {
+    return physics_.ready() && wickets_.build(physics_, scene, physicsWorld);
 }
 
 void SimWorld::initBall(const core::Config& ball, const core::Config& scene) {
@@ -31,6 +37,7 @@ void SimWorld::initBall(const core::Config& ball, const core::Config& scene) {
 void SimWorld::launchBall(math::Vec3 position, math::Vec3 velocity) {
     ball_.position = position;
     ball_.velocity = velocity;
+    ball_.angularVelocity = math::Vec3(0.0f);
     ballPrevious_ = ball_;
     ballInFlight_ = true;
 }
@@ -39,9 +46,9 @@ void SimWorld::tick(double dt) {
     previous_ = current_;
     time_ += dt;
     fielder_.tick(dt);
-    physics_.step(static_cast<float>(dt));
     ballPrevious_ = ball_;
     if (ballInFlight_) ballSolver_.step(ball_, static_cast<float>(dt));
+    physics_.step(static_cast<float>(dt));
     if (!probeEnabled_) return;
 
     float a = static_cast<float>(time_) * pathSpeed_;

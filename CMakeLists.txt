@@ -93,6 +93,7 @@ add_executable(CricketGame
     src/camera/debug_camera.cpp
     src/debug/debug_overlay.cpp
     src/match/sim_world.cpp
+    src/match/wickets.cpp
     src/agents/fielder.cpp
     src/game/fielder_visual.cpp
     src/debug/skeleton_debug.cpp

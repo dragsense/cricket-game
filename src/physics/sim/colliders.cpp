@@ -39,6 +39,8 @@ bool collide(const BoxCollider& box, math::Vec3 centre, float radius, Contact& o
     }
     out.normal = box.pose.rotation * normal;
     out.restitution = box.restitution;
+    out.friction = box.friction;
+    out.rollingResistance = box.rollingResistance;
     return true;
 }
 
@@ -51,6 +53,8 @@ bool collide(const SphereCollider& sphere, math::Vec3 centre, float radius, Cont
     out.normal = dist > math::kEpsilon ? d / dist : math::kUp;
     out.depth = reach - dist;
     out.restitution = sphere.restitution;
+    out.friction = sphere.friction;
+    out.rollingResistance = sphere.rollingResistance;
     return true;
 }
 
@@ -67,6 +71,8 @@ void ColliderSet::load(const core::Config& c) {
             box.pose.rotation = math::Quat(math::radians(deg));
             box.halfExtents = vec3(b, "halfExtents", box.halfExtents);
             box.restitution = b.value("restitution", box.restitution);
+            box.friction = b.value("friction", box.friction);
+            box.rollingResistance = b.value("rollingResistance", box.rollingResistance);
             if (!add(box)) break;
         }
     }
@@ -76,6 +82,8 @@ void ColliderSet::load(const core::Config& c) {
             sphere.centre = vec3(s, "centre", sphere.centre);
             sphere.radius = s.value("radius", sphere.radius);
             sphere.restitution = s.value("restitution", sphere.restitution);
+            sphere.friction = s.value("friction", sphere.friction);
+            sphere.rollingResistance = s.value("rollingResistance", sphere.rollingResistance);
             if (!add(sphere)) break;
         }
     }

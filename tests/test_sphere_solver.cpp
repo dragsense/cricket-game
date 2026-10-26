@@ -138,6 +138,35 @@ TEST_CASE("sphere solver: sphere and rotated box colliders push along their norm
     CHECK(c.velocity.x > 1.0f);
 }
 
+TEST_CASE("sphere solver: a sliding ball spins up and rolls at 5/7 of its speed") {
+    SphereSolver s = makeSolver(false);
+    BoxCollider g = ground(0.3f);
+    g.friction = 0.5f;
+    g.rollingResistance = 0.0f;
+    s.colliders().add(g);
+    BodyState b;
+    b.position = math::Vec3(0, 0.036f, 0);
+    b.velocity = math::Vec3(5, 0, 0);  // no spin: slides first
+    run(s, b, 1.0f);
+    CHECK(b.velocity.x == doctest::Approx(5.0f * 5.0f / 7.0f).epsilon(0.01));  // solid sphere, k = 0.4
+    CHECK(-b.angularVelocity.z * 0.036f == doctest::Approx(b.velocity.x).epsilon(0.01));  // rolling: v = w r
+}
+
+TEST_CASE("sphere solver: rolling resistance stops a rolling ball at v^2 / (2 C_rr g)") {
+    SphereSolver s = makeSolver(false);
+    BoxCollider g = ground(0.3f);
+    g.rollingResistance = 0.15f;
+    s.colliders().add(g);
+    BodyState b;
+    b.position = math::Vec3(0, 0.036f, 0);
+    b.velocity = math::Vec3(5, 0, 0);
+    b.angularVelocity = math::Vec3(0, 0, -5.0f / 0.036f);  // already rolling
+    run(s, b, 6.0f);
+    CHECK(b.position.x == doctest::Approx(25.0f / (2.0f * 0.15f * 9.81f)).epsilon(0.03));
+    CHECK(math::length(b.velocity) == doctest::Approx(0.0f));
+    CHECK(math::length(b.angularVelocity) == doctest::Approx(0.0f));
+}
+
 TEST_CASE("ball setup: size and mass from scene.json, drag and ground from ball.json") {
     core::Config ball, scene;
     REQUIRE(ball.load(CRICKET_CONFIG_DIR "/ball.json"));

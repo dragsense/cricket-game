@@ -54,7 +54,7 @@ std::vector<Vec3> fieldingCirclePoints(float radius, float halfPitch, float spac
 
 } // namespace
 
-TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
+TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c, const match::WicketLayout& wickets) {
     TestScene scene;
     // Every scene entity goes through add(), so the scene can be rebuilt on config reload.
     auto add = [&](const render::MeshData& mesh, const MaterialDesc& mat, const math::Transform& t, bool shadows) {
@@ -127,29 +127,17 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
         add(lines, paint, at(Vec3(0.0f)), false);
     }
 
-    // --- Wickets (Law 8): three stumps and two bails at each end. ---
-    float stumpH = c.getFloat("stumps.height", 0.7112f);
-    float stumpR = c.getFloat("stumps.radius", 0.0178f);
-    float wicketW = c.getFloat("stumps.wicketWidth", 0.2286f);
-    float bailLen = c.getFloat("bails.length", 0.1095f);
-    float bailR = c.getFloat("bails.radius", 0.0065f);
-    float bailRise = c.getFloat("bails.heightAboveStumps", 0.0127f);  // max protrusion above the stumps
+    // --- Wickets (Law 8): three stumps and two bails at each end, placed from
+    // the same layout as their Jolt bodies. ---
     MaterialDesc wood = readMaterial(c, "stumps", {{0.93f, 0.88f, 0.75f}, 0.45f, 0.0f, 0.0f, 0.0f});
     MaterialDesc bailWood = readMaterial(c, "bails", wood);
-    render::MeshData stumpMesh = render::makeCylinder(stumpR, stumpH, 24);
-    render::MeshData bailMesh = render::makeCylinder(bailR, bailLen, 12);
-    float spacing = 0.5f * wicketW - stumpR;  // centre of an outer stump from the middle stump
-    // Bail cylinders are built along +Y; lay them along X.
-    math::Quat alongX = math::fromAxisAngle(math::Vec3(0, 0, 1), -math::kHalfPi);
-    float bailY = stumpH + bailRise - bailR;  // top of bail at the allowed height
-    for (int end = 0; end < 2; ++end) {
-        float z = (end == 0 ? 1.0f : -1.0f) * halfPitch;
-        for (int s = -1; s <= 1; ++s)
-            add(stumpMesh, wood, at(Vec3(static_cast<float>(s) * spacing, kPitchY, z)), true);
-        for (int b = 0; b < 2; ++b) {
-            float centreX = (b == 0 ? -0.5f : 0.5f) * spacing;  // each bail spans middle to outer stump
-            add(bailMesh, bailWood, at(Vec3(centreX - 0.5f * bailLen, kPitchY + bailY, z), alongX), true);
-        }
+    render::MeshData stumpMesh = render::makeCylinder(wickets.stumpRadius, wickets.stumpHeight, 24);
+    render::MeshData bailMesh = render::makeCylinder(wickets.bailRadius, wickets.bailLength, 12);
+    for (int i = 0; i < match::kWicketPieces; ++i) {
+        bool bail = wickets.isBail(i);
+        scene.wicketPieces[static_cast<size_t>(i)] =
+            add(bail ? bailMesh : stumpMesh, bail ? bailWood : wood,
+                wicketPieceVisual(wickets, i, wickets.rest[static_cast<size_t>(i)]), true);
     }
 
     // --- Ball (Law 4): men's ball, 22.4-22.9 cm circumference. ---
@@ -171,6 +159,13 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
     w.registry().emplace<FollowsProbe>(scene.probe);
 
     return scene;
+}
+
+math::Transform wicketPieceVisual(const match::WicketLayout& wickets, int piece, const math::Transform& body) {
+    // Cylinder meshes start at their base; bodies are centred.
+    math::Transform t = body;
+    t.position = body.transformPoint(Vec3(0, -wickets.halfLength(piece), 0));
+    return t;
 }
 
 void destroyTestScene(World& w, render::Renderer& r, TestScene& scene) {

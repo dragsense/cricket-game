@@ -49,6 +49,8 @@ protected:
 private:
     void drawDebugGeometry(float alpha);
     void updateFielder(float alpha);
+    // Stump and bail visuals follow their interpolated Jolt bodies.
+    void updateWickets(float alpha);
     // Re-reads the named config files (e.g. "scene.json") and re-applies them
     // to the running game. A file that fails to parse keeps its previous values.
     void reloadConfig(const std::vector<std::string>& files);

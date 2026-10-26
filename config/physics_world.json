@@ -17,5 +17,16 @@
     "speculativeContactDistance": 0.005,
     "linearDamping": 0.0,           // air drag on rigid bodies is negligible
     "angularDamping": 0.05
+  },
+  // Jolt's static ground (stumps and bails rest on it), top at y = 0.
+  "ground": { "friction": 0.6, "restitution": 0.2 },
+  // Stumps and bails (sizes from config/scene.json). BALL_PHYSICS 6.
+  "wicket": {
+    "stumpMass": 0.6,               // kg, ash (~0.52 kg wood + spike)
+    "bailMass": 0.025,              // kg
+    "friction": 0.5,
+    "restitution": 0.3,
+    "convexRadius": 0.002,          // edge rounding, < bail radius
+    "bailGap": 0.001                // m between the two bails over the middle stump
   }
 }
