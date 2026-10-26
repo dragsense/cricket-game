@@ -196,6 +196,12 @@ bool FootStepper::stepTo(Foot f, math::Vec3 spot) {
     return true;
 }
 
+void FootStepper::place(Foot f, math::Vec3 spot) {
+    const int i = static_cast<int>(f);
+    feet_[i] = spot;
+    pitch_[i] = toe_[i] = 0.0f;
+}
+
 void FootStepper::tick(float dt, math::Vec2 dir, const StepSettings& s) {
     if (swing_ < 0 && !startStep(dir, s)) return;
     advanceSwing(dt, s.stepDuration, s.stepHeight);

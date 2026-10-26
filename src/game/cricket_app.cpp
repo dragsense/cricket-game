@@ -133,6 +133,8 @@ bool CricketApp::init() {
     const agents::Fielder& bowler = sim_.bowler();
     bowlerVisual_.build(world_, *renderer_, bowler.def(), bowler.rig(), cfg_.fielderSkeleton);
     bowlerModels_.assign(static_cast<size_t>(bowler.rig().numJoints()), math::Mat4(1.0f));
+    limbTest_ = e.getBool("debug.limbTest", false);
+    if (limbTest_) bowlerVisual_.setVisible(*renderer_, world_, false);
     // One ball: the bowler starts with it; the fielder's hand is empty (T
     // sends the ball to the fielder to pick).
     sim_.fielder().setReachTarget(ballPos_);
@@ -313,17 +315,18 @@ bool CricketApp::pumpEvents() {
     const camera::CameraPose view = camera_.pose();
     const math::Vec3 ahead = math::safeNormalize(math::Vec3(view.target.x - view.eye.x, 0.0f, view.target.z - view.eye.z),
                                                  -math::kForward);
-    const math::Vec2 move(axis(core::Action::StepLeft, core::Action::StepRight),
-                          axis(core::Action::StepForward, core::Action::StepBack));
+    math::Vec2 move(axis(core::Action::StepLeft, core::Action::StepRight),
+                    axis(core::Action::StepForward, core::Action::StepBack));
+    if (limbTest_) move = math::Vec2(0.0f);
     // B switches the controlled player (fielder or bowler); the other stands.
-    if (actions_.pressed(input_, core::Action::BowlAim)) {
+    if (!limbTest_ && actions_.pressed(input_, core::Action::BowlAim)) {
         bowlAim_ = !bowlAim_;
         bowlTilting_ = false;
     }
     agents::Fielder& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
     if (controlled.speed() < kStoppedSpeed) heading_ = std::atan2(ahead.x, ahead.z);
-    controlled.setMoveInput(move, actions_.down(input_, core::Action::StepForward), heading_);
+    controlled.setMoveInput(move, !limbTest_ && actions_.down(input_, core::Action::StepForward), heading_);
 
     // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).
     controlled.setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
@@ -361,7 +364,8 @@ bool CricketApp::pumpEvents() {
         tilt_ += input_.wheel * math::radians(cfg_.throwing.getFloat("aim.tiltStepDeg", 5.0f));
         input_.wheel = 0.0f;
     }
-    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && !bowlAim_ && fielder.holding() &&
+    if (limbTest_) updatePose();
+    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && !limbTest_ && !bowlAim_ && fielder.holding() &&
         !fielder.throwing()) {
         if (!aimSwing_) {
             aimSwing_ = true;
@@ -382,6 +386,43 @@ bool CricketApp::pumpEvents() {
         configWatcher_.poll(changedConfigs_);
     if (!changedConfigs_.empty()) reloadConfig(changedConfigs_);
     return running;
+}
+
+void CricketApp::updatePose() {
+    agents::Fielder& fielder = sim_.fielder();
+    if (actions_.pressed(input_, core::Action::ClearReach)) {
+        fielder.clearPose();
+        poseDragging_ = false;
+    }
+    if (actions_.pressed(input_, core::Action::PoseLimb)) {
+        poseLimb_ = (poseLimb_ + 1) % 4;
+        poseDragging_ = false;
+    }
+    const bool hand = poseLimb_ >= 2;
+    const bool left = poseLimb_ % 2 == 1;
+    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse) {
+        if (!poseDragging_)
+            poseTarget_ = hand ? fielder.wrist(left, fielderModels_, fielder.root())
+                               : (left ? fielder.targets().footL : fielder.targets().footR);
+        poseDragging_ = !poseDragging_;
+    }
+    if (!poseDragging_) return;
+
+    // The mouse ray meets a plane through the target: level (it keeps its
+    // height), or with Shift upright, facing the camera (up/down and sideways).
+    math::Vec3 eye, dir;
+    mouseRay(eye, dir);
+    const math::Vec3 normal = actions_.down(input_, core::Action::Run)
+                                  ? math::safeNormalize(math::Vec3(dir.x, 0.0f, dir.z), math::kForward)
+                                  : math::kUp;
+    const float facing = math::dot(dir, normal);
+    if (std::fabs(facing) < 1e-4f) return;
+    const float t = math::dot(poseTarget_ - eye, normal) / facing;
+    if (t <= 0.0f) return;
+    poseTarget_ = eye + dir * t;
+    poseTarget_.y = std::max(poseTarget_.y, 0.0f);
+    if (hand) fielder.setPoseHand(left, poseTarget_);
+    else fielder.setPoseFoot(left ? motion::Foot::Left : motion::Foot::Right, poseTarget_);
 }
 
 void CricketApp::fixedUpdate(double dt) {
@@ -497,7 +538,7 @@ void CricketApp::updateFielder(float alpha) {
     bowler.interpolatedPose(alpha, bowlerPose_);
     if (!bowler.rig().localToModel(bowlerPose_, bowlerModels_)) return;
     bowlerVisual_.update(world_, bowler.rig(), bowlerModels_, bowler.interpolatedRoot(alpha));
-    if (!sim_.ballInFlight() && bowler.holding() && !fielder.holding()) {
+    if (!limbTest_ && !sim_.ballInFlight() && bowler.holding() && !fielder.holding()) {
         ballPos_ = bowler.ballInHand(bowlerModels_, bowler.interpolatedRoot(alpha));
         math::Transform ball;
         ball.position = ballPos_;
@@ -507,7 +548,7 @@ void CricketApp::updateFielder(float alpha) {
 
 void CricketApp::updateThrowArc(float alpha) {
     const agents::Fielder& fielder = sim_.fielder();
-    if (!fielder.holding() && !fielder.throwing()) return;
+    if (limbTest_ || (!fielder.holding() && !fielder.throwing())) return;
     const math::Transform root = fielder.interpolatedRoot(alpha);
     slotArc_ = motion::makeThrowArc(fielder.holdingShoulder(fielderModels_, root), root.rotation, fielder.holdingLeft(),
                                     cfg_.throwing.getFloat("arc.radiusFactor", 0.95f) * fielder.armLength());
@@ -563,37 +604,49 @@ void CricketApp::drawDebugGeometry(float alpha) {
     // Player's local axes at its root: X red (left), Y green (up), Z blue (forward).
     dd.axes(sim_.fielder().interpolatedRoot(alpha), 0.5f);
 
-    // Throw arcs (half circles) while the ball is held or thrown: the slot
-    // arc (cyan) with the slot point (magenta); once the slot is fixed, the
-    // swing arc (yellow) with its start (white) and the release point (red).
+    // Limb test: the chosen limb's target (red while it follows the mouse,
+    // yellow otherwise); the throw and bowling arcs are hidden.
     const agents::Fielder& fielder = sim_.fielder();
-    if (fielder.holding() || fielder.throwing()) {
-        constexpr int kSegments = 24;
-        auto halfCircle = [&](const motion::ThrowArc& arc, render::Color color) {
-            for (int i = 0; i < kSegments; ++i) {
-                const float a = -math::kHalfPi + math::kPi * static_cast<float>(i) / kSegments;
-                dd.line(arc.point(a), arc.point(a + math::kPi / kSegments), color);
+    if (limbTest_) {
+        const bool hand = poseLimb_ >= 2;
+        const bool left = poseLimb_ % 2 == 1;
+        const math::Vec3 at = poseDragging_ ? poseTarget_
+                              : hand        ? fielder.wrist(left, fielderModels_, fielder.interpolatedRoot(alpha))
+                              : left        ? fielder.targets().footL
+                                            : fielder.targets().footR;
+        dd.sphere(at, 0.05f, poseDragging_ ? render::colors::kRed : render::colors::kYellow);
+    } else {
+        // Throw arcs (half circles) while the ball is held or thrown: the slot
+        // arc (cyan) with the slot point (magenta); once the slot is fixed, the
+        // swing arc (yellow) with its start (white) and the release point (red).
+        if (fielder.holding() || fielder.throwing()) {
+            constexpr int kSegments = 24;
+            auto halfCircle = [&](const motion::ThrowArc& arc, render::Color color) {
+                for (int i = 0; i < kSegments; ++i) {
+                    const float a = -math::kHalfPi + math::kPi * static_cast<float>(i) / kSegments;
+                    dd.line(arc.point(a), arc.point(a + math::kPi / kSegments), color);
+                }
+            };
+            halfCircle(slotArc_, render::colors::kCyan);
+            dd.sphere(slotArc_.point(slotAngle_), 0.04f, render::colors::kMagenta);
+            if (aimSwing_ || fielder.throwing()) {
+                halfCircle(swingArc_, render::colors::kYellow);
+                dd.sphere(swingArc_.point(-math::kHalfPi), 0.03f, render::colors::kWhite);
+                dd.sphere(swingArc_.point(releaseAngle_), 0.04f, render::colors::kRed);
             }
-        };
-        halfCircle(slotArc_, render::colors::kCyan);
-        dd.sphere(slotArc_.point(slotAngle_), 0.04f, render::colors::kMagenta);
-        if (aimSwing_ || fielder.throwing()) {
-            halfCircle(swingArc_, render::colors::kYellow);
-            dd.sphere(swingArc_.point(-math::kHalfPi), 0.03f, render::colors::kWhite);
-            dd.sphere(swingArc_.point(releaseAngle_), 0.04f, render::colors::kRed);
         }
-    }
 
-    // Bowling circle (full): yellow while the mouse aims the bowler, grey
-    // otherwise; the top (white) and the release point (red).
-    constexpr int kCircleSegments = 48;
-    const render::Color circleColor = bowlAim_ ? render::colors::kYellow : render::colors::kGrey;
-    for (int i = 0; i < kCircleSegments; ++i) {
-        const float a = math::kTwoPi * static_cast<float>(i) / kCircleSegments;
-        dd.line(bowlArc_.point(a), bowlArc_.point(a + math::kTwoPi / kCircleSegments), circleColor);
+        // Bowling circle (full): yellow while the mouse aims the bowler, grey
+        // otherwise; the top (white) and the release point (red).
+        constexpr int kCircleSegments = 48;
+        const render::Color circleColor = bowlAim_ ? render::colors::kYellow : render::colors::kGrey;
+        for (int i = 0; i < kCircleSegments; ++i) {
+            const float a = math::kTwoPi * static_cast<float>(i) / kCircleSegments;
+            dd.line(bowlArc_.point(a), bowlArc_.point(a + math::kTwoPi / kCircleSegments), circleColor);
+        }
+        dd.sphere(bowlArc_.point(0.0f), 0.03f, render::colors::kWhite);
+        dd.sphere(bowlArc_.point(bowlRelease_), 0.04f, render::colors::kRed);
     }
-    dd.sphere(bowlArc_.point(0.0f), 0.03f, render::colors::kWhite);
-    dd.sphere(bowlArc_.point(bowlRelease_), 0.04f, render::colors::kRed);
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

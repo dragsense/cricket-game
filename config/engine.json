@@ -51,7 +51,11 @@
   },
   "debug": {
     "showOverlay": true,
-    "debugDraw": true
+    "debugDraw": true,
+    // Limb test: hides the bowler, the throw and bowling arcs and WASD walking
+    // (the code stays); F chooses a hand or foot and the mouse moves its target
+    // (input.json "PoseLimb") to study how the body follows. Restart to apply.
+    "limbTest": true
   },
   // Picking test driver (T): the ball starts `distance` m in front of the
   // fielder and moves straight past them (no physics) at a random speed

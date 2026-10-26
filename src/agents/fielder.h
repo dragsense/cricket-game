@@ -183,6 +183,18 @@ public:
     // at the release point along the circle's tangent (takeRelease).
     void startBowl(float tilt, float releaseAngle);
     bool bowling() const { return phase_ == Phase::Bowl; }
+    // Limb test (body-mechanics study): a wrist goal for one hand and the feet
+    // set directly (world space); the body follows through the reach stages
+    // and the foot repositioning, and walking waits. clearPose() puts both
+    // feet back at their rest spots and drops the hand goal.
+    void setPoseHand(bool left, math::Vec3 world);
+    void setPoseFoot(motion::Foot foot, math::Vec3 world);
+    void clearPose();
+    bool posing() const { return phase_ == Phase::Pose; }
+    // Wrist of one hand in world space, from a model-space pose.
+    math::Vec3 wrist(bool left, const std::vector<math::Mat4>& models, const math::Transform& root) const {
+        return root.transformPoint(math::Vec3(models[static_cast<size_t>((left ? joints_.armL : joints_.armR).end)][3]));
+    }
     void setBowlSettings(const motion::BowlSettings& s) { bowl_ = s; }
     float bowlRadius() const { return motion::bowlRadius(armLength_, bowl_.elbowBend); }
     const ReachSettings& reachSettings() const { return reach_; }
@@ -261,7 +273,9 @@ private:
     math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
     math::Vec3 reachTarget_{0.0f};  // the ball, world space
     math::Vec3 reachVelocity_{0.0f};  // world, m/s
-    enum class Phase { Idle, Wait, Reach, Return, Throw, Bowl };
+    bool poseHand_ = false;           // limb test: a hand has a wrist goal
+    math::Vec3 poseGoal_{0.0f};       // limb test wrist goal, world space
+    enum class Phase { Idle, Wait, Reach, Return, Throw, Bowl, Pose };
     motion::ThrowSettings throw_;
     motion::BowlSettings bowl_;
     float slotAngle_ = 0.0f, throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // radians

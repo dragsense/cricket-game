@@ -35,6 +35,14 @@ each.
   `release.returnDelay` (3 s) it is back in the bowler's hand unless the fielder has it.
 - [ ] **Next (the user's call): fix the body mechanics** of the bowling action before
   going on.
+- [x] **Limb test** (built; awaiting the user's check; a tool for studying the body
+  mechanics): `engine.json` `debug.limbTest` (on) hides the bowler, the throw and
+  bowling arcs and WASD walking (code kept). F chooses the limb (right foot, left foot,
+  right hand, left hand; yellow marker); a left click grabs its target, which follows
+  the mouse on a level plane (Shift: an upright plane facing the camera, for height);
+  another click lets go and it stays. Feet are placed directly (`FootStepper::place`),
+  the body follows by `repositionBody`; a hand goal drives the reach stages
+  (`Fielder::setPoseHand`, phase Pose). One hand goal at a time. R resets the pose.
 
 ## Previous milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
 

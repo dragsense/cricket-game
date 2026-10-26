@@ -66,6 +66,8 @@ public:
     // foot's current height); tick() with no direction advances it. False if
     // a step is already in progress.
     bool stepTo(Foot f, math::Vec3 spot);
+    // Puts foot `f` at `spot` (character space) at once, flat, without a step.
+    void place(Foot f, math::Vec3 spot);
 
     bool stepping() const { return swing_ >= 0; }
     int swingFoot() const { return swing_; }     // -1 when both are planted

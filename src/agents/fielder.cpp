@@ -297,10 +297,11 @@ void Fielder::tick(double dt) {
     updatePick(static_cast<float>(dt));
     updateThrow(static_cast<float>(dt));
     updateBowl(static_cast<float>(dt));
+    if (phase_ == Phase::Pose && poseHand_) goal_ = math::inverse(root_).transformPoint(poseGoal_);
     // While the step-first lunge is in the air the body follows the feet the
     // usual way (repositionBody); the reach starts once the foot lands.
     const bool reachNow = phase_ == Phase::Return || phase_ == Phase::Throw || phase_ == Phase::Bowl ||
-                          (phase_ == Phase::Reach && pickTime_ > 0.0f);
+                          (phase_ == Phase::Reach && pickTime_ > 0.0f) || (phase_ == Phase::Pose && poseHand_);
     if (reachNow) {
         reachSpine();
         reachPelvis();
@@ -805,6 +806,27 @@ void Fielder::startBowl(float tilt, float releaseAngle) {
     phase_ = Phase::Bowl;
 }
 
+void Fielder::setPoseHand(bool left, math::Vec3 world) {
+    if (phase_ != Phase::Idle && phase_ != Phase::Pose) return;
+    phase_ = Phase::Pose;
+    poseHand_ = true;
+    reachLeft_ = left;
+    poseGoal_ = world;
+}
+
+void Fielder::setPoseFoot(motion::Foot foot, math::Vec3 world) {
+    if (phase_ != Phase::Idle && phase_ != Phase::Pose) return;
+    phase_ = Phase::Pose;
+    stepper_.place(foot, math::inverse(root_).transformPoint(world));
+}
+
+void Fielder::clearPose() {
+    if (phase_ != Phase::Pose) return;
+    phase_ = Phase::Idle;
+    poseHand_ = false;
+    plantFeet();
+}
+
 void Fielder::updateBowl(float dt) {
     // BIOMECHANICS 11.2: angles on the bowling circle (0 top, +90 in front),
     // unwrapped so the hand only moves forward: start (front, low) -> past the
@@ -856,7 +878,7 @@ void Fielder::updateBowl(float dt) {
 }
 
 void Fielder::updatePick(float dt) {
-    if (phase_ == Phase::Idle || phase_ == Phase::Throw || phase_ == Phase::Bowl) return;
+    if (phase_ == Phase::Idle || phase_ == Phase::Throw || phase_ == Phase::Bowl || phase_ == Phase::Pose) return;
     const math::Transform toModel = math::inverse(root_);
     const math::Vec3 ball = toModel.transformPoint(reachTarget_);
     const math::Vec3 mid = 0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right));
