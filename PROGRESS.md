@@ -23,10 +23,18 @@ each.
   the release point (red; default `aim.releaseDeg` 15); after a click on the circle the
   wheel leans it from vertical (`aim.tiltStepDeg`, -15..90 deg) instead of zooming; R or
   B gives the wheel back. The ball still stays with the fielder (until 5.3).
-- [ ] **5.2 Arm circle**: hand goes front, down, back, over the top with a near-straight
-  arm (elbow limit from config); the body follows via the reach chain.
-- [ ] **5.3 Release**: on click the ball leaves at the release point along the tangent at
-  a fixed speed and flies with our physics.
+- [x] **5.2 Arm circle** (built; body mechanics need work, see below): a second click
+  (`Fielder::startBowl`, phase Bowl) takes the hand round the full circle: eases to the
+  front (`circle.startDeg` 135), down and back (`downBackTime` 0.5 s), over the top to the
+  release point speeding up (`overTime` 0.18 s), then slows across the body
+  (`followTime` 0.4 s, `followAcross` 0.6) and returns. Elbow bend held at
+  `arm.elbowBendDeg` 10 (sets the radius; no IK softening while bowling). The bowler
+  starts with the ball; the fielder's hand starts empty (T sends it to the fielder).
+- [x] **5.3 Release** (built): the ball leaves the solved hand at the release point along
+  the circle's tangent at `release.speed` (22 m/s) and flies with our physics; after
+  `release.returnDelay` (3 s) it is back in the bowler's hand unless the fielder has it.
+- [ ] **Next (the user's call): fix the body mechanics** of the bowling action before
+  going on.
 
 ## Previous milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
 

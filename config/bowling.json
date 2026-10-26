@@ -6,15 +6,38 @@
     "position": [0.4, 0.0, -9.4],
     "yawDeg": 0
   },
-  "arc": {
-    // Full circle around the bowling shoulder, radius = factor x arm length:
-    // near-straight arm (Law 21: elbow extension at most 15 deg; 11.1).
-    "radiusFactor": 0.97
+  "arm": {
+    // Elbow bend held through the whole circle: near-straight arm (Law 21:
+    // elbow extension at most 15 deg; 11.1). Sets the circle's radius.
+    "elbowBendDeg": 10
+  },
+  "circle": {
+    // Second click bowls: the hand eases to startDeg (0 top, 90 in front,
+    // 180 below), goes down and back to the horizontal behind, over the top
+    // to the release point speeding up, then slows to a stop across the
+    // body. Times are estimates for a standing bowler (11.2).
+    "startDeg": 135,
+    "setupTime": 0.3,
+    "downBackTime": 0.5,
+    "overTime": 0.18,
+    "followTime": 0.4,
+    // Share of the way across the body (to the other side) by the end.
+    "followAcross": 0.6
+  },
+  "release": {
+    // Ball speed along the circle's tangent at release (m/s). Standing
+    // delivery, no run-up: estimate ~20-25 (11.4); spin ~20, pace 35+ needs
+    // a run-up.
+    "speed": 22,
+    // Seconds after the release before the ball is back in the bowler's hand
+    // (unless the fielder has picked it).
+    "returnDelay": 3
   },
   "aim": {
     // B switches control to the bowler. The mouse picks the release point;
-    // after a click on the circle the wheel leans it from vertical (0 = straight over the top,
-    // + = toward the bowling-arm side, round-arm at large values), per notch.
+    // after a click the wheel leans the circle from vertical (0 = straight
+    // over the top, + = toward the bowling-arm side, round-arm at large
+    // values), per notch; a second click bowls.
     "tiltStepDeg": 5,
     "minTiltDeg": -15,
     "maxTiltDeg": 90,

@@ -12,6 +12,8 @@
 
 #include "math/math.h"
 
+#include <cmath>
+
 namespace motion {
 
 struct ThrowArc {
@@ -54,5 +56,25 @@ struct ThrowSettings {
     float cockReach = 0.6f;
     float throwSpeed = 25.0f;    // m/s at release
 };
+
+// config/bowling.json (BIOMECHANICS 11).
+struct BowlSettings {
+    // Elbow bend kept through the whole circle (Law 21 allows at most 15 deg
+    // of straightening, so the arm stays nearly straight; 11.1).
+    float elbowBend = math::radians(10.0f);
+    float startAngle = math::radians(135.0f);  // hand in front, low
+    float setupTime = 0.3f;     // s, hand eases from where it is to the start
+    float downBackTime = 0.5f;  // s, start -> horizontal behind (-90 deg), speeding up
+    float overTime = 0.18f;     // s, horizontal behind -> over the top -> release
+    float followTime = 0.4f;    // s, release -> stop, slowing down
+    // Follow-through: share of the way the hand moves across the body, to the
+    // mirror of its circle point (the other side), by the end.
+    float followAcross = 0.6f;
+    float speed = 22.0f;  // m/s at release, standing delivery (11.4)
+};
+
+// Circle radius for an arm of `armLength` bent by `elbowBend` (radians),
+// taking the upper arm and forearm as equal.
+inline float bowlRadius(float armLength, float elbowBend) { return armLength * std::cos(0.5f * elbowBend); }
 
 } // namespace motion

@@ -45,6 +45,19 @@ motion::ThrowSettings readThrowSettings(const core::Config& c) {
     return s;
 }
 
+motion::BowlSettings readBowlSettings(const core::Config& c) {
+    motion::BowlSettings s;
+    s.elbowBend = math::radians(c.getFloat("arm.elbowBendDeg", 10.0f));
+    s.startAngle = math::radians(c.getFloat("circle.startDeg", 135.0f));
+    s.setupTime = c.getFloat("circle.setupTime", s.setupTime);
+    s.downBackTime = c.getFloat("circle.downBackTime", s.downBackTime);
+    s.overTime = c.getFloat("circle.overTime", s.overTime);
+    s.followTime = c.getFloat("circle.followTime", s.followTime);
+    s.followAcross = c.getFloat("circle.followAcross", s.followAcross);
+    s.speed = c.getFloat("release.speed", s.speed);
+    return s;
+}
+
 } // namespace
 
 CricketApp::CricketApp(AppConfigs configs) : core::App(loopSettings(configs.engine)), cfg_(std::move(configs)) {}
@@ -116,9 +129,13 @@ bool CricketApp::init() {
                          cfg_.bowling.getVec3("bowler.position", math::Vec3(0.4f, 0.0f, -9.4f)),
                          math::radians(cfg_.bowling.getFloat("bowler.yawDeg", 0.0f))))
         return false;
+    sim_.bowler().setBowlSettings(readBowlSettings(cfg_.bowling));
     const agents::Fielder& bowler = sim_.bowler();
     bowlerVisual_.build(world_, *renderer_, bowler.def(), bowler.rig(), cfg_.fielderSkeleton);
     bowlerModels_.assign(static_cast<size_t>(bowler.rig().numJoints()), math::Mat4(1.0f));
+    // One ball: the bowler starts with it; the fielder's hand is empty (T
+    // sends the ball to the fielder to pick).
+    sim_.fielder().setReachTarget(ballPos_);
     bowlRelease_ = math::radians(cfg_.bowling.getFloat("aim.releaseDeg", 15.0f));
 
     debugSettings_.shadows = e.getBool("render.shadows", false);
@@ -177,7 +194,8 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             cfg_.throwing = std::move(fresh);
             sim_.fielder().setThrowSettings(readThrowSettings(cfg_.throwing));
         } else if (name == "bowling.json") {
-            cfg_.bowling = std::move(fresh);  // aim values apply live; the bowler's place on restart
+            cfg_.bowling = std::move(fresh);  // the bowler's place applies on restart
+            sim_.bowler().setBowlSettings(readBowlSettings(cfg_.bowling));
         } else if (name == "fielder_skeleton.json") {
             cfg_.fielderSkeleton = std::move(fresh);
             LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
@@ -325,7 +343,12 @@ bool CricketApp::pumpEvents() {
     // on it hands the wheel to the circle's lean (until R or B), so the
     // camera can zoom in first. The fielder's throw aim waits meanwhile.
     if (bowlAim_ && actions_.pressed(input_, core::Action::ClearReach)) bowlTilting_ = false;
-    if (bowlAim_ && !input_.uiWantsMouse && input_.pressed(core::MouseButton::Left)) bowlTilting_ = true;
+    // A second click bowls: the arm goes round and lets the ball go at the
+    // release point.
+    if (bowlAim_ && !input_.uiWantsMouse && input_.pressed(core::MouseButton::Left)) {
+        if (bowlTilting_) sim_.bowler().startBowl(bowlTilt_, bowlRelease_);
+        bowlTilting_ = true;
+    }
     if (bowlTilting_ && !input_.uiWantsMouse) {
         bowlTilt_ = math::clamp(bowlTilt_ + input_.wheel * math::radians(cfg_.bowling.getFloat("aim.tiltStepDeg", 5.0f)),
                                 math::radians(cfg_.bowling.getFloat("aim.minTiltDeg", -15.0f)),
@@ -369,6 +392,16 @@ void CricketApp::fixedUpdate(double dt) {
     sim_.tick(dt);
     math::Vec3 position, velocity;
     if (sim_.fielder().takeRelease(position, velocity)) sim_.launchBall(position, velocity);
+    if (sim_.bowler().takeRelease(position, velocity)) {
+        sim_.launchBall(position, velocity);
+        ballBackTimer_ = cfg_.bowling.getFloat("release.returnDelay", 3.0f);
+    }
+    // The bowled ball goes back to the bowler after a delay, unless the
+    // fielder has it.
+    if (ballBackTimer_ >= 0.0f && (ballBackTimer_ -= static_cast<float>(dt)) < 0.0f && !sim_.fielder().holding()) {
+        sim_.stopBall();
+        sim_.bowler().giveBall();
+    }
 }
 
 void CricketApp::updateWickets(float alpha) {
@@ -462,8 +495,14 @@ void CricketApp::updateFielder(float alpha) {
     }
     const agents::Fielder& bowler = sim_.bowler();
     bowler.interpolatedPose(alpha, bowlerPose_);
-    if (bowler.rig().localToModel(bowlerPose_, bowlerModels_))
-        bowlerVisual_.update(world_, bowler.rig(), bowlerModels_, bowler.interpolatedRoot(alpha));
+    if (!bowler.rig().localToModel(bowlerPose_, bowlerModels_)) return;
+    bowlerVisual_.update(world_, bowler.rig(), bowlerModels_, bowler.interpolatedRoot(alpha));
+    if (!sim_.ballInFlight() && bowler.holding() && !fielder.holding()) {
+        ballPos_ = bowler.ballInHand(bowlerModels_, bowler.interpolatedRoot(alpha));
+        math::Transform ball;
+        ball.position = ballPos_;
+        world_.setTransform(scene_.ball, ball);
+    }
 }
 
 void CricketApp::updateThrowArc(float alpha) {
@@ -489,8 +528,8 @@ void CricketApp::updateBowlArc(float alpha) {
     const agents::Fielder& bowler = sim_.bowler();
     const math::Transform root = bowler.interpolatedRoot(alpha);
     bowlArc_ = motion::makeBowlingArc(bowler.holdingShoulder(bowlerModels_, root), root.rotation, bowler.holdingLeft(),
-                                      cfg_.bowling.getFloat("arc.radiusFactor", 0.97f) * bowler.armLength(), bowlTilt_);
-    if (!bowlAim_ || input_.uiWantsMouse) return;
+                                      bowler.bowlRadius(), bowlTilt_);
+    if (!bowlAim_ || input_.uiWantsMouse || bowler.bowling()) return;  // the point stays put while bowling
     math::Vec3 eye, dir;
     mouseRay(eye, dir);
     float angle = 0.0f;

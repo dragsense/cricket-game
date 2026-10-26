@@ -144,6 +144,8 @@ public:
     bool waiting() const { return phase_ == Phase::Wait; }  // for a moving ball to come
     float reachProgress() const { return pickTime_; }        // 0..1 of the reach (back to 0 on return)
     bool holding() const { return holding_; }
+    // Puts the ball in the holding hand (e.g. a new ball for the bowler).
+    void giveBall() { holding_ = true; }
     void setHandMode(HandMode mode) { handMode_ = mode; }
     HandMode handMode() const { return handMode_; }
     // Held ball's centre in world space from a model-space pose (e.g. the
@@ -173,6 +175,16 @@ public:
         return true;
     }
     void setThrowSettings(const motion::ThrowSettings& s) { throw_ = s; }
+    // Bowl (M5): with the ball held and standing, the hand goes round the
+    // full bowling circle (motion::makeBowlingArc leaned by `tilt`): from in
+    // front, down, back, over the top, through `releaseAngle` and on into the
+    // follow-through across the body, then returns; the arm stays nearly
+    // straight and the body follows through the reach stages. The ball leaves
+    // at the release point along the circle's tangent (takeRelease).
+    void startBowl(float tilt, float releaseAngle);
+    bool bowling() const { return phase_ == Phase::Bowl; }
+    void setBowlSettings(const motion::BowlSettings& s) { bowl_ = s; }
+    float bowlRadius() const { return motion::bowlRadius(armLength_, bowl_.elbowBend); }
     const ReachSettings& reachSettings() const { return reach_; }
     void setReachSettings(const ReachSettings& s) { reach_ = s; }
     // Distance (m) from the reaching hand's wrist to its goal after the last
@@ -215,6 +227,7 @@ private:
     void updatePick(float dt);
     void finishPick(float dt);
     void updateThrow(float dt);  // sets this tick's wrist goal on the throw path
+    void updateBowl(float dt);   // sets this tick's wrist goal on the bowling circle
     void lungeToward(math::Vec3 ball);  // character space
     void startReturn();                  // carry back from goal_, Fitts timed
     float handTime(float distance) const;  // Fitts' law movement time
@@ -248,8 +261,9 @@ private:
     math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
     math::Vec3 reachTarget_{0.0f};  // the ball, world space
     math::Vec3 reachVelocity_{0.0f};  // world, m/s
-    enum class Phase { Idle, Wait, Reach, Return, Throw };
+    enum class Phase { Idle, Wait, Reach, Return, Throw, Bowl };
     motion::ThrowSettings throw_;
+    motion::BowlSettings bowl_;
     float slotAngle_ = 0.0f, throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // radians
     float throwTime_ = 0.0f;   // s since the throw started
     math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space

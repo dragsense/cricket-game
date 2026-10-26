@@ -296,9 +296,10 @@ void Fielder::tick(double dt) {
     reachError_ = 0.0f;
     updatePick(static_cast<float>(dt));
     updateThrow(static_cast<float>(dt));
+    updateBowl(static_cast<float>(dt));
     // While the step-first lunge is in the air the body follows the feet the
     // usual way (repositionBody); the reach starts once the foot lands.
-    const bool reachNow = phase_ == Phase::Return || phase_ == Phase::Throw ||
+    const bool reachNow = phase_ == Phase::Return || phase_ == Phase::Throw || phase_ == Phase::Bowl ||
                           (phase_ == Phase::Reach && pickTime_ > 0.0f);
     if (reachNow) {
         reachSpine();
@@ -663,7 +664,10 @@ math::Vec3 Fielder::centreOfMass() {
 }
 
 void Fielder::reachArm(bool left, math::Vec3 goal) {
-    const float armReach = reach_.armReach * armLength_;
+    // Bowling keeps the arm nearly straight: the reach limit is the circle's
+    // radius and the IK does not soften toward full extension.
+    const bool bowl = phase_ == Phase::Bowl;
+    const float armReach = bowl ? bowlRadius() : reach_.armReach * armLength_;
     const ik::TwoBoneChain& arm = left ? joints_.armL : joints_.armR;
     const int clavicle = left ? joints_.clavicleL : joints_.clavicleR;
     rig_.localToModel(current_, models_);
@@ -688,7 +692,7 @@ void Fielder::reachArm(bool left, math::Vec3 goal) {
     const math::Vec3 dir = math::safeNormalize(goal - shoulder, -math::kUp);
     const math::Vec3 side(left ? reach_.elbowPole.x : -reach_.elbowPole.x, reach_.elbowPole.y, reach_.elbowPole.z);
     const math::Vec3 pole = math::safeNormalize(side - dir * math::dot(side, dir), side);
-    ik::solveTwoBone(arm, models_, motion::clampToReach(shoulder, goal, armReach), pole, ik_.soften, current_);
+    ik::solveTwoBone(arm, models_, motion::clampToReach(shoulder, goal, armReach), pole, bowl ? 1.0f : ik_.soften, current_);
 
     // Palm toward the ball while reaching: turn the hand so its palm normal
     // points from the palm centre at the ball (within the wrist's limits).
@@ -790,8 +794,69 @@ void Fielder::updateThrow(float dt) {
     }
 }
 
+void Fielder::startBowl(float tilt, float releaseAngle) {
+    if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
+    throwTilt_ = tilt;
+    // Release between the horizontal behind and the horizontal in front.
+    releaseAngle_ = math::clamp(releaseAngle, -math::kHalfPi + 0.1f, math::kHalfPi);
+    throwTime_ = 0.0f;
+    released_ = false;
+    throwFrom_ = phase_ == Phase::Return ? goal_ : (reachLeft_ ? restWristL_ : restWristR_);
+    phase_ = Phase::Bowl;
+}
+
+void Fielder::updateBowl(float dt) {
+    // BIOMECHANICS 11.2: angles on the bowling circle (0 top, +90 in front),
+    // unwrapped so the hand only moves forward: start (front, low) -> past the
+    // bottom -> 3/2 pi (horizontal behind) -> top -> release, speeding up all
+    // the way; then it slows evenly to a stop on the follow-through while
+    // moving across the body, and the usual return carries it back.
+    // Character space (rest shoulder).
+    if (phase_ != Phase::Bowl) return;
+    throwTime_ += dt;
+    const motion::ThrowArc arc = motion::makeBowlingArc(reachLeft_ ? restShoulderL_ : restShoulderR_, math::identityQuat(),
+                                                        reachLeft_, bowlRadius(), throwTilt_);
+    const float a0 = bowl_.startAngle;
+    const float a1 = math::kTwoPi - math::kHalfPi;  // horizontal behind
+    const float a2 = math::kTwoPi + releaseAngle_;  // release
+    const float setup = std::max(bowl_.setupTime, 0.01f);
+    const float t1 = std::max(bowl_.downBackTime, 0.01f);
+    const float t2 = std::max(bowl_.overTime, 0.01f);
+    const float t3 = std::max(bowl_.followTime, 0.01f);
+    // Down and back from rest (a0 + d u^2) ends at speed v1; over the top
+    // accelerates evenly to reach the release point at t2.
+    const float v1 = 2.0f * (a1 - a0) / t1;
+    const float acc = 2.0f * (a2 - a1 - v1 * t2) / (t2 * t2);
+    const float vRelease = v1 + acc * t2;
+    if (holding_ && throwTime_ >= setup + t1 + t2) {
+        // The ball leaves at the release point, along the circle; its world
+        // position is taken from the solved hand (tick()).
+        holding_ = false;
+        released_ = true;
+        releaseVelocity_ = root_.transformDirection(arc.tangent(a2)) * bowl_.speed;
+    }
+    float t = throwTime_;
+    if (t < setup) {
+        const float u = t / setup;
+        goal_ = math::lerp(throwFrom_, arc.point(a0), u * u * (3.0f - 2.0f * u));
+    } else if ((t -= setup) < t1) {
+        const float u = t / t1;
+        goal_ = arc.point(a0 + (a1 - a0) * u * u);
+    } else if ((t -= t1) < t2) {
+        goal_ = arc.point(a1 + v1 * t + 0.5f * acc * t * t);
+    } else if ((t -= t2) < t3) {
+        const math::Vec3 p = arc.point(a2 + vRelease * t - 0.5f * vRelease / t3 * t * t);
+        const math::Vec3 across(-p.x, p.y, p.z);
+        const float u = t / t3;
+        goal_ = math::lerp(p, across, bowl_.followAcross * u * u * (3.0f - 2.0f * u));
+    } else {
+        startReturn();
+        pickTime_ = 1.0f;
+    }
+}
+
 void Fielder::updatePick(float dt) {
-    if (phase_ == Phase::Idle || phase_ == Phase::Throw) return;
+    if (phase_ == Phase::Idle || phase_ == Phase::Throw || phase_ == Phase::Bowl) return;
     const math::Transform toModel = math::inverse(root_);
     const math::Vec3 ball = toModel.transformPoint(reachTarget_);
     const math::Vec3 mid = 0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right));
