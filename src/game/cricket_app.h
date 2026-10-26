@@ -83,8 +83,11 @@ private:
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
     math::Vec3 ballPos_{0.0f};  // the ball's centre, world space
-    motion::ThrowArc throwArc_;
-    float releaseAngle_ = 0.0f;  // radians on throwArc_ (0 sidearm, +pi/2 overarm)
+    // Throw aim (radians): slot point on slotArc_ (0 sidearm, +pi/2 overarm),
+    // the swing arc's tilt about it and the release point on swingArc_.
+    motion::ThrowArc slotArc_, swingArc_;
+    float slotAngle_ = 0.0f, tilt_ = 0.0f, releaseAngle_ = 0.0f;
+    bool aimSwing_ = false;  // the slot is fixed; aiming the release point
     std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot
     float heading_ = 0.0f;    // fielder's W heading; follows the camera only while stopped
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)

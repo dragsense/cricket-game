@@ -35,6 +35,16 @@ render::LightingDesc readLighting(const core::Config& c) {
     return l;
 }
 
+motion::ThrowSettings readThrowSettings(const core::Config& c) {
+    motion::ThrowSettings s;
+    s.radiusFactor = c.getFloat("arc.radiusFactor", s.radiusFactor);
+    s.windupTime = c.getFloat("swing.windupTime", s.windupTime);
+    s.swingTime = c.getFloat("swing.swingTime", s.swingTime);
+    s.cockReach = c.getFloat("swing.cockReach", s.cockReach);
+    s.throwSpeed = c.getFloat("release.speed", s.throwSpeed);
+    return s;
+}
+
 } // namespace
 
 CricketApp::CricketApp(AppConfigs configs) : core::App(loopSettings(configs.engine)), cfg_(std::move(configs)) {}
@@ -98,6 +108,7 @@ bool CricketApp::init() {
 
     rig::SkeletonDef skeletonDef;
     if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef, cfg_.fielderJoints, cfg_.locomotion)) return false;
+    sim_.fielder().setThrowSettings(readThrowSettings(cfg_.throwing));
     const agents::Fielder& fielder = sim_.fielder();
     fielderVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.fielderSkeleton);
     fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
@@ -156,6 +167,7 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             cfg_.ballLaunch = std::move(fresh);
         } else if (name == "throw.json") {
             cfg_.throwing = std::move(fresh);
+            sim_.fielder().setThrowSettings(readThrowSettings(cfg_.throwing));
         } else if (name == "fielder_skeleton.json") {
             cfg_.fielderSkeleton = std::move(fresh);
             LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
@@ -286,6 +298,25 @@ bool CricketApp::pumpEvents() {
     for (int i = 0; i < 5; ++i)
         if (actions_.pressed(input_, static_cast<core::Action>(static_cast<int>(core::Action::LaunchBall1) + i))) launchBall(i);
     if (actions_.pressed(input_, core::Action::ThrowBall)) releaseToFielder();
+    // Throw aim with the ball held: a left click fixes the slot point on the
+    // slot arc; then the wheel turns the swing arc about it (the camera does
+    // not zoom meanwhile) and a second click throws, releasing at the point
+    // picked on the swing arc. R goes back to choosing the slot.
+    agents::Fielder& fielder = sim_.fielder();
+    if (!fielder.holding() || actions_.pressed(input_, core::Action::ClearReach)) aimSwing_ = false;
+    if (aimSwing_ && !input_.uiWantsMouse) {
+        tilt_ += input_.wheel * math::radians(cfg_.throwing.getFloat("aim.tiltStepDeg", 5.0f));
+        input_.wheel = 0.0f;
+    }
+    if (input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse && fielder.holding() && !fielder.throwing()) {
+        if (!aimSwing_) {
+            aimSwing_ = true;
+            tilt_ = 0.0f;
+        } else {
+            fielder.startThrow(slotAngle_, tilt_, releaseAngle_);
+            aimSwing_ = false;
+        }
+    }
 
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
@@ -304,6 +335,8 @@ void CricketApp::fixedUpdate(double dt) {
     if (sim_.ballInFlight() && sim_.fielder().holding()) sim_.stopBall();
     if (sim_.ballInFlight()) sim_.fielder().setReachTarget(sim_.ball().position, sim_.ball().velocity);
     sim_.tick(dt);
+    math::Vec3 position, velocity;
+    if (sim_.fielder().takeRelease(position, velocity)) sim_.launchBall(position, velocity);
 }
 
 void CricketApp::updateWickets(float alpha) {
@@ -398,13 +431,15 @@ void CricketApp::updateFielder(float alpha) {
 
 void CricketApp::updateThrowArc(float alpha) {
     const agents::Fielder& fielder = sim_.fielder();
-    if (!fielder.holding()) return;
+    if (!fielder.holding() && !fielder.throwing()) return;
     const math::Transform root = fielder.interpolatedRoot(alpha);
-    throwArc_ = motion::makeThrowArc(fielder.holdingShoulder(fielderModels_, root), root.rotation, fielder.holdingLeft(),
-                                     cfg_.throwing.getFloat("arc.radiusFactor", 0.95f) * fielder.armLength());
-    if (input_.uiWantsMouse) return;
+    slotArc_ = motion::makeThrowArc(fielder.holdingShoulder(fielderModels_, root), root.rotation, fielder.holdingLeft(),
+                                    cfg_.throwing.getFloat("arc.radiusFactor", 0.95f) * fielder.armLength());
+    swingArc_ = motion::makeSwingArc(slotArc_, slotAngle_, tilt_);
+    if (input_.uiWantsMouse || fielder.throwing()) return;  // the points stay put during a throw
 
-    // Mouse ray from the camera (screen centre in mouse-look), onto the arc.
+    // Mouse ray from the camera (screen centre in mouse-look), onto the arc
+    // being aimed; both are half circles (-90..+90 deg).
     const camera::CameraPose pose = camera_.pose();
     const float w = static_cast<float>(std::max(1, window_.width()));
     const float h = static_cast<float>(std::max(1, window_.height()));
@@ -416,7 +451,10 @@ void CricketApp::updateThrowArc(float alpha) {
     const math::Vec3 up = math::cross(right, ahead);
     const math::Vec3 dir = math::normalize(ahead + right * (x * tanHalf * w / h) + up * (y * tanHalf));
     float angle = 0.0f;
-    if (throwArc_.rayAngle(pose.eye, dir, angle)) releaseAngle_ = angle;
+    if (!(aimSwing_ ? swingArc_ : slotArc_).rayAngle(pose.eye, dir, angle)) return;
+    angle = math::clamp(angle, -math::kHalfPi, math::kHalfPi);
+    if (aimSwing_) releaseAngle_ = angle;
+    else slotAngle_ = angle;
 }
 
 void CricketApp::drawDebugGeometry(float alpha) {
@@ -432,10 +470,25 @@ void CricketApp::drawDebugGeometry(float alpha) {
     // Player's local axes at its root: X red (left), Y green (up), Z blue (forward).
     dd.axes(sim_.fielder().interpolatedRoot(alpha), 0.5f);
 
-    // Throw arc and the chosen release point while the ball is held.
-    if (sim_.fielder().holding()) {
-        dd.circle(throwArc_.centre, throwArc_.forward, throwArc_.radius, render::colors::kCyan, 48);
-        dd.sphere(throwArc_.point(releaseAngle_), 0.04f, render::colors::kMagenta);
+    // Throw arcs (half circles) while the ball is held or thrown: the slot
+    // arc (cyan) with the slot point (magenta); once the slot is fixed, the
+    // swing arc (yellow) with its start (white) and the release point (red).
+    const agents::Fielder& fielder = sim_.fielder();
+    if (fielder.holding() || fielder.throwing()) {
+        constexpr int kSegments = 24;
+        auto halfCircle = [&](const motion::ThrowArc& arc, render::Color color) {
+            for (int i = 0; i < kSegments; ++i) {
+                const float a = -math::kHalfPi + math::kPi * static_cast<float>(i) / kSegments;
+                dd.line(arc.point(a), arc.point(a + math::kPi / kSegments), color);
+            }
+        };
+        halfCircle(slotArc_, render::colors::kCyan);
+        dd.sphere(slotArc_.point(slotAngle_), 0.04f, render::colors::kMagenta);
+        if (aimSwing_ || fielder.throwing()) {
+            halfCircle(swingArc_, render::colors::kYellow);
+            dd.sphere(swingArc_.point(-math::kHalfPi), 0.03f, render::colors::kWhite);
+            dd.sphere(swingArc_.point(releaseAngle_), 0.04f, render::colors::kRed);
+        }
     }
 
     if (debugSettings_.showProbe) {

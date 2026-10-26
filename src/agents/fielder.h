@@ -13,6 +13,7 @@
 #include "math/math.h"
 #include "motion/body_reposition.h"
 #include "motion/foot_stepper.h"
+#include "motion/throw_arc.h"
 #include "motion/walk_controller.h"
 #include "rig/rig.h"
 #include "rig/skeleton_def.h"
@@ -155,6 +156,23 @@ public:
         return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.start)][3]));
     }
     float armLength() const { return armLength_; }  // shoulder to wrist (m)
+    // Throw (M4): with the ball held and standing, the hand goes to the start
+    // of the swing arc (motion::makeSwingArc of the slot point `slotAngle`,
+    // turned by `tilt`), swings forward along it, lets the ball go at
+    // `releaseAngle` along the arc's tangent and follows through to the arc's
+    // end, then returns; the body follows through the reach stages.
+    void startThrow(float slotAngle, float tilt, float releaseAngle);
+    bool throwing() const { return phase_ == Phase::Throw; }
+    // True once, on the tick the ball leaves the hand: its centre and
+    // velocity in world space. holding() is false from then on.
+    bool takeRelease(math::Vec3& position, math::Vec3& velocity) {
+        if (!released_) return false;
+        released_ = false;
+        position = releasePosition_;
+        velocity = releaseVelocity_;
+        return true;
+    }
+    void setThrowSettings(const motion::ThrowSettings& s) { throw_ = s; }
     const ReachSettings& reachSettings() const { return reach_; }
     void setReachSettings(const ReachSettings& s) { reach_ = s; }
     // Distance (m) from the reaching hand's wrist to its goal after the last
@@ -196,6 +214,7 @@ private:
     // solve, grips, lunges or gives up.
     void updatePick(float dt);
     void finishPick(float dt);
+    void updateThrow(float dt);  // sets this tick's wrist goal on the throw path
     void lungeToward(math::Vec3 ball);  // character space
     void startReturn();                  // carry back from goal_, Fitts timed
     float handTime(float distance) const;  // Fitts' law movement time
@@ -229,7 +248,13 @@ private:
     math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
     math::Vec3 reachTarget_{0.0f};  // the ball, world space
     math::Vec3 reachVelocity_{0.0f};  // world, m/s
-    enum class Phase { Idle, Wait, Reach, Return };
+    enum class Phase { Idle, Wait, Reach, Return, Throw };
+    motion::ThrowSettings throw_;
+    float slotAngle_ = 0.0f, throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // radians
+    float throwTime_ = 0.0f;   // s since the throw started
+    math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space
+    bool released_ = false;    // the ball left the hand this tick (takeRelease)
+    math::Vec3 releasePosition_{0.0f}, releaseVelocity_{0.0f};  // world
     float pickDuration_ = 0.4f, returnDuration_ = 0.5f;  // s, Fitts' law per pick
     math::Vec3 meetPoint_{0.0f};  // character space: where the hand meets the ball (lunge aim)
     Phase phase_ = Phase::Idle;

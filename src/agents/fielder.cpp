@@ -295,9 +295,11 @@ void Fielder::tick(double dt) {
     addGaitMotion(static_cast<float>(dt));
     reachError_ = 0.0f;
     updatePick(static_cast<float>(dt));
+    updateThrow(static_cast<float>(dt));
     // While the step-first lunge is in the air the body follows the feet the
     // usual way (repositionBody); the reach starts once the foot lands.
-    const bool reachNow = phase_ == Phase::Return || (phase_ == Phase::Reach && pickTime_ > 0.0f);
+    const bool reachNow = phase_ == Phase::Return || phase_ == Phase::Throw ||
+                          (phase_ == Phase::Reach && pickTime_ > 0.0f);
     if (reachNow) {
         reachSpine();
         reachPelvis();
@@ -321,6 +323,8 @@ void Fielder::tick(double dt) {
         rig_.localToModel(current_, models_);
         const int hand = reachLeft_ ? joints_.armL.end : joints_.armR.end;
         reachError_ = math::distance(modelPos(models_, hand), goal_);
+        if (released_)
+            releasePosition_ = root_.transformPoint(math::Vec3(models_[static_cast<size_t>(hand)] * math::Vec4(ballSpot(reachLeft_), 1.0f)));
         finishPick(static_cast<float>(dt));
     }
 }
@@ -736,8 +740,58 @@ void Fielder::startReturn() {
     phase_ = Phase::Return;
 }
 
+void Fielder::startThrow(float slotAngle, float tilt, float releaseAngle) {
+    if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
+    slotAngle_ = slotAngle;
+    throwTilt_ = tilt;
+    releaseAngle_ = math::clamp(releaseAngle, -math::kHalfPi + 0.1f, math::kHalfPi);
+    throwTime_ = 0.0f;
+    released_ = false;
+    throwFrom_ = phase_ == Phase::Return ? goal_ : (reachLeft_ ? restWristL_ : restWristR_);
+    phase_ = Phase::Throw;
+}
+
+void Fielder::updateThrow(float dt) {
+    // BIOMECHANICS 10: the hand eases to the swing arc's start (-90 deg,
+    // elbow bent), swings forward speeding up (s = t^2) while the elbow
+    // extends, straight at the release point, then follows through to the
+    // arc's end (+90 deg) at the angular speed it had, slowing down; then the
+    // usual return carries the hand back. Character space (rest shoulder).
+    if (phase_ != Phase::Throw) return;
+    throwTime_ += dt;
+    const motion::ThrowArc slot = motion::makeThrowArc(reachLeft_ ? restShoulderL_ : restShoulderR_, math::identityQuat(),
+                                                       reachLeft_, throw_.radiusFactor * armLength_);
+    const motion::ThrowArc arc = motion::makeSwingArc(slot, slotAngle_, throwTilt_);
+    const float start = -math::kHalfPi, end = math::kHalfPi;
+    const float windup = std::max(throw_.windupTime, 0.01f);
+    const float swing = std::max(throw_.swingTime, 0.01f);
+    const float follow = swing * (end - releaseAngle_) / (releaseAngle_ - start);
+    if (holding_ && throwTime_ >= windup + swing) {
+        // The ball leaves at the release point, along the arc; its world
+        // position is taken from the solved hand (tick()).
+        holding_ = false;
+        released_ = true;
+        releaseVelocity_ = root_.transformDirection(arc.tangent(releaseAngle_)) * throw_.throwSpeed;
+    }
+    float t = throwTime_;
+    if (t < windup) {
+        const float u = t / windup;
+        goal_ = math::lerp(throwFrom_, arc.point(start, throw_.cockReach), u * u * (3.0f - 2.0f * u));
+    } else if ((t -= windup) < swing) {
+        const float u = t / swing;
+        goal_ = arc.point(math::lerp(start, releaseAngle_, u * u), math::lerp(throw_.cockReach, 1.0f, u * u));
+    } else if ((t -= swing) < follow) {
+        const float u = 1.0f - t / follow;
+        goal_ = arc.point(math::lerp(releaseAngle_, end, 1.0f - u * u));
+    } else {
+        goal_ = arc.point(end);
+        startReturn();
+        pickTime_ = 1.0f;
+    }
+}
+
 void Fielder::updatePick(float dt) {
-    if (phase_ == Phase::Idle) return;
+    if (phase_ == Phase::Idle || phase_ == Phase::Throw) return;
     const math::Transform toModel = math::inverse(root_);
     const math::Vec3 ball = toModel.transformPoint(reachTarget_);
     const math::Vec3 mid = 0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right));

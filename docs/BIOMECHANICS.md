@@ -836,15 +836,16 @@ release ([Brunel, cricket throwing](https://bura.brunel.ac.uk/handle/2438/16239)
   **[P]**. Stride length and shoulder internal rotation speed predict throw speed **[P]**.
 - Underarm flicks at the stumps: no measured data; ~8–15 m/s **[E]**.
 
-### Implementation notes (`config/throw.json`, planned)
-- Arc: circle around the throwing shoulder, radius `arcRadiusFactor` × arm length (0.95),
-  in the plane through the shoulder that contains the throw direction and is tilted by the
-  slot. Release point = an angle on the arc, chosen by the user (from low underarm through
-  sidearm to overarm).
-- Wind-up `windupTime` 0.3 s (hand goes back along the arc), swing `swingTime` 0.12 s
-  (forward through the release point), follow-through continues past it **[E]**.
-- Release: ball velocity = `throwSpeed` (25 m/s, 80 % of ~31 m/s) along the arc tangent
-  at the release point.
+### Implementation notes (`config/throw.json`)
+- Two half circles around the throwing shoulder, radius `arc.radiusFactor` (0.95) x arm
+  length. The slot arc is square to the facing direction (-90° underarm, 0° sidearm,
+  +90° overarm); the user picks the slot point. The swing arc passes through it and the
+  facing direction and is turned about the shoulder-to-slot line by the mouse wheel.
+- The hand eases to the swing arc's start (behind) with the elbow bent (`cockReach` 0.6,
+  cocking), swings forward speeding up (`windupTime` 0.3 s, `swingTime` 0.12 s **[E]**)
+  while the elbow extends, straight at the chosen release point, then follows through.
+- Release: the ball leaves the hand along the arc's tangent at `release.speed` (25 m/s,
+  ~80 % of ~31 m/s).
 - The body follows through the existing reach chain (section 9); no new body system.
 
 ---

@@ -1,6 +1,6 @@
 # Progress
 
-## Current milestone: M4 Fielding — Throw — IN PROGRESS (branch milestone-4)
+## Current milestone: M4 Fielding — Throw — built, awaiting the user's visual review (branch milestone-4)
 
 Goal: after a pick, the fielder throws. The hand follows an arc (circle around the
 throwing shoulder); the user picks the release point on it (underarm … sidearm …
@@ -18,12 +18,21 @@ tests or collisions not asked for. One step at a time; stop after each.
   underarm, 0° sidearm, +90° overarm), radius `config/throw.json` arc.radiusFactor (0.95)
   x arm length. While the ball is held, the mouse ray picks the nearest point on it; the
   circle (cyan) and point (magenta) are drawn. Angle not limited yet.
-- [ ] **4.2 Wind-up and swing** (curved, the user's choice): the arm rotates back about
-  the shoulder from the chosen point (axis square to the arm and the facing direction;
-  less for low points, most for overhead), then swings forward along the same curve
-  through the point; body follows via the reach chain.
-- [ ] **4.3 Release**: on click the ball leaves at the release point, tangent to the arc,
-  fixed speed, then flies with our physics.
+- [x] **4.2 Wind-up and swing** (built; the user checked it). Two half circles around the
+  shoulder (the user's design): the slot arc (above) fixes a slot point on a first click;
+  the swing arc passes through it, centred on the shoulder, and the mouse wheel turns it
+  about the shoulder-to-slot line (`aim.tiltStepDeg`; the camera does not zoom
+  meanwhile). The hand eases to the swing arc's start (behind, elbow bent:
+  `swing.cockReach` 0.6), swings forward speeding up (`windupTime` 0.3 s, `swingTime`
+  0.12 s) while the elbow extends, straight at the release point, follows through to the
+  arc's end and returns; the body follows via the reach chain (`Fielder` Throw phase).
+  R goes back to choosing the slot.
+- [x] **4.3 Release** (built; the user checked it): the second click picks the release
+  point on the swing arc; the ball leaves the solved hand there along the arc's tangent at
+  `release.speed` (25 m/s) and flies with our physics (`Fielder::takeRelease` ->
+  `SimWorld::launchBall`).
+
+M4 code done (to improve later: aiming controls, a target, body sequencing).
 
 ## Previous milestone: M3 Physics and Ball Physics — done to 3.3 (branch milestone-3)
 
