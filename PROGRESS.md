@@ -1,6 +1,13 @@
 # Progress
 
-## Current milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
+## Current milestone: M6 Bowling rework — in progress (branch milestone-6)
+
+Goal: the bowler's delivery in the spirit of the M5 chest throw: the player gives body
+intent on circles around the bowler (trunk coil, arm-circle tilt, release point); the
+body does the motion; line, length and speed come from it. Control scheme proposed,
+awaiting the user's yes.
+
+## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 
 Goal: a standing bowler (no run-up) delivers the ball. The bowling hand makes a full
 circle around the shoulder (front, down, back, over the top), releases near the top on
@@ -415,12 +422,13 @@ Scope:
 | M3 | Basic ball flight (drag), bounce, roll; dive (needs ball arrival time) | not started |
 | M4 | Fielding: throw (chase, intercept, catch later) | in progress |
 | M5 | Bowling: arm action (standing bowler) | in progress |
-| M6 | Wicketkeeper | not started |
-| M7 | Batting | not started |
-| M7 | Match rules | not started |
-| M8 | Broadcast cameras | not started |
-| M9 | Game UI (RmlUi) | not started |
-| M10 | Mobile (Android, then iOS on a Mac) | not started |
+| M6 | Bowling rework: player-driven delivery (standing bowler) | in progress |
+| M7 | Wicketkeeper | not started |
+| M8 | Batting | not started |
+| M8 | Match rules | not started |
+| M9 | Broadcast cameras | not started |
+| M10 | Game UI (RmlUi) | not started |
+| M11 | Mobile (Android, then iOS on a Mac) | not started |
 
 Before M1, decide the player body mesh (MakeHuman CC0 or Blender → glTF).
 

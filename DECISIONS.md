@@ -258,3 +258,9 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Reason:** the user's design, iterated live; trunk rotation is where real throwing
   speed comes from (BIOMECHANICS 10.2).
 
+
+## 2026-10-26: M6 is the bowling rework; Wicketkeeper moves to M7
+- **Decision:** M6 (branch `milestone-6`) reworks the bowler's delivery as player-driven
+  body intent on circles, like the throw. The wicketkeeper becomes M7; later milestones
+  shift by one.
+- **Reason:** the user's choice.

@@ -314,7 +314,7 @@ for the cricket ball. The predictor (3.4) will call the same `step()`.
 ### Agents / AI (M4+): not started
 Player bodies (agents) driven by fielding, bowling and batting decisions (ai).
 
-### Match (M7): not started
+### Match (M8): not started
 Rules, scoring, innings. `match::SimWorld` is currently a placeholder probe.
 
 ### Broadcast cameras (M8): not started
