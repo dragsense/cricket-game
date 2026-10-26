@@ -67,6 +67,14 @@ motion::BowlSettings readBowlSettings(const core::Config& c) {
     s.followTime = c.getFloat("circle.followTime", s.followTime);
     s.followAcross = c.getFloat("circle.followAcross", s.followAcross);
     s.speed = c.getFloat("release.speed", s.speed);
+    s.coilRadiusFactor = c.getFloat("coil.radiusFactor", s.coilRadiusFactor);
+    s.maxCoil = math::radians(c.getFloat("coil.maxDeg", math::degrees(s.maxCoil)));
+    s.coilPelvisShare = c.getFloat("coil.pelvisShare", s.coilPelvisShare);
+    s.coilTime = c.getFloat("coil.time", s.coilTime);
+    s.gather = c.getVec3("coil.gather", s.gather);
+    s.frontArmRaise = math::radians(c.getFloat("coil.frontArmRaiseDeg", math::degrees(s.frontArmRaise)));
+    s.backFootSide = c.getFloat("coil.backFootSide", s.backFootSide);
+    s.backFootForward = c.getFloat("coil.backFootForward", s.backFootForward);
     return s;
 }
 
@@ -331,7 +339,8 @@ bool CricketApp::pumpEvents() {
     // B switches the controlled player (fielder or bowler); the other stands.
     if (!limbTest_ && actions_.pressed(input_, core::Action::BowlAim)) {
         bowlAim_ = !bowlAim_;
-        bowlTilting_ = false;
+        sim_.bowler().cancelCoil();
+        bowlStep_ = 0;
     }
     agents::Fielder& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
@@ -362,14 +371,9 @@ bool CricketApp::pumpEvents() {
     // With the bowler controlled, the mouse aims the bowling circle; a click
     // on it hands the wheel to the circle's lean (until R or B), so the
     // camera can zoom in first. The fielder's throw aim waits meanwhile.
-    if (bowlAim_ && actions_.pressed(input_, core::Action::ClearReach)) bowlTilting_ = false;
-    // A second click bowls: the arm goes round and lets the ball go at the
-    // release point.
-    if (bowlAim_ && !input_.uiWantsMouse && input_.pressed(core::MouseButton::Left)) {
-        if (bowlTilting_) sim_.bowler().startBowl(bowlTilt_, bowlRelease_);
-        bowlTilting_ = true;
-    }
-    if (bowlTilting_ && !input_.uiWantsMouse) {
+    // Once coiled, the wheel leans the bowling arm circle (the camera does
+    // not zoom meanwhile).
+    if (bowlAim_ && bowlStep_ == 1 && !input_.uiWantsMouse) {
         bowlTilt_ = math::clamp(bowlTilt_ + input_.wheel * math::radians(cfg_.bowling.getFloat("aim.tiltStepDeg", 5.0f)),
                                 math::radians(cfg_.bowling.getFloat("aim.minTiltDeg", -15.0f)),
                                 math::radians(cfg_.bowling.getFloat("aim.maxTiltDeg", 90.0f)));
@@ -614,15 +618,37 @@ void CricketApp::updateThrowAim(float alpha) {
 }
 
 void CricketApp::updateBowlArc(float alpha) {
-    const agents::Fielder& bowler = sim_.bowler();
+    // With the bowler controlled and the ball held: a click on the coil
+    // circle (cyan, flat around the chest) winds the trunk back to that
+    // point; then the arm circle (yellow) shows the release point and the
+    // wheel leans it. R lets go of the coil.
+    agents::Fielder& bowler = sim_.bowler();
     const math::Transform root = bowler.interpolatedRoot(alpha);
     bowlArc_ = motion::makeBowlingArc(bowler.holdingShoulder(bowlerModels_, root), root.rotation, bowler.holdingLeft(),
                                       bowler.bowlRadius(), bowlTilt_);
-    if (!bowlAim_ || input_.uiWantsMouse || bowler.bowling()) return;  // the point stays put while bowling
+    coilArc_ = bowler.coilArc();
+    coilArc_.centre = root.transformPoint(coilArc_.centre);
+    coilArc_.side = root.transformDirection(coilArc_.side);
+    coilArc_.up = root.transformDirection(coilArc_.up);
+    coilArc_.normal = root.transformDirection(coilArc_.normal);
+    if (!bowler.coiled()) bowlStep_ = 0;
+    if (!bowlAim_ || input_.uiWantsMouse || (bowler.bowling() && !bowler.coiled())) return;  // points stay put while bowling
+    if (actions_.pressed(input_, core::Action::ClearReach)) {
+        bowler.cancelCoil();
+        bowlStep_ = 0;
+        return;
+    }
     math::Vec3 eye, dir;
     mouseRay(eye, dir);
     float angle = 0.0f;
-    if (bowlArc_.rayAngle(eye, dir, angle)) bowlRelease_ = angle;
+    if (bowlStep_ == 0 && coilArc_.rayAngle(eye, dir, angle)) coilAngle_ = angle;
+    if (bowlStep_ == 1 && bowlArc_.rayAngle(eye, dir, angle)) bowlRelease_ = angle;
+    if (!input_.pressed(core::MouseButton::Left)) return;
+    if (bowlStep_ == 0 && bowler.holding()) {
+        bowler.coilBowl(coilAngle_);
+        bowlStep_ = 1;
+    }
+    // bowlStep_ 1: the release click comes with the delivery (next step).
 }
 
 void CricketApp::mouseRay(math::Vec3& origin, math::Vec3& direction) const {
@@ -690,7 +716,15 @@ void CricketApp::drawDebugGeometry(float alpha) {
         // otherwise; the top (white) and the release point (red).
         constexpr int kCircleSegments = 48;
         const render::Color circleColor = bowlAim_ ? render::colors::kYellow : render::colors::kGrey;
-        if (!limbTest_) {
+        if (!limbTest_ && bowlAim_ && bowlStep_ == 0 && sim_.bowler().holding()) {
+            // Coil circle (cyan) with the facing point (grey) and the coil point (white).
+            for (int i = 0; i < kCircleSegments; ++i) {
+                const float a = math::kTwoPi * static_cast<float>(i) / kCircleSegments;
+                dd.line(coilArc_.point(a), coilArc_.point(a + math::kTwoPi / kCircleSegments), render::colors::kCyan);
+            }
+            dd.sphere(coilArc_.point(0.0f), 0.03f, render::colors::kGrey);
+            dd.sphere(coilArc_.point(coilAngle_), 0.04f, render::colors::kWhite);
+        } else if (!limbTest_) {
             for (int i = 0; i < kCircleSegments; ++i) {
                 const float a = math::kTwoPi * static_cast<float>(i) / kCircleSegments;
                 dd.line(bowlArc_.point(a), bowlArc_.point(a + math::kTwoPi / kCircleSegments), circleColor);

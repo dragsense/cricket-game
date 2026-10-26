@@ -107,7 +107,11 @@ private:
     motion::ThrowArc bowlArc_;
     float bowlTilt_ = 0.0f, bowlRelease_ = 0.0f;
     bool bowlAim_ = false;
-    bool bowlTilting_ = false;  // clicked on the circle: the wheel leans it
+    // Coil circle (world) and the coil point on it (radians); bowlStep_: the
+    // next bowler click is 0 coil, 1 release.
+    motion::ThrowArc coilArc_;
+    float coilAngle_ = 0.0f;
+    int bowlStep_ = 0;
     // Limb test (engine.json debug.limbTest): the bowler, arcs and walking are
     // hidden; limb 0 right foot, 1 left foot, 2 right hand, 3 left hand.
     bool limbTest_ = false;

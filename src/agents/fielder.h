@@ -196,6 +196,15 @@ public:
     // at the release point along the circle's tangent (takeRelease).
     void startBowl(float tilt, float releaseAngle);
     bool bowling() const { return phase_ == Phase::Bowl; }
+    // Coil (M6): with the ball held and standing, the trunk counter-rotates
+    // to `angle` on coilArc() (0 facing, + toward the bowling-arm side; the
+    // farther, the more force): the pelvis less than the shoulders, the back
+    // foot steps, the bowling hand rides the trunk near the chin and the
+    // front arm reaches up toward the batter, and holds. cancelCoil returns.
+    void coilBowl(float angle);
+    void cancelCoil();
+    bool coiled() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Coil; }
+    motion::ThrowArc coilArc() const;  // character space
     // Limb test (body-mechanics study): a wrist goal for one hand and the feet
     // set directly (world space); the body follows through the reach stages
     // and the foot repositioning, and walking waits. clearPose() puts both
@@ -297,6 +306,11 @@ private:
     float throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // bowling circle lean and release (radians)
     float throwTime_ = 0.0f;   // s since the throw started
     math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space
+    enum class BowlStage { Circle, Coil };
+    BowlStage bowlStage_ = BowlStage::Circle;
+    float coil_ = 0.0f;  // coil angle (radians, coilBowl)
+    bool coilTwist_ = false;  // chestTwist_ is the bowling coil (its shares), not the throw's
+    math::Vec3 frontGoal_{0.0f};  // non-bowling wrist goal while coiled, character space
     enum class ThrowStage { Ready, Wind, Swing };
     ThrowStage throwStage_ = ThrowStage::Ready;
     float throwSlot_ = 0.0f, throwBack_ = 0.0f;  // radians (beginThrow, windThrow)

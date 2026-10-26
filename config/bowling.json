@@ -43,5 +43,25 @@
     "maxTiltDeg": 90,
     // Default release: ahead of the vertical over the shoulder (11.3).
     "releaseDeg": 15
+  },
+  "coil": {
+    // Coil circle (cyan, flat around the chest, radius = factor x arm length).
+    // B, then a click on it: the trunk counter-rotates toward that point (0 =
+    // facing the batter, + toward the bowling-arm side), at most maxDeg; the
+    // farther, the more force (BIOMECHANICS 11.2). The pelvis takes
+    // pelvisShare, the spine the rest (hip-shoulder separation). R cancels.
+    "radiusFactor": 1.0,
+    "maxDeg": 120,
+    "pelvisShare": 0.3,
+    "time": 0.35,
+    // Bowling hand while coiled, riding the trunk near the chin: offset from
+    // the chest (m; x toward the bowling-arm side, y up, z forward).
+    "gather": [0.15, 0.15, 0.2],
+    // Front arm reaches toward the batter, raised this far above level.
+    "frontArmRaiseDeg": 45,
+    // Back foot steps by this at full coil (m; side toward the bowling arm,
+    // forward + toward the batter).
+    "backFootSide": 0.1,
+    "backFootForward": -0.2
   }
 }

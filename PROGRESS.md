@@ -4,8 +4,21 @@
 
 Goal: the bowler's delivery in the spirit of the M5 chest throw: the player gives body
 intent on circles around the bowler (trunk coil, arm-circle tilt, release point); the
-body does the motion; line, length and speed come from it. Control scheme proposed,
-awaiting the user's yes.
+body does the motion; line, length and speed come from it. Scheme (the user's yes):
+coil circle (trunk counter-rotation = force), then the arm circle (wheel tilt, release
+click: stride, hips then shoulders, arm over the top, release on the tangent), then
+front-arm pull and follow-through. Old `startBowl` kept (unused) until the new one works.
+
+- [x] **6.1 Coil** (built; awaiting the user's check): B, then a click on the coil
+  circle (cyan, flat around the chest, `coil.radiusFactor`): `Fielder::coilBowl` turns
+  the trunk back toward the point (0 facing, + toward the bowling-arm side, up to
+  `coil.maxDeg` 120; pelvis `coil.pelvisShare` 0.3, spine the rest, joint-limited), the
+  back foot steps (`coil.backFootSide/Forward` x coil share), the bowling hand rides the
+  trunk at `coil.gather`, the front arm reaches up toward the batter
+  (`coil.frontArmRaiseDeg`). Then the yellow arm circle shows the release point and the
+  wheel tilts it; the release click comes in 6.2. R cancels the coil.
+- [ ] 6.2 Release: stride, plant, hips then shoulders, arm over the top, release.
+- [ ] 6.3 Front-arm pull and follow-through across the body.
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 

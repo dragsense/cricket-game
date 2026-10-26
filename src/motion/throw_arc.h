@@ -90,6 +90,21 @@ struct BowlSettings {
     // mirror of its circle point (the other side), by the end.
     float followAcross = 0.6f;
     float speed = 22.0f;  // m/s at release, standing delivery (11.4)
+    // Coil (M6): a flat circle around the chest; the clicked point behind
+    // toward the bowling-arm side is how far the trunk counter-rotates
+    // (the force), at most maxCoil. The pelvis takes pelvisShare of it, the
+    // spine the rest (hip-shoulder separation).
+    float coilRadiusFactor = 1.0f;
+    float maxCoil = math::radians(120.0f);
+    float coilPelvisShare = 0.3f;
+    float coilTime = 0.35f;  // s, the trunk winds back
+    // Bowling hand while coiled, carried by the trunk: offset from the chest
+    // (m; x toward the bowling-arm side, y up, z forward).
+    math::Vec3 gather{0.15f, 0.15f, 0.2f};
+    // Front arm reaches up toward the batter, raised this far above level.
+    float frontArmRaise = math::radians(45.0f);
+    // Back foot steps by this at full coil (m; x toward the bowling-arm side, z forward).
+    float backFootSide = 0.1f, backFootForward = -0.2f;
 };
 
 // Circle radius for an arm of `armLength` bent by `elbowBend` (radians),
