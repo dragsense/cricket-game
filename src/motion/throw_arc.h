@@ -90,21 +90,45 @@ struct BowlSettings {
     // mirror of its circle point (the other side), by the end.
     float followAcross = 0.6f;
     float speed = 22.0f;  // m/s at release, standing delivery (11.4)
-    // Coil (M6): a flat circle around the chest; the clicked point behind
-    // toward the bowling-arm side is how far the trunk counter-rotates
-    // (the force), at most maxCoil. The pelvis takes pelvisShare of it, the
-    // spine the rest (hip-shoulder separation).
-    float coilRadiusFactor = 1.0f;
-    float maxCoil = math::radians(120.0f);
-    float coilPelvisShare = 0.3f;
-    float coilTime = 0.35f;  // s, the trunk winds back
-    // Bowling hand while coiled, carried by the trunk: offset from the chest
-    // (m; x toward the bowling-arm side, y up, z forward).
-    math::Vec3 gather{0.15f, 0.15f, 0.2f};
-    // Front arm reaches up toward the batter, raised this far above level.
+    // Action point (M6): the upper body counter-rotates by baseCoil with the
+    // hand in front of the shoulder up to maxCoil with it behind; the pelvis
+    // takes pelvisShare of it (hips nearly square).
+    float baseCoil = math::radians(60.0f);
+    float maxCoil = math::radians(110.0f);
+    float coilPelvisShare = 0.15f;
+    float coilTime = 0.35f;  // s, the hand goes to the point and the trunk winds back
+    // The upper body also leans toward the action point, up to coilLean with
+    // the hand an arm length above the chest (none at chest height or below).
+    float coilLean = math::radians(25.0f);
+    // Front arm: swings round its shoulder in the upright plane toward the
+    // batter, up to frontArmRaise above level at the action point, then down
+    // to frontArmEnd (below level; past -90 is behind) by the release; the
+    // wrist frontReach x arm length out (elbow a little bent).
     float frontArmRaise = math::radians(45.0f);
+    float frontArmEnd = math::radians(-110.0f);
+    float frontReach = 0.85f;
     // Back foot steps by this at full coil (m; x toward the bowling-arm side, z forward).
     float backFootSide = 0.1f, backFootForward = -0.2f;
+    // Release (M6): the front foot strides strideLength (m) and the swing
+    // starts as it lands; action point -> release in swingTime (s), speeding
+    // up; the hips finish unwinding by hipLead of it, the shoulders at the
+    // release. The elbow takes armIk of what the arm IK would bend (straight
+    // arm; the body makes up the rest).
+    float strideLength = 0.7f;
+    float swingTime = 0.3f;
+    float hipLead = 0.4f;
+    float armIk = 0.2f;
+    float minSpeed = 15.0f, maxSpeed = 26.0f;  // m/s at release, by coil
+    // Follow-through: the arm carries on followAngle round the circle over
+    // swingFollowTime (s), slowing; the shoulders turn on past square by
+    // followTurn and the hand is carried followReach (m) forward, which the
+    // body folds after.
+    float followAngle = math::radians(150.0f);
+    float swingFollowTime = 0.45f;
+    float followTurn = math::radians(40.0f);
+    float followReach = 0.35f;
+    // Debug: the bowling action runs at this share of real speed (1 = real).
+    float slowMotion = 1.0f;
 };
 
 // Circle radius for an arm of `armLength` bent by `elbowBend` (radians),

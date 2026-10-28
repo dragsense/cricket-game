@@ -45,23 +45,57 @@
     "releaseDeg": 15
   },
   "coil": {
-    // Coil circle (cyan, flat around the chest, radius = factor x arm length).
-    // B, then a click on it: the trunk counter-rotates toward that point (0 =
-    // facing the batter, + toward the bowling-arm side), at most maxDeg; the
-    // farther, the more force (BIOMECHANICS 11.2). The pelvis takes
-    // pelvisShare, the spine the rest (hip-shoulder separation). R cancels.
-    "radiusFactor": 1.0,
-    "maxDeg": 120,
-    "pelvisShare": 0.3,
+    // B, then the wheel leans the arm circle (yellow) and a click on it sets
+    // the action point (white): the hand goes there and the upper body
+    // counter-rotates, baseDeg with the point in front of the shoulder up to
+    // maxDeg with it behind (more coil, more pace; BIOMECHANICS 11.2). The
+    // pelvis takes pelvisShare (hips nearly square: hip-shoulder separation).
+    // R cancels.
+    "baseDeg": 60,
+    "maxDeg": 110,
+    "pelvisShare": 0.15,
     "time": 0.35,
-    // Bowling hand while coiled, riding the trunk near the chin: offset from
-    // the chest (m; x toward the bowling-arm side, y up, z forward).
-    "gather": [0.15, 0.15, 0.2],
-    // Front arm reaches toward the batter, raised this far above level.
+    // The upper body leans toward the action point, up to leanDeg with the
+    // hand an arm length above the chest (none at chest height or below).
+    "leanDeg": 25,
+    // Front arm: swings up round its shoulder toward the batter to
+    // frontArmRaiseDeg above level at the action point, then back down the
+    // same way to frontArmEndDeg (-90 straight down, past it behind) by the
+    // release; the wrist frontReach x arm length out (elbow a little bent).
     "frontArmRaiseDeg": 45,
+    "frontArmEndDeg": -110,
+    "frontReach": 0.85,
     // Back foot steps by this at full coil (m; side toward the bowling arm,
     // forward + toward the batter).
     "backFootSide": 0.1,
     "backFootForward": -0.2
+  },
+  "swing": {
+    // Release click (red point on the circle): the front foot strides
+    // strideLength (m) and lands, then action point -> release in time (s),
+    // speeding up; the hips finish unwinding by hipLead of it, the shoulders
+    // at the release. The elbow takes armIk of the bend the arm IK would
+    // make (straight arm; the body makes up the rest: reverse IK).
+    "strideLength": 0.7,
+    "time": 0.3,
+    "hipLead": 0.4,
+    "armIk": 0.2,
+    // Ball speed at release (m/s), from baseDeg coil to maxDeg.
+    "minSpeed": 15,
+    "maxSpeed": 26
+  },
+  "follow": {
+    // After the release the arm carries on angleDeg round the circle over
+    // time (s), slowing; the shoulders turn turnDeg past square and the hand
+    // is carried reach (m) forward, so the body folds after it.
+    "angleDeg": 150,
+    "time": 0.45,
+    "turnDeg": 40,
+    "reach": 0.35
+  },
+  "debug": {
+    // The bowling action (action point, swing, follow-through) runs at this
+    // share of real speed, to study the motion; 1 = real speed.
+    "slowMotion": 0.2
   }
 }

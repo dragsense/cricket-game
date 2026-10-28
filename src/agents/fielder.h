@@ -196,15 +196,26 @@ public:
     // at the release point along the circle's tangent (takeRelease).
     void startBowl(float tilt, float releaseAngle);
     bool bowling() const { return phase_ == Phase::Bowl; }
-    // Coil (M6): with the ball held and standing, the trunk counter-rotates
-    // to `angle` on coilArc() (0 facing, + toward the bowling-arm side; the
-    // farther, the more force): the pelvis less than the shoulders, the back
-    // foot steps, the bowling hand rides the trunk near the chin and the
-    // front arm reaches up toward the batter, and holds. cancelCoil returns.
-    void coilBowl(float angle);
+    // Bowling action (M6), two clicks, each acting at once (ball held,
+    // standing). actionBowl: the hand goes to `angle` on bowlArc(`tilt`) and
+    // the upper body counter-rotates, the hips staying nearly square (hip-
+    // shoulder separation); the farther behind the point, the more coil and
+    // pace; the back foot steps and the front arm reaches up. releaseBowl:
+    // the front foot strides and plants, the hips unwind first, then the
+    // shoulders; the straight arm swings on round the circle (the body
+    // following by the reach stages: reverse IK) and the ball leaves at
+    // `releaseAngle` along the tangent; the arm carries on, slowing, and the
+    // body folds after it. cancelCoil returns before the release.
+    void actionBowl(float tilt, float angle);
+    void tiltBowl(float tilt);  // before the release
+    void releaseBowl(float releaseAngle);
     void cancelCoil();
     bool coiled() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Coil; }
-    motion::ThrowArc coilArc() const;  // character space
+    bool bowlSwinging() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Swing; }
+    // Arm circle around the bowling shoulder, square to the batter, leaned
+    // by `tilt`; fixed while the body moves (the action point and the
+    // release point are on it; the ball leaves on its tangent). Character space.
+    motion::ThrowArc bowlArc(float tilt) const;
     // Limb test (body-mechanics study): a wrist goal for one hand and the feet
     // set directly (world space); the body follows through the reach stages
     // and the foot repositioning, and walking waits. clearPose() puts both
@@ -264,6 +275,8 @@ private:
     void finishPick(float dt);
     void updateThrow(float dt);  // sets this tick's wrist goal on the throw path
     void updateBowl(float dt);   // sets this tick's wrist goal on the bowling circle
+    math::Vec3 bowlSwingPoint(float angle) const;  // hand on the swing path, character space
+    math::Vec3 frontArmPoint(float angle) const;   // front wrist goal, character space
     void lungeToward(math::Vec3 ball);  // character space
     void startReturn();                  // carry back from goal_, Fitts timed
     float handTime(float distance) const;  // Fitts' law movement time
@@ -306,11 +319,16 @@ private:
     float throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // bowling circle lean and release (radians)
     float throwTime_ = 0.0f;   // s since the throw started
     math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space
-    enum class BowlStage { Circle, Coil };
+    enum class BowlStage { Circle, Coil, Swing };
     BowlStage bowlStage_ = BowlStage::Circle;
-    float coil_ = 0.0f;  // coil angle (radians, coilBowl)
+    float coil_ = 0.0f;  // trunk counter-rotation at the action point (radians)
+    float pelvisTwist_ = 0.0f;  // bowling: the pelvis's own turn (chestTwist_ is the shoulders')
+    float swingFrom_ = 0.0f, swingTo_ = 0.0f;  // action and release angles on bowlArc, unwrapped
+    float coilLean_ = 0.0f;   // upper-body lean toward the action point at full coil (radians)
+    float chestLean_ = 0.0f;  // current lean about leanAxis_
+    math::Vec3 leanAxis_{1.0f, 0.0f, 0.0f};  // character space
     bool coilTwist_ = false;  // chestTwist_ is the bowling coil (its shares), not the throw's
-    math::Vec3 frontGoal_{0.0f};  // non-bowling wrist goal while coiled, character space
+    math::Vec3 frontGoal_{0.0f};  // non-bowling wrist goal while coiled or swinging, character space
     enum class ThrowStage { Ready, Wind, Swing };
     ThrowStage throwStage_ = ThrowStage::Ready;
     float throwSlot_ = 0.0f, throwBack_ = 0.0f;  // radians (beginThrow, windThrow)

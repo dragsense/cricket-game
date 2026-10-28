@@ -4,21 +4,32 @@
 
 Goal: the bowler's delivery in the spirit of the M5 chest throw: the player gives body
 intent on circles around the bowler (trunk coil, arm-circle tilt, release point); the
-body does the motion; line, length and speed come from it. Scheme (the user's yes):
-coil circle (trunk counter-rotation = force), then the arm circle (wheel tilt, release
-click: stride, hips then shoulders, arm over the top, release on the tangent), then
-front-arm pull and follow-through. Old `startBowl` kept (unused) until the new one works.
+body does the motion; line, length and speed come from it. Reworked 2026-10-28 (the
+user's yes): two clicks on one arm circle; the body is never controlled, it follows the
+hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
 
-- [x] **6.1 Coil** (built; awaiting the user's check): B, then a click on the coil
-  circle (cyan, flat around the chest, `coil.radiusFactor`): `Fielder::coilBowl` turns
-  the trunk back toward the point (0 facing, + toward the bowling-arm side, up to
-  `coil.maxDeg` 120; pelvis `coil.pelvisShare` 0.3, spine the rest, joint-limited), the
-  back foot steps (`coil.backFootSide/Forward` x coil share), the bowling hand rides the
-  trunk at `coil.gather`, the front arm reaches up toward the batter
-  (`coil.frontArmRaiseDeg`). Then the yellow arm circle shows the release point and the
-  wheel tilts it; the release click comes in 6.2. R cancels the coil.
-- [ ] 6.2 Release: stride, plant, hips then shoulders, arm over the top, release.
-- [ ] 6.3 Front-arm pull and follow-through across the body.
+- [x] **6.1 Action point and release** (built in watch mode; awaiting the user's check).
+  B, the wheel leans the yellow arm circle (`bowlArc`: square to the batter, fixed
+  while the body moves; red after the action click).
+  1. Action click (white): `Fielder::actionBowl` takes the hand there and holds it; the upper body
+     counter-rotates `coil.baseDeg` 60 (point in front) .. `coil.maxDeg` 110 (behind),
+     pelvis only `coil.pelvisShare` 0.15 (hip-shoulder separation); the upper body
+     leans toward the point (`coil.leanDeg` x its height above the chest); back foot
+     steps; the front arm swings up round its shoulder toward the batter
+     (`coil.frontArmRaiseDeg`) and back down the same way to `coil.frontArmEndDeg` by
+     the release (`frontReach`, elbow a little bent).
+  2. Release click on the same circle (red; the ball leaves on its tangent, so the
+     point reads as length): `Fielder::releaseBowl`: front foot strides
+     (`swing.strideLength`), lands; the hips unwind first (`swing.hipLead`), the
+     shoulders by the release; the hand always goes on round from the action point, past the bottom (down, back,
+     over), on the upright circle beside the body, back onto the leaned circle by the
+     release (`bowlSwingPoint`),
+     speeding up in `swing.time`; elbow only `swing.armIk` 0.2 of the arm IK (straight
+     arm, the body makes up the rest); ball off the tangent at `swing.minSpeed..maxSpeed`
+     by coil. Follow-through: arm on `follow.angleDeg`, slowing; shoulders past square
+     (`follow.turnDeg`), hand carried `follow.reach` forward so the body folds; return.
+  R cancels before the release. Open: weights on the reverse IK (body share), side-bend
+  for high actions, momentum feel.
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 
