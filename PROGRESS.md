@@ -8,28 +8,56 @@ body does the motion; line, length and speed come from it. Reworked 2026-10-28 (
 user's yes): two clicks on one arm circle; the body is never controlled, it follows the
 hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
 
-- [x] **6.1 Action point and release** (built in watch mode; awaiting the user's check).
-  B, the wheel leans the yellow arm circle (`bowlArc`: square to the batter, fixed
-  while the body moves; red after the action click).
-  1. Action click (white): `Fielder::actionBowl` takes the hand there and holds it; the upper body
-     counter-rotates `coil.baseDeg` 60 (point in front) .. `coil.maxDeg` 110 (behind),
-     pelvis only `coil.pelvisShare` 0.15 (hip-shoulder separation); the upper body
-     leans toward the point (`coil.leanDeg` x its height above the chest); back foot
-     steps; the front arm swings up round its shoulder toward the batter
-     (`coil.frontArmRaiseDeg`) and back down the same way to `coil.frontArmEndDeg` by
-     the release (`frontReach`, elbow a little bent).
-  2. Release click on the same circle (red; the ball leaves on its tangent, so the
-     point reads as length): `Fielder::releaseBowl`: front foot strides
-     (`swing.strideLength`), lands; the hips unwind first (`swing.hipLead`), the
-     shoulders by the release; the hand always goes on round from the action point, past the bottom (down, back,
-     over), on the upright circle beside the body, back onto the leaned circle by the
-     release (`bowlSwingPoint`),
-     speeding up in `swing.time`; elbow only `swing.armIk` 0.2 of the arm IK (straight
-     arm, the body makes up the rest); ball off the tangent at `swing.minSpeed..maxSpeed`
-     by coil. Follow-through: arm on `follow.angleDeg`, slowing; shoulders past square
-     (`follow.turnDeg`), hand carried `follow.reach` forward so the body folds; return.
-  R cancels before the release. Open: weights on the reverse IK (body share), side-bend
-  for high actions, momentum feel.
+- [x] **6.1 Action point and release** (the user: "feels better"; commit dbcbde0 has the
+  full version with trunk coil and lean, back-foot step, stride, hips-then-shoulders and
+  front arm).
+- [x] **6.1d Hand only** (the user's call, 2026-10-28; built in watch mode, awaiting the
+  user's check): rebuilt step by step from the bowling hand (dbcbde0 has the earlier
+  full version). B, then:
+  1. Action circle (yellow, full, `Fielder::actionCircle`: round the bowling shoulder,
+     seen from the side, 0 down, 90 ahead; the wheel turns it about the vertical up to
+     180 deg either way, Ctrl + wheel sizes it, at most the arm length): the mouse picks the
+     action point (white) anywhere on it; the hand's way there shows in cyan
+     (`Fielder::actionPathPoint`: in the plane of the shoulder, the resting hand and the
+     point, always up through the front, never backward; the radius growing to the point's + the gap: `action.gap` 0.1 m to start,
+     Shift + wheel changes it). Click (`Fielder::actionBowl`): the hand goes that way in
+     `action.time`, past the point, then is pulled back onto it in `action.pullTime`
+     (the wrist loads).
+  2. Release circle (red, `bowlArc`: round the bowling shoulder, arm length, square to
+     the batter; the wheel leans it out to the bowling-arm side only); the mouse picks
+     the release point (magenta). Click (`releaseBowl`): the front foot steps straight
+     ahead (`swing.strideLength`) once the hand is nearly down (`swing.strideAt`); the hand goes round the shoulder from the action point
+     down to the fixed bottom point (`Fielder::bottomPoint`, straight below the shoulder
+     by the arm; `Fielder::arcBetween`, `back.time`, speeding up), then onto the red
+     circle by a quarter turn and round it (back, over) in `swing.time`; ball off its
+     tangent at the release point, along the facing before the action (toward the batter). Follow-through on the red circle (`follow.*`); return.
+  Chest and body (2026-10-29, the user's call; no hip twist): at the action point the
+  chest turns side-on (chest bone first, spine_02 and spine_01 taking what its limit
+  leaves): `coil.chestDeg` 20 always, growing once the point is less than
+  `coil.aheadStart` 0.2 m ahead of the shoulder, to `coil.maxDeg` 35 an arm length
+  behind; held to the bottom point, unwound by the release. With the hand from the action
+  point the whole player turns side-on (`walk()`: the walker's facing, the feet stepping
+  round until the stride): `swing.bodyDeg` 60 always, plus the angle at the shoulder
+  between the bottom point and the red circle's point furthest across the body
+  (`swing.leanSign`); full at the bottom point, back to straight by the release. The front
+  foot strides, and points, along the facing before the action at `swing.strideAt` 0.9 of the way
+  down (it lands in the swing, the body nearly straight); the foot turns straight while
+  in the air. Values from BIOMECHANICS 11.5.
+  Front hand (`Fielder::frontPathPoint`, blue, drawn in full): its way runs from rest
+  round its own shoulder (via the front) to the end of the bowling hand's way, touching
+  it; the hand starts `action.frontDelay` after the bowling hand and goes only
+  `action.frontShare` 0.8 of it, then holds; after the release click back down the same
+  way (`Fielder::frontDownPoint`); at rest in the swing.
+  The circles, ways and points follow the shoulders as the chest carries them
+  (`Fielder::shoulderNow`, from the chest bone each tick; the action point rides the
+  shoulder).
+  No reverse IK while bowling or throwing (2026-10-29, the user's call): the arm IK alone takes the
+  hand (elbow bends as needed).
+  R cancels. Real speed by default; I toggles slow motion (`slowMotion.factor` 0.2).
+  U: a random action at once (`bowling.json` "random"; the release at the top of the red
+  circle follows once the hand holds), the camera following; the mouse does not aim
+  meanwhile. (A run-up and gather jump were tried and removed, the user's call,
+  2026-10-29: M6 is a standing delivery.)
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 

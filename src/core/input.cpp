@@ -36,6 +36,8 @@ constexpr const char* kActionNames[] = {
     "ThrowBall",
     "GiveBall",
     "BowlAim",
+    "RandomBowl",
+    "SlowMotion",
     "PoseLimb",
     "PoseAway", "PoseNear", "PoseLeft", "PoseRight",
     "LaunchBall1", "LaunchBall2", "LaunchBall3", "LaunchBall4", "LaunchBall5",
@@ -100,6 +102,8 @@ ActionMap::ActionMap() {
     bind(Action::ThrowBall, Key::T);
     bind(Action::GiveBall, Key::C);
     bind(Action::BowlAim, Key::B);
+    bind(Action::RandomBowl, Key::U);
+    bind(Action::SlowMotion, Key::I);
     bind(Action::PoseLimb, Key::F);
     bind(Action::PoseAway, Key::Up);
     bind(Action::PoseNear, Key::Down);

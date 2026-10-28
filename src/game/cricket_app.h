@@ -70,6 +70,8 @@ private:
     // The bowler's circle around the bowling shoulder; with B on, the release
     // point under the mouse (drawn), from the interpolated pose.
     void updateBowlArc(float alpha);
+    void applyBowlSettings();  // config/bowling.json, with the slow-motion toggle
+    void randomBowl(bool autoRelease);  // a random action at once; with autoRelease, released once it holds
     // Limb test: F chooses the limb, the arrows move its target (Shift:
     // up/down) over `seconds`; R resets the pose.
     void updatePose(float seconds);
@@ -102,14 +104,21 @@ private:
     motion::ThrowArc slotArc_, chestArc_;
     float slotAngle_ = 0.0f, tilt_ = 0.0f, backAngle_ = 0.0f, releaseAngle_ = 0.0f;
     int throwStep_ = 0;
-    // Bowling aim (radians): the circle's lean from vertical and the release
-    // point on it (0 top, + in front); bowlAim_: the bowler is controlled.
-    motion::ThrowArc bowlArc_;
-    float bowlTilt_ = 0.0f, bowlRelease_ = 0.0f;
+    // Bowling aim: the release point on the release circle (radians, 0 top,
+    // + in front); bowlAim_: the bowler is controlled.
+    float bowlRelease_ = 0.0f;
     bool bowlAim_ = false;
-    // Action point on the bowling circle (radians); bowlStep_: the next
-    // bowler click is 0 action point, 1 release, 2 none (bowling).
-    float bowlAction_ = 0.0f;
+    // bowlStep_: the next bowler click is 0 action point, 1 release, 2 none
+    // (bowling).
+    // Action circle (world), its turn about the vertical (radians; wheel),
+    // its radius as a share of the arm length (Ctrl + wheel; at most 1), and
+    // the action point's angle on it (radians; 0 down, +90 ahead).
+    motion::ThrowArc actionArc_;
+    float actionTurn_ = 0.0f, actionSize_ = 1.0f, actionAngle_ = 0.0f;
+    float actionGap_ = 0.1f;  // the hand's way passes the action point by this (m; Shift + wheel)
+    // Release circle (world) and its lean; the wheel leans it after the action click.
+    motion::ThrowArc releaseArc_;
+    float releaseTilt_ = 0.0f;
     int bowlStep_ = 0;
     // Limb test (engine.json debug.limbTest): the bowler, arcs and walking are
     // hidden; limb 0 right foot, 1 left foot, 2 right hand, 3 left hand.
@@ -118,7 +127,10 @@ private:
     bool poseActive_ = false;      // poseTarget_ belongs to the chosen limb
     math::Vec3 poseTarget_{0.0f};  // world
     float ballBackTimer_ = -1.0f;  // s until the bowled ball returns to the bowler; < 0 off
-    std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot
+    std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot; U: random action
+    bool slowMotion_ = false;   // I: the bowling action in slow motion
+    bool autoRelease_ = false;  // U: release once the hand holds at the action point
+    bool autoBowl_ = false;     // U: a run-up or random action under way (the mouse and wheel do not aim)
     float heading_ = 0.0f;    // controlled player's heading: the camera's, unless freeView_
     bool freeView_ = false;   // V: the camera moves freely; the heading is held
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)

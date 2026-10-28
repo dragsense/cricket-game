@@ -931,6 +931,27 @@ Fast bowling is well studied; spin less so, and wrist spin hardly at all **[P]**
   slower. No measured value found; we estimate ~20–25 m/s for a standing pace delivery
   **[E]**.
 
+### 11.5 Trunk: side-on, counter-rotation, separation (M6)
+- Around back-foot contact the bowler is turned side-on to the batter (shoulder angle
+  under ~210° counts as side-on in one classification); front-on bowlers sit ~20° more
+  open. The back foot's angle largely sets how side-on the shoulders get
+  ([ISB 2005 abstract](https://media.isbweb.org/images/conf/2005/abstracts/0842.pdf))
+  **[P]**.
+- Shoulder counter-rotation (the shoulders turning further away from the batter during
+  the delivery stride) measures ~10–40° (side-on ~11°, front-on ~22° at back-foot
+  contact; ~38–42° mean in a mixed group); above ~30° is linked to lower-back injury
+  ([ISB 2005](https://media.isbweb.org/images/conf/2005/abstracts/0842.pdf);
+  [Senington, Lee & Williams, St Mary's](https://research.stmarys.ac.uk/id/eprint/1976/1/Are%20shoulder%20counter%20rotation%20Repository.pdf))
+  **[P]**.
+- Hip-shoulder separation (shoulders vs pelvis) peaks at ~27–30° in fast bowlers, ~21° at
+  front-foot contact in spinners
+  ([Senington et al.](https://research.stmarys.ac.uk/id/eprint/1976/1/Are%20shoulder%20counter%20rotation%20Repository.pdf);
+  [Sanders 2018, spin](https://www.whit.com.au/cleanbowled/cricket-biomechanics/spin-bowling-and-batting/2018-sanders-kinematic-parameters-spin/))
+  **[P]**. Angle definitions differ between labs, so the numbers are ranges, not targets.
+- In the game (M6, standing delivery): the whole player turns ~60° side-on as the hand
+  goes down (back-foot contact), the chest a further ~20–35° (separation and
+  counter-rotation together), both unwinding to square by the release **[E]**.
+
 ### Implementation notes (planned `config/bowling.json`)
 - Reuse the M4 arc (`motion::ThrowArc`, `makeSwingArc`) as a **full circle** around the
   bowling shoulder, radius `arc.radiusFactor` (~0.97 x arm length, near-straight arm);

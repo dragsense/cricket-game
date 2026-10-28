@@ -197,20 +197,52 @@ public:
     void startBowl(float tilt, float releaseAngle);
     bool bowling() const { return phase_ == Phase::Bowl; }
     // Bowling action (M6), two clicks, each acting at once (ball held,
-    // standing). actionBowl: the hand goes to `angle` on bowlArc(`tilt`) and
-    // the upper body counter-rotates, the hips staying nearly square (hip-
-    // shoulder separation); the farther behind the point, the more coil and
-    // pace; the back foot steps and the front arm reaches up. releaseBowl:
-    // the front foot strides and plants, the hips unwind first, then the
-    // shoulders; the straight arm swings on round the circle (the body
-    // following by the reach stages: reverse IK) and the ball leaves at
-    // `releaseAngle` along the tangent; the arm carries on, slowing, and the
-    // body folds after it. cancelCoil returns before the release.
-    void actionBowl(float tilt, float angle);
-    void tiltBowl(float tilt);  // before the release
-    void releaseBowl(float releaseAngle);
+    // standing). Only the bowling hand is driven; the body follows it through
+    // the reach stages (reverse IK). actionBowl: the action point `point`
+    // (character space, on a sphere round the bowling shoulder); the hand
+    // goes there from rest along actionPathPoint, overshooting by `gap` (m),
+    // then is pulled back onto it (the wrist loads) and holds.
+    // releaseBowl: the straight arm goes on round the bowling way (release
+    // circle's angles: down past the bottom, back, over) to low behind the
+    // hip, then eases onto the release circle (bowlArc(`releaseTilt`)) and
+    // the ball leaves at `releaseAngle` along its tangent; the arm carries
+    // on, slowing, and the body folds after it. cancelCoil returns before the release.
+    void actionBowl(math::Vec3 point, float gap);
+    // The hand's way from rest to `point` at u = 0..1: round the shoulder in
+    // the plane of the shoulder, the resting hand and the point, the radius
+    // growing from the resting hand's to the point's + `gap`. Character space.
+    math::Vec3 actionPathPoint(math::Vec3 point, float gap, float u) const;
+    // Round the shoulder from `from` to `to` at u = 0..1 (the short way, in
+    // their plane), the radius going between theirs. Character space.
+    math::Vec3 arcBetween(math::Vec3 from, math::Vec3 to, float u) const;
+    // Straight below the shoulder by the arm: where the hand's way from
+    // the action point ends and the release circle starts. Character space.
+    math::Vec3 bottomPoint() const;
+    // A shoulder as the chest now carries it (the rest one when not
+    // bowling), and the resting hand carried with it. Character space.
+    math::Vec3 shoulderNow(bool left) const;
+    math::Vec3 restHandNow(bool left) const;
+    // The front hand's full way at u = 0..1: from rest round its own
+    // shoulder (via the front) to the end of the bowling hand's way to
+    // `point` (with `gap`), touching it; the hand goes only
+    // BowlSettings::frontShare of it. frontDownPoint: back down the same way
+    // from there. Character space.
+    math::Vec3 frontPathPoint(math::Vec3 point, float gap, float u) const;
+    math::Vec3 frontDownPoint(math::Vec3 point, float gap, float u) const;
+    // Round `shoulder` from `from` to `to` at u = 0..1 (the short way, in
+    // their plane; with `viaFront`, never setting off backward), the radius
+    // going between theirs.
+    static math::Vec3 arcAround(math::Vec3 shoulder, math::Vec3 from, math::Vec3 to, float u, bool viaFront = false);
+    // Action circle (for picking the action point): round the bowling
+    // shoulder in the forward-up plane (seen from the side), angle 0 straight
+    // down, +90 straight ahead; turned about the vertical toward the
+    // bowling-arm side by `turn` (radians); `radius` (m). Character space.
+    motion::ThrowArc actionCircle(float turn, float radius) const;
+    void releaseBowl(float releaseAngle, float releaseTilt);
     void cancelCoil();
     bool coiled() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Coil; }
+    // At the action point and holding (the way there and the pull back done).
+    bool actionHeld() const { return coiled() && throwTime_ >= bowl_.coilTime + bowl_.pullTime; }
     bool bowlSwinging() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Swing; }
     // Arm circle around the bowling shoulder, square to the batter, leaned
     // by `tilt`; fixed while the body moves (the action point and the
@@ -275,8 +307,8 @@ private:
     void finishPick(float dt);
     void updateThrow(float dt);  // sets this tick's wrist goal on the throw path
     void updateBowl(float dt);   // sets this tick's wrist goal on the bowling circle
-    math::Vec3 bowlSwingPoint(float angle) const;  // hand on the swing path, character space
-    math::Vec3 frontArmPoint(float angle) const;   // front wrist goal, character space
+
+    void setActionPoint(math::Vec3 point);  // character space
     void lungeToward(math::Vec3 ball);  // character space
     void startReturn();                  // carry back from goal_, Fitts timed
     float handTime(float distance) const;  // Fitts' law movement time
@@ -308,6 +340,10 @@ private:
     float armLength_ = 0.6f;  // shoulder to wrist (m), from the skeleton
     math::Vec3 restShoulderL_{0.0f}, restShoulderR_{0.0f};  // character space, rest pose
     math::Vec3 restChest_{0.0f};  // character space, rest pose (centre of both throw circles)
+    // Shoulders as the chest carries them (character space; updated each
+    // tick while bowling, at rest otherwise) and in the chest's frame.
+    math::Vec3 liveShoulderL_{0.0f}, liveShoulderR_{0.0f};
+    math::Vec3 chestShoulderL_{0.0f}, chestShoulderR_{0.0f};
     math::Vec3 restWristL_{0.0f}, restWristR_{0.0f};        // character space, rest pose
     math::Vec3 reachTarget_{0.0f};  // the ball, world space
     math::Vec3 reachVelocity_{0.0f};  // world, m/s
@@ -319,16 +355,23 @@ private:
     float throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // bowling circle lean and release (radians)
     float throwTime_ = 0.0f;   // s since the throw started
     math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space
-    enum class BowlStage { Circle, Coil, Swing };
+    enum class BowlStage { Circle, Coil, Back, Swing };
     BowlStage bowlStage_ = BowlStage::Circle;
-    float coil_ = 0.0f;  // trunk counter-rotation at the action point (radians)
-    float pelvisTwist_ = 0.0f;  // bowling: the pelvis's own turn (chestTwist_ is the shoulders')
+    float bowlPace_ = 0.0f;  // 0..1 from the action point (behind = 1)
+    float coil_ = 0.0f;      // chest-bone turn from the action point (radians)
+    float bowlBaseYaw_ = 0.0f, bowlYaw_ = 0.0f;  // facing before the action, and the one turned to now (radians)
+    float bodyTurn_ = 0.0f;  // whole-player turn at the bottom point (radians, signed)
+    int strideFoot_ = -1;    // the foot that strode (motion::Foot), pointing straight; -1 none
+    bool bowlTwist_ = false; // chestTwist_ is the bowling turn (its pelvis share), not the throw's
+    float chestLean_ = 0.0f;  // chest-bone turn now (radians)
+    float leanTo_ = 0.0f;     // the release circle's part of the whole-player turn (radians)
+    math::Vec3 leanAxis_{0.0f, 1.0f, 0.0f};  // character space (vertical)
+    math::Vec3 frontGoal_{0.0f};  // front (non-bowling) wrist goal while bowling, character space
     float swingFrom_ = 0.0f, swingTo_ = 0.0f;  // action and release angles on bowlArc, unwrapped
-    float coilLean_ = 0.0f;   // upper-body lean toward the action point at full coil (radians)
-    float chestLean_ = 0.0f;  // current lean about leanAxis_
-    math::Vec3 leanAxis_{1.0f, 0.0f, 0.0f};  // character space
-    bool coilTwist_ = false;  // chestTwist_ is the bowling coil (its shares), not the throw's
-    math::Vec3 frontGoal_{0.0f};  // non-bowling wrist goal while coiled or swinging, character space
+    float releaseTilt_ = 0.0f; // release circle lean (radians)
+    math::Vec3 actionOffset_{0.0f};  // action point from the bowling shoulder (it rides the shoulder)
+    math::Vec3 backPoint_{0.0f};    // bottom point, where the release circle starts, character space
+    float actionGap_ = 0.1f;       // the hand overshoots the action point by this (m)
     enum class ThrowStage { Ready, Wind, Swing };
     ThrowStage throwStage_ = ThrowStage::Ready;
     float throwSlot_ = 0.0f, throwBack_ = 0.0f;  // radians (beginThrow, windThrow)
