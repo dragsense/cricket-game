@@ -60,6 +60,7 @@ enum class Action : uint8_t {
     ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)
     Pick,              // reach for the ball, grip it, carry it back
     PickStep,          // held with Pick: step toward the ball first
+    Jump,              // hold to crouch, release to jump (WASD: direction)
     ThrowBall,         // release the ball from the batting position toward the fielder
     GiveBall,          // put the ball straight into the fielder's hand
     BowlAim,           // switch control (move, camera, mouse aim) between fielder and bowler

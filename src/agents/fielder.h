@@ -13,6 +13,7 @@
 #include "math/math.h"
 #include "motion/body_reposition.h"
 #include "motion/foot_stepper.h"
+#include "motion/jump_controller.h"
 #include "motion/throw_arc.h"
 #include "motion/walk_controller.h"
 #include "rig/rig.h"
@@ -117,6 +118,10 @@ public:
     void setGait(motion::Gait gait) { gait_ = gait; }
     motion::Gait gait() const { return gait_; }
     float speed() const { return walker_.speed(); }  // m/s
+    // Jump key held: standing and not picking, holding starts the crouch;
+    // letting go takes off toward the move input (none: straight up).
+    void setJumpInput(bool held) { jumpHeld_ = held; }
+    bool jumping() const { return jumper_.active(); }
 
     // The ball (world space). Moving it drops it if held; it is only picked
     // on startPick().
@@ -409,6 +414,9 @@ private:
     float accel_ = 0.0f;     // smoothed forward acceleration for the lean, m/s^2
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1
+    motion::JumpSettings jump_;
+    motion::JumpController jumper_;
+    bool jumpHeld_ = false;
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians
     Joints joints_;
     IkTargets targets_;

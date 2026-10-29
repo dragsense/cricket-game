@@ -369,6 +369,7 @@ bool CricketApp::pumpEvents() {
 
     // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).
     controlled.setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
+    controlled.setJumpInput(actions_.down(input_, core::Action::Jump));
                        : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
                                                                   : motion::Gait::Walk);
 

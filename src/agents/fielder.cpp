@@ -142,6 +142,25 @@ void Fielder::loadLocomotion(const core::Config& c) {
     load("jog", jogSettings_);
     runSettings_ = jogSettings_;
     load("run", runSettings_);
+    auto get = [&](const char* key, float v) { return c.getFloat(std::string("jump.") + key, v); };
+    auto deg = [&](const char* key, float radians) { return math::radians(get(key, math::degrees(radians))); };
+    jump_.crouchDepth = get("crouchDepth", jump_.crouchDepth);
+    jump_.loadTime = get("loadTime", jump_.loadTime);
+    jump_.minLoad = get("minLoad", jump_.minLoad);
+    jump_.crouchLean = deg("crouchLeanDeg", jump_.crouchLean);
+    jump_.pushTime = get("pushTime", jump_.pushTime);
+    jump_.pushLift = get("pushLift", jump_.pushLift);
+    jump_.height = get("height", jump_.height);
+    jump_.forwardDistance = get("forwardDistance", jump_.forwardDistance);
+    jump_.backDistance = get("backDistance", jump_.backDistance);
+    jump_.sideDistance = get("sideDistance", jump_.sideDistance);
+    jump_.tuck = get("tuck", jump_.tuck);
+    jump_.lean = deg("leanDeg", jump_.lean);
+    jump_.landDepth = get("landDepth", jump_.landDepth);
+    jump_.landTime = get("landTime", jump_.landTime);
+    jump_.recoverTime = get("recoverTime", jump_.recoverTime);
+    jump_.armBack = deg("armBackDeg", jump_.armBack);
+    jump_.armUp = deg("armUpDeg", jump_.armUp);
     control_ = shape_ = walkSettings_;
 }
 
@@ -292,10 +311,17 @@ void Fielder::tick(double dt) {
     previous_.locals = current_.locals;  // same size: no allocation
     previousRoot_ = root_;
     current_.locals = rig_.restPose().locals;
+    // Jump: standing (not picking, nearly still) only, for now.
+    if (jumpHeld_ && phase_ == Phase::Idle && walker_.speed() < 0.2f && !stepper_.stepping()) jumper_.start();
+    if (!jumpHeld_) jumper_.release(moveInput_);
+    jumper_.tick(static_cast<float>(dt), jump_);
     walk(static_cast<float>(dt));
     targets_.footL = root_.transformPoint(stepper_.foot(motion::Foot::Left));
     targets_.footR = root_.transformPoint(stepper_.foot(motion::Foot::Right));
     repositionBody(static_cast<float>(dt));
+    // In the air the feet leave the ground (after the body settles over them).
+    targets_.footL.y += jumper_.feetY();
+    targets_.footR.y += jumper_.feetY();
     addGaitMotion(static_cast<float>(dt));
     reachError_ = 0.0f;
     updatePick(static_cast<float>(dt));
@@ -353,6 +379,15 @@ void Fielder::tick(double dt) {
 void Fielder::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
     control_ = gait_ == motion::Gait::Run ? runSettings_ : gait_ == motion::Gait::Jog ? jogSettings_ : walkSettings_;
+    if (jumper_.active()) {
+        // Jumping: the root carries the flight's travel and the feet go with
+        // it (character space), landing where the body comes down.
+        walker_.tick(dt, math::Vec2(0.0f), false, 0.0f, control_);
+        blendShape();
+        const math::Vec2 v = jumper_.velocity();
+        root_.position += root_.rotation * math::Vec3(v.x, 0.0f, v.y) * dt;
+        return;
+    }
     // While picking the fielder stands (walk input waits for the return).
     // Bowling turns the whole player to bowlYaw_ (side-on, then straight).
     const bool picking = phase_ != Phase::Idle;
@@ -415,7 +450,7 @@ void Fielder::addGaitMotion(float dt) {
     const float side = swing == static_cast<int>(motion::Foot::Right) ? 1.0f : -1.0f;
     // Between steps, hold the value at a step boundary (continuous for walk and run).
     const float bob = motion::gaitBob(swing >= 0 ? stepper_.swingProgress() : 0.0f, w.flightFraction);
-    const math::Vec3 offset(side * w.sway * amount * arc, amount * (w.bob * bob - w.pelvisDrop), 0.0f);
+    const math::Vec3 offset(side * w.sway * amount * arc, amount * (w.bob * bob - w.pelvisDrop) + jumper_.bodyY(), 0.0f);
 
     // Lean forward with speed and acceleration, and into turns (about +Z,
     // positive tips the body toward -X, the right).
@@ -433,7 +468,8 @@ void Fielder::addGaitMotion(float dt) {
     // Pelvis turns toward the forward leg (+X left: a positive turn about +Y
     // takes the left hip back); the chest turns back against it.
     const float twist = -w.pelvisTwist * amount * legPhase_;
-    pelvis.rotation = math::fromAxisAngle(math::kRight, lean_.x) * math::fromAxisAngle(math::kForward, lean_.y) *
+    const math::Vec2 lean = lean_ + jumper_.lean();
+    pelvis.rotation = math::fromAxisAngle(math::kRight, lean.x) * math::fromAxisAngle(math::kForward, lean.y) *
                       math::fromAxisAngle(math::kUp, twist) * pelvis.rotation;
     if (joints_.chest >= 0) {
         math::Quat& chest = current_.locals[static_cast<size_t>(joints_.chest)].rotation;
@@ -521,6 +557,15 @@ void Fielder::swingArms(float dt) {
     };
     arm(joints_.armL, legPhase_);
     arm(joints_.armR, -legPhase_);
+    if (!jumper_.active()) return;
+    // Jumping: both arms swing together, back in the crouch and forward-up
+    // through take-off (+X rotation moves a hanging arm back), elbows soft.
+    const float a = jumper_.arms();
+    const float shoulder = a < 0.0f ? -a * jump_.armBack : -a * jump_.armUp;
+    for (const ik::TwoBoneChain* chain : {&joints_.armL, &joints_.armR}) {
+        current_.locals[static_cast<size_t>(chain->start)].rotation = math::fromAxisAngle(math::kRight, shoulder);
+        current_.locals[static_cast<size_t>(chain->mid)].rotation = math::fromAxisAngle(math::kRight, -0.3f);
+    }
 }
 
 void Fielder::stabiliseHead(float dt) {
@@ -756,6 +801,7 @@ void Fielder::startPick(bool step) {
                  (handMode_ != HandMode::Right && math::distance(restShoulderL_, ball) <= math::distance(restShoulderR_, ball));
     pickDuration_ = handTime(math::distance(reachLeft_ ? restWristL_ : restWristR_, ball));
     phase_ = Phase::Reach;
+    if (jumper_.active()) return;
     pickTime_ = 0.0f;
     if (step && reach_.maxLunge > 0.0f) lungeToward(ball);  // the reach waits for the foot to land
 }

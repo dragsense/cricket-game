@@ -58,6 +58,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   circle follows once the hand holds), the camera following; the mouse does not aim
   meanwhile. (A run-up and gather jump were tried and removed, the user's call,
   2026-10-29: M6 is a standing delivery.)
+- [x] **6.2 Standing jump** (2026-10-29; the user's visual check passed): groundwork for
+  the bowler's jump. `motion::JumpController`: crouch (held J deepens it, trunk forward,
+  arms back), push-off (legs extend, arms forward-up), ballistic flight (feet tuck),
+  landing absorb and recovery. WASD on release jumps forward / left / back / right
+  (camera-relative; none: straight up). Standing only; picking waits. Tunables:
+  `locomotion.json` "jump". Next: jumps from walk, jog and run (one-foot take-off,
+  speed carried).
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 
