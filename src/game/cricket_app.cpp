@@ -70,7 +70,8 @@ motion::BowlSettings readBowlSettings(const core::Config& c) {
     s.coilTime = c.getFloat("action.time", s.coilTime);
     s.pullTime = c.getFloat("action.pullTime", s.pullTime);
     s.frontDelay = c.getFloat("action.frontDelay", s.frontDelay);
-    s.frontShare = c.getFloat("action.frontShare", s.frontShare);
+    s.frontGap = c.getVec3("action.frontGap", s.frontGap);
+    s.elbowUpTurn = math::radians(c.getFloat("action.elbowUpTurnDeg", math::degrees(s.elbowUpTurn)));    s.turnDone = math::radians(c.getFloat("swing.turnDoneDeg", math::degrees(s.turnDone)));
     s.backTime = c.getFloat("back.time", s.backTime);
     s.coilAhead = c.getFloat("coil.aheadStart", s.coilAhead);
     s.chestBase = math::radians(c.getFloat("coil.chestDeg", math::degrees(s.chestBase)));
@@ -80,6 +81,18 @@ motion::BowlSettings readBowlSettings(const core::Config& c) {
     s.strideLength = c.getFloat("swing.strideLength", s.strideLength);
     s.strideAt = c.getFloat("swing.strideAt", s.strideAt);
     s.swingTime = c.getFloat("swing.time", s.swingTime);
+    s.runBackTime = c.getFloat("runUp.backTime", s.runBackTime);
+    s.runSwingTime = c.getFloat("runUp.swingTime", s.runSwingTime);
+    s.strideTime = c.getFloat("runUp.strideTime", s.strideTime);
+    s.runStride = c.getFloat("runUp.stride", s.runStride);
+    s.boundStretch = c.getFloat("runUp.boundStretch", s.boundStretch);
+    s.strideStretch = c.getFloat("runUp.strideStretch", s.strideStretch);
+    s.runOnTime = c.getFloat("runUp.runOn", s.runOnTime);
+    s.runOnPace = c.getFloat("runUp.runOnPace", s.runOnPace);
+    s.runOnHold = c.getFloat("runUp.runOnHold", s.runOnHold);
+    s.runOnStep = c.getFloat("runUp.runOnStep", s.runOnStep);
+    s.releaseLean = c.getFloat("swing.lean", s.releaseLean);
+    s.frontClear = c.getFloat("frontArm.clear", s.frontClear);
     s.minSpeed = c.getFloat("swing.minSpeed", s.minSpeed);
     s.maxSpeed = c.getFloat("swing.maxSpeed", s.maxSpeed);
     s.followAngle = math::radians(c.getFloat("follow.angleDeg", math::degrees(s.followAngle)));
@@ -354,24 +367,35 @@ bool CricketApp::pumpEvents() {
         sim_.bowler().cancelCoil();
         bowlStep_ = 0;
     }
-    // I: slow motion for the bowling action on/off. U: a random action.
+    // I: slow motion (the whole game) on/off. U: a random action.
     if (actions_.pressed(input_, core::Action::SlowMotion)) {
         slowMotion_ = !slowMotion_;
-        applyBowlSettings();
+        setTimeScale(slowMotion_ ? cfg_.bowling.getFloat("slowMotion.factor", 0.2f) : 1.0);
         LOG_INFO("Bowling slow motion {}", slowMotion_ ? "on" : "off");
     }
-    if (!limbTest_ && actions_.pressed(input_, core::Action::RandomBowl)) randomBowl(true);
+    if (!limbTest_ && actions_.pressed(input_, core::Action::RandomBowl)) randomBowl();
     agents::Fielder& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
     if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
     if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
     controlled.setMoveInput(move, true, heading_);
+    controlled.setJumpInput(actions_.down(input_, core::Action::Jump));
 
     // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).
     controlled.setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
-    controlled.setJumpInput(actions_.down(input_, core::Action::Jump));
                        : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
                                                                   : motion::Gait::Walk);
+    if (runUp_) {
+        // U: straight at the batter, the speed building from a jog to a run
+        // (the walker's acceleration), until J's jump takes off.
+        sim_.bowler().setMoveInput(math::Vec2(0.0f, 1.0f), true, runUpYaw_);
+        sim_.bowler().setGait(motion::Gait::Run);
+    }
+    // The bowler's jump (the bound) goes off the front foot (opposite the
+    // bowling arm) and lands on the back foot; kept through the delivery (the
+    // run-up flag ends at take-off, the bound's legs still need it).
+    sim_.bowler().setJumpFoot(!runUp_ && !sim_.bowler().bowling() ? -1
+                              : static_cast<int>(sim_.bowler().holdingLeft() ? motion::Foot::Right : motion::Foot::Left));
 
     if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
     if (actions_.pressed(input_, core::Action::Pick))
@@ -408,7 +432,7 @@ bool CricketApp::pumpEvents() {
                                       -math::kPi, math::kPi);
         input_.wheel = 0.0f;
     }
-    if (bowlAim_ && bowlStep_ == 1 && sim_.bowler().holding() && !input_.uiWantsMouse && !autoBowl_) {
+    if (bowlAim_ && bowlStep_ == 2 && sim_.bowler().holding() && !input_.uiWantsMouse && !autoBowl_) {
         const float step = input_.wheel * math::radians(cfg_.bowling.getFloat("aim.tiltStepDeg", 5.0f));
         releaseTilt_ = math::clamp(releaseTilt_ + step, 0.0f,
                                        math::radians(cfg_.bowling.getFloat("aim.maxTiltDeg", 90.0f)));
@@ -654,18 +678,17 @@ void CricketApp::updateThrowAim(float alpha) {
 
 void CricketApp::applyBowlSettings() {
     motion::BowlSettings s = readBowlSettings(cfg_.bowling);
-    s.slowMotion = slowMotion_ ? cfg_.bowling.getFloat("slowMotion.factor", 0.2f) : 1.0f;
     sim_.bowler().setBowlSettings(s);
 }
 
-void CricketApp::randomBowl(bool autoRelease) {
-    // The bowler takes control (the camera follows him) and bowls at once: a
-    // random action point, gap, release circle lean and release point within
-    // config/bowling.json "random"; the release follows when the hand holds
-    // at the action point (updateBowlArc) with `autoRelease`, else the caller
-    // starts it.
+void CricketApp::randomBowl() {
+    // The bowler takes control (the camera follows him) and runs at the
+    // batter; a random action point, gap, release circle lean and release
+    // point within config/bowling.json "random". At runUp.jumpSpeed he jumps; in
+    // the air the hand goes to the action point (updateBowlArc), then the way
+    // down (the front foot strides) and the release follow on their own.
     agents::Fielder& bowler = sim_.bowler();
-    if (!bowler.holding() || bowler.bowling()) return;
+    if (!bowler.holding() || bowler.bowling() || runUp_) return;
     auto range = [&](const std::string& key, float lo, float hi) {
         const float a = cfg_.bowling.getFloat(key + ".min", lo), b = cfg_.bowling.getFloat(key + ".max", hi);
         return std::uniform_real_distribution<float>(a, std::max(a, b))(rng_);
@@ -677,9 +700,15 @@ void CricketApp::randomBowl(bool autoRelease) {
     actionGap_ = range("random.gap", 0.0f, 0.2f);
     releaseTilt_ = math::radians(range("random.tiltDeg", 0.0f, 40.0f));
     bowlRelease_ = math::radians(range("random.releaseDeg", -3.0f, 3.0f));
-    bowler.actionBowl(bowler.actionCircle(actionTurn_, actionSize_ * bowler.armLength()).point(actionAngle_), actionGap_);
+    // Back to the run-up start behind the stumps, facing straight down the
+    // pitch (the run goes that way whatever the camera's heading).
+    runUpYaw_ = math::radians(cfg_.bowling.getFloat("bowler.yawDeg", 0.0f));
+    bowler.placeAt(cfg_.bowling.getVec3("runUp.start", math::Vec3(0.4f, 0.0f, -17.0f)), runUpYaw_);
+    bowler.setCheckStops(cfg_.bowling.getBool("runUp.checkStops", false));
+    runUp_ = true;
+    runUpJumpSpeed_ = cfg_.bowling.getFloat("runUp.jumpSpeed", runUpJumpSpeed_);
     bowlStep_ = 1;
-    autoRelease_ = autoRelease;
+    autoRelease_ = false;  // the bowler times the rest himself (Fielder::autoDeliver)
     autoBowl_ = true;
 }
 
@@ -688,11 +717,11 @@ void CricketApp::updateBowlArc(float alpha) {
     // (yellow, full, round the bowling shoulder, seen from the side; the
     // wheel turns it, Ctrl + wheel sizes it) with the action point
     // (white) the mouse picks on it and the hand's way there (cyan); a click
-    // sends the hand. Then the release circle (red, pivoting on the bottom
-    // point straight below the shoulder, leaned out to the bowling-arm side
-    // by the wheel) and a click on it sets the release point and bowls: the
-    // hand goes from the action point down to the bottom point (cyan), then
-    // round the release circle. R lets go.
+    // sends the hand there; once it holds, a second click sends it on down
+    // to the bottom point (cyan). Once it is down, the release circle (red,
+    // pivoting on the bottom point straight below the shoulder, leaned out
+    // to the bowling-arm side by the wheel) and a third click on it sets the
+    // release point and bowls the hand round it. R lets go.
     agents::Fielder& bowler = sim_.bowler();
     const math::Transform root = bowler.interpolatedRoot(alpha);
     auto toWorld = [&](motion::ThrowArc arc) {
@@ -702,39 +731,73 @@ void CricketApp::updateBowlArc(float alpha) {
         arc.normal = root.transformDirection(arc.normal);
         return arc;
     };
+    // The release circle keeps the facing from before the bowling turn: it
+    // does not turn with the body (its centre still rides the shoulder).
     releaseArc_ = toWorld(bowler.bowlArc(releaseTilt_));
+    if (bowler.bowling()) {
+        const math::Quat base = math::fromAxisAngle(math::kUp, bowler.bowlBaseYaw());
+        const motion::ThrowArc local = bowler.bowlArc(releaseTilt_);
+        releaseArc_.side = base * local.side;
+        releaseArc_.up = base * local.up;
+        releaseArc_.normal = base * local.normal;
+    }
+    // Check stops (runUp.checkStops): a click lets the frozen bowler go on.
+    if (bowler.checkHeld() && input_.pressed(core::MouseButton::Left) && !input_.uiWantsMouse) bowler.continueCheck();
+    const bool releaseReady = bowler.armDown() && bowler.bodyTurned();  // the red circle and its click
     actionArc_ = toWorld(bowler.actionCircle(actionTurn_, actionSize_ * bowler.armLength()));
-    if (!bowler.bowling()) {
+    if (runUp_ && bowler.speed() >= runUpJumpSpeed_ && bowler.boundReady()) {
+        // U: the bound (the back foot's long step) and the action start together.
+        bowler.actionBowl(bowler.actionCircle(actionTurn_, actionSize_ * bowler.armLength()).point(actionAngle_), actionGap_,
+                          actionTurn_);
+        bowler.autoDeliver(bowlRelease_, releaseTilt_);
+        runUp_ = false;
+    }
+    if (!bowler.bowling() && !runUp_) {
         bowlStep_ = 0;
         autoRelease_ = false;
         autoBowl_ = false;
     }
-    if (autoRelease_ && bowler.actionHeld()) {  // U: the release follows on its own
-        bowler.releaseBowl(bowlRelease_, releaseTilt_);
+    if (autoRelease_ && bowler.actionHeld()) {  // U: the way down and the release follow on their own
+        bowler.downBowl();
         bowlStep_ = 2;
+    }
+    if (autoRelease_ && releaseReady) {
+        bowler.releaseBowl(bowlRelease_, releaseTilt_);
+        bowlStep_ = 3;
         autoRelease_ = false;
     }
-    if (!bowlAim_ || input_.uiWantsMouse || (bowler.bowling() && !bowler.coiled())) return;  // points stay put while bowling
-    if (autoBowl_) return;  // U: the random points are not the mouse's
+    if (!bowlAim_ || input_.uiWantsMouse || (bowler.bowling() && !bowler.coiled() && !bowler.armDown())) return;  // points stay put while bowling
     if (actions_.pressed(input_, core::Action::ClearReach)) {
         bowler.cancelCoil();
         bowlStep_ = 0;
+        runUp_ = false;
         return;
     }
+    // Click-by-click bowling is off for now (U only): a click only goes on
+    // from a check stop (above), it never steps the delivery itself.
+    if (bowlStep_ >= 0) return;
     math::Vec3 eye, dir;
     mouseRay(eye, dir);
     float angle = 0.0f;
-    if (bowlStep_ == 0 && actionArc_.rayAngle(eye, dir, angle)) actionAngle_ = angle;
+    // U: the random points are not the mouse's; the clicks still step on.
+    if (!autoBowl_ && bowlStep_ == 0 && actionArc_.rayAngle(eye, dir, angle)) {
+        // Front half only (0 down, 90 ahead, 180 up): behind snaps to the nearer end.
+        angle = std::remainder(angle, math::kTwoPi);
+        actionAngle_ = angle >= 0.0f ? angle : (angle > -math::kHalfPi ? 0.0f : math::kPi);
+    }
     const math::Vec3 actionPoint =
         bowler.actionCircle(actionTurn_, actionSize_ * bowler.armLength()).point(actionAngle_);  // character space
-    if (bowlStep_ == 1 && releaseArc_.rayAngle(eye, dir, angle)) bowlRelease_ = angle;
-    if (!input_.pressed(core::MouseButton::Left)) return;
+    if (!autoBowl_ && bowlStep_ == 2 && releaseArc_.rayAngle(eye, dir, angle)) bowlRelease_ = angle;
+    if (!input_.pressed(core::MouseButton::Left) || runUp_) return;
     if (bowlStep_ == 0 && bowler.holding()) {
-        bowler.actionBowl(actionPoint, actionGap_);
+        bowler.actionBowl(actionPoint, actionGap_, actionTurn_);
         bowlStep_ = 1;
-    } else if (bowlStep_ == 1) {
-        bowler.releaseBowl(bowlRelease_, releaseTilt_);
+    } else if (bowlStep_ == 1 && bowler.actionHeld()) {
+        bowler.downBowl();
         bowlStep_ = 2;
+    } else if (bowlStep_ == 2 && releaseReady) {
+        bowler.releaseBowl(bowlRelease_, releaseTilt_);
+        bowlStep_ = 3;
     }
 }
 
@@ -816,7 +879,10 @@ void CricketApp::drawDebugGeometry(float alpha) {
             const math::Transform root = bowler.interpolatedRoot(alpha);
             const math::Vec3 actionPoint = bowler.actionCircle(actionTurn_, actionSize_ * bowler.armLength()).point(actionAngle_);
             if (bowlAim_ && bowlStep_ == 0) {
-                circle(actionArc_, render::colors::kYellow);
+                for (int i = 0; i < kCircleSegments / 2; ++i) {  // the front half only
+                    const float a = math::kTwoPi * static_cast<float>(i) / kCircleSegments;
+                    dd.line(actionArc_.point(a), actionArc_.point(a + math::kTwoPi / kCircleSegments), render::colors::kYellow);
+                }
                 for (int i = 0; i < kCircleSegments; ++i) {
                     const float u0 = static_cast<float>(i) / kCircleSegments, u1 = static_cast<float>(i + 1) / kCircleSegments;
                     const math::Vec3 p0 = bowler.actionPathPoint(actionPoint, actionGap_, u0);
@@ -839,7 +905,7 @@ void CricketApp::drawDebugGeometry(float alpha) {
                             root.transformPoint(bowler.frontDownPoint(actionPoint, actionGap_, u1)), render::colors::kBlue);
                 }
             }
-            if (bowlAim_ && bowlStep_ >= 1) {
+            if (bowlAim_ && (bowlStep_ >= 3 || (bowler.armDown() && bowler.bodyTurned()))) {  // hand down, body turned
                 circle(releaseArc_, render::colors::kRed);
                 dd.sphere(releaseArc_.point(bowlRelease_), 0.05f, render::colors::kMagenta);
             }

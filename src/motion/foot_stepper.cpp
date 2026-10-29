@@ -15,6 +15,7 @@ constexpr float kStartTie = 0.05f; // metres; feet this close in distance-to-go 
 constexpr float kPitchSettle = 0.75f;  // swing share by which the foot reaches its landing pitch
 constexpr float kToeRelax = 0.3f;      // swing share by which bent toes straighten after push-off
 constexpr float kFootFlatRate = 12.0f; // 1/s, a landed foot lowers to flat
+constexpr float kAimLock = 0.7f;      // swing share after which the landing spot stops being re-aimed
 
 float smoothstep(float x) {
     x = math::clamp(x, 0.0f, 1.0f);
@@ -60,9 +61,12 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
     // so it passes under the hip mid-stance. Re-aimed every tick: the body
     // keeps moving (and turning) during the swing.
     auto target = [&](int f, float swingLeft) {
-        math::Vec3 p = stance_[f] + velocity * (swingLeft + 0.5f * g.stance);
+        math::Vec3 stance = stance_[f];
+        stance.x *= style.widthScale;
+        if (stanceTurn_ != 0.0f) stance = math::fromAxisAngle(math::kUp, stanceTurn_) * stance;
+        math::Vec3 p = stance + velocity * (swingLeft + 0.5f * g.stance);
         p.y = stance_[f].y;
-        p.x = stance_[f].x * style.widthScale + velocity.x * (swingLeft + 0.5f * g.stance);
+        if (stanceTurn_ != 0.0f) return p;  // along the run line: no side-shuffle rule
         // Sideways walking is a side shuffle: the lead foot steps out and the
         // trail foot closes beside it; the feet never cross (+X is left).
         const float other = feet_[1 - f].x, gap = kShuffleWidthFraction * stanceWidth_ * style.widthScale;
@@ -99,11 +103,16 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
         carry_[f] = math::Vec3(0.0f);
         t_ = 0.0f;
         wait_ = 0.0f;
-        dur_ = g.swing;
+        stretch_ = nextStretch_;
+        nextStretch_ = 1.0f;
+        dur_ = g.swing * stretch_;
     }
-    to_ = target(swing_, (1.0f - t_) * dur_);
+    // Aimed at the predicted landing spot while the swing is young; from
+    // kAimLock on the spot is fixed (held in the world), so the foot comes
+    // down onto it instead of chasing a moving spot into the ground.
+    if (t_ < kAimLock) to_ = target(swing_, (1.0f - t_) * dur_);
     const int swing = swing_, stance = 1 - swing_;
-    advanceSwing(dt, dur_, stepHeight, style.peakAt);
+    advanceSwing(dt, dur_, stepHeight * stretch_, style.peakAt);
 
     // Swing foot: pointed after toe-off, toes relax, then levels for landing.
     const float t = t_;
@@ -115,8 +124,12 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
     // flight: it leaves the ground and starts forward (heel recovery), so the
     // feet are never both down a full step apart. The next swing starts there.
     if (style.heelRise > 0.0f && moving) {
-        const float roll = smoothstep((t - (1.0f - style.heelRise)) / style.heelRise);
-        const float flightShare = dur_ > 0.0f ? std::min(g.flight / dur_, 1.0f) : 0.0f;
+        // (Timed as a normal step: a stretched swing's extra time comes after.)
+        const float roll = smoothstep((std::min(1.0f, t * stretch_) - (1.0f - style.heelRise)) / style.heelRise);
+        // A stretched swing's extra time is all flight (the stance foot
+        // pushes off as early, in time, as in a normal step).
+        const float flight = g.flight + (dur_ - dur_ / stretch_);
+        const float flightShare = dur_ > 0.0f ? std::min(flight / dur_, 1.0f) : 0.0f;
         const float lift = flightShare > 0.0f ? smoothstep((t - (1.0f - flightShare)) / flightShare) : 0.0f;
         // Before the roll, a heel-strike landing (toes up) lowers to flat.
         const float pitch = roll > 0.0f ? style.toeOffPitch * roll
@@ -131,7 +144,8 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
 
 float FootStepper::rightWeight(float flightShare) const {
     if (swing_ < 0) return -1.0f;
-    const float f = math::clamp(flightShare, 0.0f, 0.9f);
+    // A stretched swing: the extra time is flight (weight hands over as early).
+    const float f = math::clamp(1.0f - (1.0f - flightShare) / stretch_, 0.0f, 0.9f);
     const float toSwing = f > 0.0f ? smoothstep((t_ - (1.0f - f)) / f) : 0.0f;
     const float right = swing_ == static_cast<int>(Foot::Right) ? toSwing : 1.0f - toSwing;
     return right;

@@ -40,12 +40,15 @@ protected:
 
     const LoopStats& stats() const { return stats_; }
     void requestQuit() { quit_ = true; }
+    // Share of real time the simulation runs at (slow motion < 1).
+    void setTimeScale(double scale) { timeScale_ = scale; }
 
 private:
     LoopSettings settings_;
     FixedTimestep timestep_;
     LoopStats stats_;
     bool quit_ = false;
+    double timeScale_ = 1.0;
 };
 
 } // namespace core

@@ -71,7 +71,10 @@ private:
     // point under the mouse (drawn), from the interpolated pose.
     void updateBowlArc(float alpha);
     void applyBowlSettings();  // config/bowling.json, with the slow-motion toggle
-    void randomBowl(bool autoRelease);  // a random action at once; with autoRelease, released once it holds
+    // U: random action and release, all on its own: the bowler runs at the
+    // batter (jog building to a run), jumps at runUp.jumpSpeed, the action
+    // starts in the air, then the way down and the release follow.
+    void randomBowl();
     // Limb test: F chooses the limb, the arrows move its target (Shift:
     // up/down) over `seconds`; R resets the pose.
     void updatePose(float seconds);
@@ -108,7 +111,7 @@ private:
     // + in front); bowlAim_: the bowler is controlled.
     float bowlRelease_ = 0.0f;
     bool bowlAim_ = false;
-    // bowlStep_: the next bowler click is 0 action point, 1 release, 2 none
+    // bowlStep_: the next bowler click is 0 action point, 1 down to the bottom point, 2 release, 3 none
     // (bowling).
     // Action circle (world), its turn about the vertical (radians; wheel),
     // its radius as a share of the arm length (Ctrl + wheel; at most 1), and
@@ -129,8 +132,11 @@ private:
     float ballBackTimer_ = -1.0f;  // s until the bowled ball returns to the bowler; < 0 off
     std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot; U: random action
     bool slowMotion_ = false;   // I: the bowling action in slow motion
-    bool autoRelease_ = false;  // U: release once the hand holds at the action point
+    bool autoRelease_ = false;  // U: down and release on their own once the hand holds
     bool autoBowl_ = false;     // U: a run-up or random action under way (the mouse and wheel do not aim)
+    bool runUp_ = false;        // U: running at the batter until the jump takes off
+    float runUpYaw_ = 0.0f;     // heading of the run-up (radians)
+    float runUpJumpSpeed_ = 4.5f;  // m/s the bowler jumps at (bowling.json runUp.jumpSpeed)
     float heading_ = 0.0f;    // controlled player's heading: the camera's, unless freeView_
     bool freeView_ = false;   // V: the camera moves freely; the heading is held
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)

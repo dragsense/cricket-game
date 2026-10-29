@@ -98,7 +98,12 @@ struct BowlSettings {
     float pullTime = 0.15f;
     // The front hand starts frontDelay (s) after the bowling hand.
     float frontDelay = 0.1f;
-    float frontShare = 0.8f;  // share of its full way (to the bowling hand's way's end) the front hand goes
+    // Front hand's end kept apart from the bowling hand's way's end: this
+    // share of the front shoulder -> end offset off on each axis.
+    math::Vec3 frontGap{0.2f};
+    // Yellow circle turned this far inward (radians): elbows fully outward-up.
+    float elbowUpTurn = math::radians(45.0f);    // The whole-player turn counts as done within this of its goal (radians).
+    float turnDone = math::radians(3.0f);
     float backTime = 0.3f;  // s, action point -> bottom point, speeding up
     // Chest turn (side-on, at the action point; chest bone first, the spine
     // taking what its limit leaves, the hips staying): chestBase always,
@@ -123,6 +128,23 @@ struct BowlSettings {
     // strideAt of the way from the action point down to the bottom point.
     float strideLength = 0.6f;
     float strideAt = 0.9f;
+    // Run-up delivery (U), one timed sequence from the bound (BIOMECHANICS
+    // 11.5; Bartlett 1996, Portus 2004, Worthington 2013): back-foot contact
+    // -> front-foot contact ~0.10-0.15 s (the hand from the gather down and
+    // back, the front foot straight from the air into the stride), front-foot
+    // contact -> release ~0.08-0.12 s (over the top, the body front-on).
+    float runBackTime = 0.14f;   // s, gather (action point) -> bottom point
+    float runSwingTime = 0.16f;  // s, bottom point -> release
+    float strideTime = 0.14f;    // s, the front foot's stride from the air
+    float boundStretch = 1.6f;   // the bound: the back foot's running step takes this many times as long (longer, higher)
+    float strideStretch = 1.2f;  // the front foot's next running step (the delivery stride), stretched the same way
+    float runStride = 0.5f;      // x body height, front foot ahead of the back foot (real fast bowlers ~0.75)
+    float frontClear = 0.25f;    // m, front hand kept at least this far from the chest's vertical axis
+    float releaseLean = 0.2f;   // m the release circle moves toward the batter by the release (the body leans after it)
+    float runOnStep = 0.3f;      // x body height the back foot lands ahead of the front foot on the first run-on step
+    float runOnPace = 0.9f;    // share of the run-up's speed the run-on picks up to
+    float runOnHold = 0.4f;      // share of runOnTime it keeps that pace before slowing
+    float runOnTime = 1.5f;     // s the bowler keeps running after the release, easing to a stop
     float minSpeed = 15.0f, maxSpeed = 26.0f;  // m/s at release: action point in front .. behind
     // Follow-through: the arm carries on followAngle round the circle over
     // swingFollowTime (s), slowing, and the hand is carried followReach (m)

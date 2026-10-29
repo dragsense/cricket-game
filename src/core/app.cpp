@@ -32,7 +32,7 @@ int App::run() {
 
         if (!pumpEvents()) break;
 
-        int steps = timestep_.advance(frameSeconds);
+        int steps = timestep_.advance(frameSeconds * timeScale_);
         for (int i = 0; i < steps; ++i) {
             fixedUpdate(timestep_.step());
             stats_.simTime += timestep_.step();

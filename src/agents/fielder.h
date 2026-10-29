@@ -118,10 +118,32 @@ public:
     void setGait(motion::Gait gait) { gait_ = gait; }
     motion::Gait gait() const { return gait_; }
     float speed() const { return walker_.speed(); }  // m/s
-    // Jump key held: standing and not picking, holding starts the crouch;
+    // Jump key held (not picking). Standing, holding starts the crouch;
     // letting go takes off toward the move input (none: straight up).
+    // Walking or running, it takes off at once after a quick dip from the
+    // planted foot, the speed carried through the flight; the gait goes on
+    // after the landing.
     void setJumpInput(bool held) { jumpHeld_ = held; }
     bool jumping() const { return jumper_.active(); }
+    bool airborne() const { return jumper_.airborne(); }
+    // Take-off foot of a moving jump (motion::Foot as int; -1 any): J waits
+    // until that foot is on the ground (the other swinging), then jumps off it.
+    void setJumpFoot(int foot) { jumpFoot_ = foot; }
+    // Stands the fielder at `position` (world) facing `yaw` radians, feet at
+    // rest, any jump and run-up state cleared (e.g. back to the run-up start).
+    void placeAt(math::Vec3 position, float yaw);
+    // Run-up delivery (after actionBowl, in the bound): the rest runs on its
+    // own, timed from the feet: side-on in the air, at back-foot contact the
+    // hand goes down and the front foot strides from the air, then the
+    // release at `releaseAngle` on bowlArc(`releaseTilt`) (BowlSettings run*).
+    void autoDeliver(float releaseAngle, float releaseTilt);
+    // Check stops (config bowling.json runUp.checkStops): the run-up delivery
+    // freezes at back-foot contact, front-foot contact, the release and after
+    // every run-on step until
+    // continueCheck().
+    void setCheckStops(bool on) { checkStops_ = on; }
+    bool checkHeld() const { return checkHeld_; }
+    void continueCheck() { checkHeld_ = false; }
 
     // The ball (world space). Moving it drops it if held; it is only picked
     // on startPick().
@@ -148,6 +170,13 @@ public:
     // Held ball's centre in world space from a model-space pose (e.g. the
     // interpolated render pose); valid while holding().
     math::Vec3 ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const;
+    // Run-up: the bowling-arm-side foot has just started its running step
+    // (the other foot planted): the bound can start (autoDeliver).
+    bool boundReady() const {
+        return stepper_.stepping() &&
+               stepper_.swingFoot() == static_cast<int>(reachLeft_ ? motion::Foot::Left : motion::Foot::Right) &&
+               stepper_.swingProgress() < 0.35f;
+    }
     bool holdingLeft() const { return reachLeft_; }  // the hand that holds (or last reached)
     // Shoulder of the holding arm in world space, from a model-space pose.
     math::Vec3 holdingShoulder(const std::vector<math::Mat4>& models, const math::Transform& root) const {
@@ -212,7 +241,10 @@ public:
     // hip, then eases onto the release circle (bowlArc(`releaseTilt`)) and
     // the ball leaves at `releaseAngle` along its tangent; the arm carries
     // on, slowing, and the body folds after it. cancelCoil returns before the release.
-    void actionBowl(math::Vec3 point, float gap);
+    // `turn`: the action circle's (radians); turned inward (negative), both
+    // elbows swivel outward-up about their shoulder-to-wrist lines, fully
+    // at BowlSettings::elbowUpTurn.
+    void actionBowl(math::Vec3 point, float gap, float turn);
     // The hand's way from rest to `point` at u = 0..1: round the shoulder in
     // the plane of the shoulder, the resting hand and the point, the radius
     // growing from the resting hand's to the point's + `gap`. Character space.
@@ -229,9 +261,8 @@ public:
     math::Vec3 restHandNow(bool left) const;
     // The front hand's full way at u = 0..1: from rest round its own
     // shoulder (via the front) to the end of the bowling hand's way to
-    // `point` (with `gap`), touching it; the hand goes only
-    // BowlSettings::frontShare of it. frontDownPoint: back down the same way
-    // from there. Character space.
+    // `point` (with `gap`), kept apart from it by BowlSettings::frontGap per
+    // axis. frontDownPoint: back down the same way. Character space.
     math::Vec3 frontPathPoint(math::Vec3 point, float gap, float u) const;
     math::Vec3 frontDownPoint(math::Vec3 point, float gap, float u) const;
     // Round `shoulder` from `from` to `to` at u = 0..1 (the short way, in
@@ -246,8 +277,18 @@ public:
     void releaseBowl(float releaseAngle, float releaseTilt);
     void cancelCoil();
     bool coiled() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Coil; }
-    // At the action point and holding (the way there and the pull back done).
-    bool actionHeld() const { return coiled() && throwTime_ >= bowl_.coilTime + bowl_.pullTime; }
+    // At the action point and holding (the way there and the pull back done);
+    // downBowl acts only now and sends the hand on down to the bottom point.
+    bool actionHeld() const { return coiled() && throwTime_ >= coilReach() + (autoDeliver_ ? 0.0f : bowl_.pullTime); }
+    // s the hand takes up to the action point (a run-up delivery: the bound's flight).
+    float coilReach() const { return autoDeliver_ ? autoCoilTime_ : bowl_.coilTime; }
+    void downBowl();
+    // The whole-player turn has reached bowlYaw_ (within BowlSettings::turnDone).
+    bool bodyTurned() const;
+    // Facing before the bowling turn (radians): the release circle is drawn in it.
+    float bowlBaseYaw() const { return bowlBaseYaw_; }
+    // Down at the bottom point and holding; releaseBowl acts only now.
+    bool armDown() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Down; }
     bool bowlSwinging() const { return phase_ == Phase::Bowl && bowlStage_ == BowlStage::Swing; }
     // Arm circle around the bowling shoulder, square to the batter, leaned
     // by `tilt`; fixed while the body moves (the action point and the
@@ -360,7 +401,7 @@ private:
     float throwTilt_ = 0.0f, releaseAngle_ = 0.0f;  // bowling circle lean and release (radians)
     float throwTime_ = 0.0f;   // s since the throw started
     math::Vec3 throwFrom_{0.0f};  // wrist goal when the throw started, character space
-    enum class BowlStage { Circle, Coil, Back, Swing };
+    enum class BowlStage { Circle, Coil, Back, Down, Swing };
     BowlStage bowlStage_ = BowlStage::Circle;
     float bowlPace_ = 0.0f;  // 0..1 from the action point (behind = 1)
     float coil_ = 0.0f;      // chest-bone turn from the action point (radians)
@@ -369,7 +410,7 @@ private:
     int strideFoot_ = -1;    // the foot that strode (motion::Foot), pointing straight; -1 none
     bool bowlTwist_ = false; // chestTwist_ is the bowling turn (its pelvis share), not the throw's
     float chestLean_ = 0.0f;  // chest-bone turn now (radians)
-    float leanTo_ = 0.0f;     // the release circle's part of the whole-player turn (radians)
+    float elbowSwivel_ = 0.0f;  // 0..1 share of the elbow hint moved to outward-up (inward circle turn)
     math::Vec3 leanAxis_{0.0f, 1.0f, 0.0f};  // character space (vertical)
     math::Vec3 frontGoal_{0.0f};  // front (non-bowling) wrist goal while bowling, character space
     float swingFrom_ = 0.0f, swingTo_ = 0.0f;  // action and release angles on bowlArc, unwrapped
@@ -406,6 +447,27 @@ private:
     motion::WalkSettings shape_;    // gait shape blended by the actual speed
     motion::Gait gait_ = motion::Gait::Walk;
     motion::WalkController walker_;
+    motion::JumpSettings jump_;
+    motion::JumpController jumper_;
+    bool jumpHeld_ = false;
+    bool jumpMoving_ = false;  // the jump started while walking or running (speed carried)
+    int jumpFoot_ = -1;        // take-off foot of a moving jump (motion::Foot), -1 any
+    bool jumpQueued_ = false;  // J pressed while moving: waiting for the take-off foot
+    float carrySpeed_ = 0.0f;  // m/s of a run-up, held from the landing at the action to the release
+    bool followThrough_ = false;  // released after a run-up: running on, slowing, stepping
+    float followTime_ = 0.0f;     // s into the run-on
+    math::Vec3 releaseShift_{0.0f};  // release circle moved toward the batter during the swing, character space
+    float followShare_ = 0.0f;   // run-on input at its start (share of full running)
+    float frontLift_ = 0.0f;   // m the front foot is held up after a run-up landing, until its stride lands
+    bool bounding_ = false;    // run-up: the bound (the back foot's long running step) under way
+    float autoSwingTime_ = 0.0f; // run-up: s from back-foot contact to the release (the stride down first)
+    bool landTurn_ = false;    // back-foot contact after a run-up: the body is turned side-on already
+    bool autoDeliver_ = false; // run-up delivery under way (autoDeliver)
+    float autoReleaseAngle_ = 0.0f, autoReleaseTilt_ = 0.0f;
+    bool checkStops_ = false, checkHeld_ = false, frontStopped_ = false;
+    int followSwing_ = -1;  // run-on step's swinging foot (check stop on each change)
+    float autoCoilTime_ = 0.0f;  // s, the gather timed to land with back-foot contact
+    math::Vec3 frontFrom_{0.0f};  // front wrist goal when the current run-up stage began, character space
     motion::FootStepper stepper_;
     math::Vec2 moveInput_{0.0f};
     bool face_ = false;
@@ -414,9 +476,6 @@ private:
     float accel_ = 0.0f;     // smoothed forward acceleration for the lean, m/s^2
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1
-    motion::JumpSettings jump_;
-    motion::JumpController jumper_;
-    bool jumpHeld_ = false;
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians
     Joints joints_;
     IkTargets targets_;

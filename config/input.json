@@ -38,9 +38,11 @@
     // follows, the mouse picks the release point; after a click the wheel leans the
     // circle); B again goes back.
     "BowlAim": ["B"],
-    // U: the bowler bowls a random action at once (config/bowling.json
-    // "random"), the camera following him; I toggles slow motion for the
-    // action.
+    // U: the bowler bowls on his own: runs at the batter (jog building to a
+    // run), the camera following him, jumps (bowling.json runUp.jumpSpeed),
+    // the hand goes to a random action point in the air (bowling.json
+    // "random"), then down (the front foot strides) and the release at a
+    // random point. I toggles slow motion for the action.
     "RandomBowl": ["U"],
     "SlowMotion": ["I"],
     // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,

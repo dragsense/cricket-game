@@ -65,13 +65,16 @@
     "gapStep": 0.02,
     "maxGap": 0.3,
     "pullTime": 0.08,
-    // The front hand's way (blue, drawn in full): from rest round its own
-    // shoulder (via the front) to the end of the bowling hand's way,
-    // touching it. The hand starts frontDelay (s) after the bowling hand and
-    // goes only frontShare of the way, then holds; after the release click
-    // it goes back down the same way.
+    // The front hand's way (blue): from rest round its own shoulder (via the
+    // front), all the way, to the end of the bowling hand's way kept apart by
+    // frontGap: that share of the front shoulder -> end offset taken off on
+    // each axis [x, y, z]. The hand starts frontDelay (s) after the bowling
+    // hand, then holds; it goes back down the same way.
     "frontDelay": 0.1,
-    "frontShare": 0.8
+    "frontGap": [0.4, 0.4, 0.4],
+    // Yellow circle turned inward (toward the chest): both elbows swivel
+    // outward-up, fully at elbowUpTurnDeg, part way below. Outward: no change.
+    "elbowUpTurnDeg": 45
   },
   "coil": {
     // At the action point the chest turns side-on (away from the batter):
@@ -86,12 +89,16 @@
     "maxDeg": 35
   },
   "back": {
-    // After the release click the hand first goes round the shoulder from
-    // the action point down to the bottom point (straight below the shoulder
-    // by the arm; cyan) in time (s), speeding up; then the release circle.
+    // The second click sends the hand round the shoulder from the action
+    // point down to the bottom point (straight below the shoulder by the
+    // arm; cyan) in time (s), speeding up; it holds there for the release.
     "time": 0.3
   },
+  "frontArm": {
+    "clear": 0.25   // m, the front hand stays at least this far out from the chest's centre line (never inside the body)
+  },
   "swing": {
+    "lean": 0.4,   // m the red release circle moves toward the batter as the arm comes over (the body leans after the hand)
     // Release click (magenta point on the red release circle): after the
     // way down to the bottom point the hand goes on round the bowling way
     // (back, over) to the release in time (s), speeding up, from the bottom
@@ -109,6 +116,8 @@
     "leanSign": 1,
     "strideLength": 0.6,
     "strideAt": 0.9,
+    // The red circle shows once the body has turned to within this (deg).
+    "turnDoneDeg": 3,
     // Ball speed at release (m/s), action point in front .. behind.
     "minSpeed": 15,
     "maxSpeed": 26
@@ -122,8 +131,37 @@
     "reach": 0.35
   },
   "slowMotion": {
-    // I toggles slow motion: the bowling action runs at this share of real speed.
+    // I toggles slow motion: the whole game runs at this share of real speed.
     "factor": 0.2
+  },
+  // U run-up: each U puts the bowler at `start` (world, m; behind the
+  // stumps at z -10.06, facing bowler.yawDeg), he runs straight at the
+  // batter, speeding up, and jumps (the bound, off the front foot) once
+  // jumpSpeed fast (m/s; run pace is 5). ~7.5 m from start to back-foot contact.
+  "runUp": {
+    "start": [0.4, 0.0, -17.0],
+    "jumpSpeed": 4.5,
+    // One timed sequence from the bound (Bartlett 1996, Portus 2004,
+    // Worthington 2013): take-off off the front foot, side-on in the air,
+    // the hand gathers at the action point; back-foot contact -> front-foot
+    // contact 0.10-0.15 s (hand down and back, front arm up at the batter,
+    // front foot straight from the air: strideTime, stride m ahead of the
+    // back foot; real fast bowlers ~0.75 x height); front-foot contact ->
+    // release 0.08-0.12 s (over the top, front arm tucks, body front-on).
+    "backTime": 0.14,
+    "swingTime": 0.16,
+    "strideTime": 0.14,
+    "checkStops": false,   // freeze at back-foot contact, front-foot contact and the release; a click goes on
+    // The bound: once at jumpSpeed the running goes on; the right foot's step
+    // takes boundStretch times as long (so it goes further and higher), the
+    // left foot's next step (the delivery stride) strideStretch times.
+    "boundStretch": 1.6,
+    "strideStretch": 1.2,
+    "stride": 0.6,   // x body height (real fast bowlers ~0.75)
+    "runOnPace": 0.9,  // share of the run-up's speed the run-on picks up to (normal running)
+    "runOnHold": 0.4,
+    "runOnStep": 0.3,  // x body height: first run-on step, the back leg lands this far ahead of the front foot  // share of runOn it keeps running at that pace before slowing to a stop
+    "runOn": 2.5 // s running on after the release, easing to a stop
   },
   "random": {
     // U: a random action within these ranges (degrees unless noted):
@@ -133,7 +171,7 @@
     // batter's stumps, whatever the lean). The release follows once the
     // hand holds.
     "turnDeg": { "min": -20, "max": 40 },
-    "actionDeg": { "min": 90, "max": 200 },
+    "actionDeg": { "min": 90, "max": 180 },
     "size": { "min": 0.8, "max": 1.0 },
     "gap": { "min": 0.0, "max": 0.2 },
     "tiltDeg": { "min": 0, "max": 20 },

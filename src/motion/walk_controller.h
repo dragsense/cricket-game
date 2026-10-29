@@ -88,6 +88,12 @@ float runShare(float flightShare);
 class WalkController {
 public:
     void reset(float yaw);
+    // Sets the velocity at once (character space, x = left, y = forward), e.g.
+    // momentum handed back after a pause; it then eases as usual.
+    void setLocalVelocity(math::Vec2 v) {
+        local_ = v;
+        gaitSpeed_ = math::length(v);
+    }
 
     // `move` is the requested movement in character space (x = left, y =
     // forward), length 0..1 scales the speed. When `face` is set the
