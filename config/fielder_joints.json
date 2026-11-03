@@ -68,8 +68,9 @@
     // Pole directions in character space: knees point forward, elbows back and out.
     "kneePole": [0.0, 0.0, 1.0],
     "elbowPole": [0.3, 0.0, -1.0],
-    // ozz two-bone "soften" (1 = none). Slightly below 1 avoids the knee snapping straight.
-    "soften": 0.97,
+    // ozz two-bone "soften" (1 = none). Only the last 0.1 % eases in, so standing legs
+    // are straight (BIOMECHANICS 3.1) and the knee still does not snap.
+    "soften": 0.999,
     // Aim IK: share of the look rotation taken by the chest before the head.
     "chestAimWeight": 0.3,
     "headAimWeight": 1.0
@@ -138,14 +139,25 @@
     "thumbCurlDeg": [10, 30, 25]
   },
 
-  // Body repositioning (runs every tick after the foot targets are set).
+  // Body repositioning (runs every tick after the foot targets are set;
+  // BIOMECHANICS 3.1). The deepest crouch comes from the knee's joint limit.
   // Reaches are hip-to-ankle distances as a fraction of leg length (thigh + shin).
+  // Body from the feet (motion::BodyReposition): the moving leg reaches with its
+  // own joints; past the hip's range the pelvis tilts (reach.pelvis*Deg limits),
+  // past the leg's length it moves toward the foot. No weights.
+  "bodyReposition": {
+    "legReach": 1.0,         // a leg reaches at most its real length (thigh + shin)
+    "armLegRatio": 1.0,      // a hand swings opposite the other leg by this share of its thigh angle (walking: about equal)
+    "passes": 3              // tilt-then-move passes per tick
+  },
+
   "reposition": {
-    "standReach": 0.95,       // comfortable standing height
-    "minReach": 0.5,          // deepest crouch
-    "maxReach": 0.98,         // legs never lock fully straight
-    "softBand": 0.02,         // max reach eases in over the last 2 % (above standReach: idle at normal height)
-    "followRate": 10.0,       // 1/s, how fast the body settles over the feet
+    "standReach": 0.998,      // standing: legs nearly straight (knee about 7 deg; real quiet standing 0-5 deg)
+    "maxReach": 1.0,          // a fully straight leg
+    "softBand": 0.0015,       // max reach eases in over the last 0.15 % (maxReach - softBand must stay above standReach)
+    "followRate": 10.0,       // 1/s, spring frequency: how fast the body settles over the feet
+    "damping": 1.0,           // spring damping ratio (1: settles without overshoot, < 1: sways past)
+    "stanceDropDeg": 4.0,     // unloaded side's hip drop, all weight on one leg (BIOMECHANICS 4.3)
     "stanceBlendHeight": 0.1  // m; a foot this much higher than the other carries no weight
   }
 }

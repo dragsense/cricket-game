@@ -248,7 +248,9 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
   `motion::FootStepper` (Step 1.4, WASD via `Fielder::setStepInput`). ImGuizmo was not added (the user's choice).
 
 ### Motion (M1): repositioning, stepping, walk, jog, run built
-- `motion::repositionBody` (`src/motion/body_reposition.*`): every tick after the foot
+- `motion::repositionBody` (`src/motion/body_reposition_backup.*`, kept as a backup since 2026-11-03;
+  `motion::BodyReposition` in `src/motion/body_reposition.*` replaced it for standing, walking,
+  running and the limb test): every tick after the foot
   targets are set, the pelvis eases toward standing height above the stance-weighted
   feet, and each hip-to-ankle distance is clamped to [min, max] × leg length
   (`config/fielder_joints.json` "reposition").

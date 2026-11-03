@@ -66,6 +66,45 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   `locomotion.json` "jump". Next: jumps from walk, jog and run (one-foot take-off,
   speed carried).
 
+- [ ] **6.3 Body from the feet** (2026-11-02, the user's call: fix the basics first;
+  awaiting the user's visual check). Simplified to three formulas after several layered
+  attempts (centre-of-mass offset, hip-tilt levelling, iterative heel roll with body drops)
+  made the upper body roll and the planted foot sink; all removed (the user: "simple").
+  1. Body (`motion::repositionBody`): between the feet by the weight each carries; as high
+     as every loaded leg reaches straight (`standReach` 0.998), the lowest deciding; on
+     one foot the lifted side drops `stanceDropDeg` 4; a damped spring (`followRate`,
+     `damping`); the leg clamp keeps both feet reachable (deepest crouch: a shin length). Straight standing legs: `maxReach` 1.0, `softBand` 0.0015, `ik.soften` 0.999.
+  2. Limb test with a placed foot: one solve from real body constraints only
+     (`motion::StanceSolver`, our own damped least squares; the user's call: no library,
+     no added conditions): planted ball on its spot with toes flat (the body hangs from
+     it), every joint inside its limit on every step, centre of mass over the planted
+     foot (no ground contact yet: collisions and gravity later, the user's call), reaching ankle as near its target as these allow, joints
+     near neutral otherwise (`fielder_joints.json` "stance"). Heel lift comes from the
+     toe joint. Replaced: the undo on a failed reach, the unloaded-leg lowering switch,
+     the out-of-reach foot placement, the shin-length crouch floor and the weight-first
+     lift delay. Measured (left foot 0.8 m ahead / 0.8 m back / 0.6 m aside / 0.4 m up):
+     reaching ankle 4.6 / 13 / 1.6 / 0.7 cm from target; planted toes at standing height
+     (measured with the ground check, since removed). Too far (1.6 m ahead, 1.4 m aside): the foot stops where
+     the balanced body reaches. The limb-test target goes anywhere (air or below the
+     ground; the user's call); the foot gets as near as the body allows.
+  3. Heel and foot elsewhere (`Fielder::solveIk`, walking, picking): heel lift = how far
+     the ankle's limit tips the flat foot's toes down (smoothed `kHeelRate`); not yet on
+     the solver.
+  **2026-11-03 rework (the user: "walk looks good"; running continues next session):**
+  `motion::BodyReposition` (renamed from StanceSolver, rewritten simply: each part reaches
+  with its own joints, the next part takes the rest; see DECISIONS 2026-11-03) now does the
+  body for standing, walking, running, WASD single steps (limb test) and the limb test's
+  foot and hand targets (F cycles both feet and both hands). Hand targets swing opposite
+  the other leg while walking. Foot stepper is path-only. Run: Shift + mouse wheel pace,
+  flight overlap, `landAhead`. Measured (5 m/s): feet land 0.45-0.55 m ahead and leave
+  0.55-0.7 m behind; pelvis 0.85-0.98 m (lowest at contact ends, not mid-stance: waits on
+  gravity). Pick, throw, bowl and jump still use the backup repositioning and reach*.
+  Next: running fixes (mid-stance low point, running elbows ~90 deg), then tests. Tests not
+  run this session; test_walk.cpp lost the run-flight test with the removed flight carry.
+  Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
+  picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
+  not rerun since the simplification (watch running).
+
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 
 Goal: a standing bowler (no run-up) delivers the ball. The bowling hand makes a full

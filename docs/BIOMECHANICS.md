@@ -182,6 +182,28 @@ in M1.
   the stance foot. This is why foot placement (section 4) is the main balance control in
   locomotion **[T]**.
 
+### 3.1 Standing: how the body follows the feet
+- **Weight first:** before a foot lifts, the CoM moves sideways over the stance foot
+  (the mediolateral anticipatory postural adjustment). The shift unloads the leg so it
+  can lift; it is feedforward and starts a few hundred ms before the lift. Only rushed
+  (reactive) steps lift with little shift
+  ([PMC5483205](https://pmc.ncbi.nlm.nih.gov/articles/PMC5483205/);
+  [PMC5015477](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5015477/);
+  [Frontiers 2021](https://www.frontiersin.org/journals/human-neuroscience/articles/10.3389/fnhum.2021.709780/full)) **[P]**.
+- **Balance is the CoM, not the pelvis:** statically, the CoM projection stays in the
+  base of support (section 3); the support centre is between the loaded feet.
+- **Single-leg stance:** the pelvis shifts toward the stance hip and the unloaded side
+  drops a few degrees (obliquity, about 4 deg, section 4.3); the drop lowers the CoM a
+  little ([PMC5545133](https://pmc.ncbi.nlm.nih.gov/articles/PMC5545133/)) **[P]**.
+- **Wider feet:** people stand about shoulder width by choice; wider stances stiffen the
+  legs-pelvis and increase hip abduction
+  ([Henry et al. 2001](https://journals.physiology.org/doi/pdf/10.1152/jn.2001.85.2.559);
+  [PLOS One 2025](https://journals.plos.org/plosone/article?id=10.1371%2Fjournal.pone.0315851)) **[P]**.
+  The hips lower by the legs' angle; past what the hips allow, the stance knee bends
+  (a side lunge) **[T]**.
+- **Limits are the joints:** a foot goes no further than its leg reaches within the
+  hip's range (section 2); the body sinks no lower than the stance knee's range.
+
 ### Implementation notes
 - Compute the whole-body CoM each tick from segment masses (section 1.2), as a cheap
   weighted sum over 20-odd bones. Debug-draw it, with its ground projection and the BoS

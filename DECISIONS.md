@@ -264,3 +264,34 @@ Dated log. Format: decision, reason, alternatives rejected.
   body intent on circles, like the throw. The wicketkeeper becomes M7; later milestones
   shift by one.
 - **Reason:** the user's choice.
+
+## 2026-11-02: The standing body comes from one solve of real constraints, our own code
+- **Decision:** in the limb test, body and legs come from one solve
+  (`motion::StanceSolver`, damped least squares over the leg and pelvis joints): foot
+  contact, joint limits, balance, reach and comfort together (ground contact later, with
+  collisions and gravity), with no patch-up
+  conditions after the IK. Walking, running and picking keep their own code for now.
+- **Reason:** the user's call. Step-by-step fixes kept breaking each other. No whole-body
+  IK library (PlaCo and Pinocchio were looked at), although the library-first rule would
+  prefer one; the solver is small.
+
+## 2026-11-03: The body follows its targets in real body order, no optimiser
+- **Decision:** `motion::BodyReposition` (was StanceSolver) is a simple pass, not an
+  optimiser: the pelvis starts over the root; each part reaches with its own joints first
+  (two-bone IK, knee forward, elbow back and out) and the next part only takes what that
+  left inside its joint limits (feet: hip range, then pelvis tilt over the standing hip,
+  then pelvis moves; hands: arm, clavicle, chest, spine_02, spine_01, pelvis, body). Only
+  feet on the ground hold the body. Design target: seven targets (hips, chest, head, two
+  feet, two hands) plus IK hints; feet and hands done.
+- **Why:** the user's rule: real body constraints only, no checks or tuned weights. The
+  damped-least-squares solver needed patches (balance switch, upright and knee-hint
+  weights, knee-as-length steps) and still leaned sideways and bent knees wrongly.
+- **Also:** the foot stepper only moves targets along paths (weight shares, standing heel
+  rise, no-cross rule and run flight carry removed). Running: no jog pace; Shift runs,
+  Shift + mouse wheel sets the pace (run.minSpeed .. run.speed); in flight the standing
+  foot starts its next swing early (each swing lasts swing + flight); `landAhead` (walk
+  0.5, run 0.35). Walk hands swing opposite the other leg's thigh angle (`armLegRatio`).
+- **Deferred to gravity/forces (later milestone, Jolt ragdoll recommended):** loaded knee
+  bend, pelvis sway, dip and turn, run lowest at mid-stance.
+- **Kept:** `body_reposition_backup.*` (formula version, still used by pick, throw, bowl,
+  jump) and `body_reposition_lm_backup.*.txt` (the optimiser, not compiled).

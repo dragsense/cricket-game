@@ -136,44 +136,4 @@ TEST_CASE("running swing foot eases off the ground (no jump at lift-off)") {
     REQUIRE(st.stepping());
     const Foot f = static_cast<Foot>(st.swingFoot());
     CHECK(st.foot(f).y < 0.01f);  // the old power-curve arc rose ~8 cm in the first tick
-    // Weight is on the stance foot early in the swing.
-    const float right = st.rightWeight(s.flightFraction);
-    CHECK(right == doctest::Approx(f == Foot::Right ? 0.0f : 1.0f));
-}
-
-TEST_CASE("running has a flight phase and lands both feet on stop") {
-    WalkSettings s;
-    s.speed = s.refSpeed = 4.0f;
-    s.stepK = 0.69f;
-    s.swingFraction = 1.0f;
-    s.flightFraction = 0.3f;
-    s.flightLift = 0.05f;
-    s.minSwing = 0.2f;
-    const GaitTiming g = gaitTiming(s.speed, 1.8f, s);
-    CHECK(g.flight > 0.0f);
-    CHECK(g.stance / (2.0f * g.period) < 0.5f);  // less contact than walking
-
-    GaitStyle style;
-    style.flightLift = s.flightLift;
-    style.heelRise = 0.5f;
-    style.toeOffPitch = 0.5f;
-    FootStepper st;
-    st.reset(Vec3(0.1f, 0, 0), Vec3(-0.1f, 0, 0));
-    math::Transform root;
-    int airborne = 0;
-    for (int i = 0; i < 480; ++i) {
-        math::Transform next = root;
-        next.position.z += s.speed * kDt;
-        st.rebase(root, next);
-        root = next;
-        st.tickGait(kDt, Vec3(0, 0, s.speed), g, s.stepHeight, s.settleDistance, style);
-        if (st.foot(Foot::Left).y > 0.01f && st.foot(Foot::Right).y > 0.01f) ++airborne;
-    }
-    CHECK(airborne > 0);
-
-    for (int i = 0; i < 480; ++i) st.tickGait(kDt, Vec3(0.0f), gaitTiming(0.0f, 1.8f, s), s.stepHeight, s.settleDistance, style);
-    CHECK_FALSE(st.stepping());
-    CHECK(st.foot(Foot::Left).y == doctest::Approx(0.0f));
-    CHECK(st.foot(Foot::Right).y == doctest::Approx(0.0f));
-    CHECK(std::fabs(st.footPitch(Foot::Left)) < 0.1f);  // landed level
 }

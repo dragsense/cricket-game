@@ -41,11 +41,15 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     ik_.chestAimWeight = joints.getFloat("ik.chestAimWeight", ik_.chestAimWeight);
     ik_.headAimWeight = joints.getFloat("ik.headAimWeight", ik_.headAimWeight);
     reposition_.standReach = joints.getFloat("reposition.standReach", reposition_.standReach);
-    reposition_.minReach = joints.getFloat("reposition.minReach", reposition_.minReach);
     reposition_.maxReach = joints.getFloat("reposition.maxReach", reposition_.maxReach);
     reposition_.followRate = joints.getFloat("reposition.followRate", reposition_.followRate);
     reposition_.softBand = joints.getFloat("reposition.softBand", reposition_.softBand);
+    reposition_.damping = joints.getFloat("reposition.damping", reposition_.damping);
+    reposition_.stanceDrop = math::radians(joints.getFloat("reposition.stanceDropDeg", math::degrees(reposition_.stanceDrop)));
     stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
+    bodyRepositionSettings_.passes = joints.getInt("bodyReposition.passes", bodyRepositionSettings_.passes);
+    armLegRatio_ = joints.getFloat("bodyReposition.armLegRatio", armLegRatio_);
+    bodyRepositionSettings_.legReach = joints.getFloat("bodyReposition.legReach", bodyRepositionSettings_.legReach);
     // The fielder starts with the ball in the right hand, picking with it.
     phase_ = Phase::Idle;
     holding_ = true;
@@ -125,23 +129,31 @@ void Fielder::loadLocomotion(const core::Config& c) {
         w.headLead = deg("headLeadDeg", w.headLead);
         w.headRate = get("headRate", w.headRate);
         w.flightFraction = get("flightFraction", w.flightFraction);
-        w.flightLift = get("flightLift", w.flightLift);
-        w.heelRise = get("heelRise", w.heelRise);
         w.toeOffPitch = deg("toeOffPitchDeg", w.toeOffPitch);
         w.landPitch = deg("landPitchDeg", w.landPitch);
         w.swingPeakAt = get("swingPeakAt", w.swingPeakAt);
         w.widthScale = get("widthScale", w.widthScale);
+        w.landAhead = get("landAhead", w.landAhead);
         w.pelvisTwist = deg("pelvisTwistDeg", w.pelvisTwist);
         w.chestCounter = get("chestCounter", w.chestCounter);
         w.pelvisDrop = get("pelvisDrop", w.pelvisDrop);
-        w.flightCarry = get("flightCarry", w.flightCarry);
         w.sideFollow = get("sideFollow", w.sideFollow);
     };
     load("walk", walkSettings_);
     jogSettings_ = walkSettings_;
     load("jog", jogSettings_);
-    runSettings_ = jogSettings_;
+    runSettings_ = jogSettings_;  // the jog block is the run's base (no jog pace of its own)
     load("run", runSettings_);
+    runMinSpeed_ = c.getFloat("run.minSpeed", runMinSpeed_);
+    runPaceStep_ = c.getFloat("run.paceStep", runPaceStep_);
+    runPace_ = runSettings_.speed;
+    stepSettings_.stepLength = c.getFloat("step.stepLength", stepSettings_.stepLength);
+    stepSettings_.backStepLength = c.getFloat("step.backStepLength", stepSettings_.backStepLength);
+    stepSettings_.sideStepLength = c.getFloat("step.sideStepLength", stepSettings_.sideStepLength);
+    stepSettings_.stepDuration = c.getFloat("step.stepDuration", stepSettings_.stepDuration);
+    stepSettings_.stepHeight = c.getFloat("step.stepHeight", stepSettings_.stepHeight);
+    stepSettings_.peakAt = c.getFloat("step.swingPeakAt", stepSettings_.peakAt);
+    stepSettings_.liftAt = c.getFloat("step.liftAt", stepSettings_.liftAt);
     auto get = [&](const char* key, float v) { return c.getFloat(std::string("jump.") + key, v); };
     auto deg = [&](const char* key, float radians) { return math::radians(get(key, math::degrees(radians))); };
     jump_.crouchDepth = get("crouchDepth", jump_.crouchDepth);
@@ -191,7 +203,7 @@ void Fielder::loadLocomotion(const core::Config& c) {
 void Fielder::blendShape() {
     // Walk below walking speed, then walk -> jog -> run by the actual speed,
     // measured against each pace's speed in the direction of travel.
-    const motion::WalkSettings* gaits[3] = {&walkSettings_, &jogSettings_, &runSettings_};
+    const motion::WalkSettings* gaits[2] = {&walkSettings_, &runSettings_};
     const math::Vec2 local = walker_.localVelocity();
     const bool forward = local.y > std::fabs(local.x);
     auto ref = [&](const motion::WalkSettings& g) {
@@ -199,7 +211,7 @@ void Fielder::blendShape() {
     };
     const float v = walker_.speed();
     shape_ = runSettings_;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 2; ++i) {
         if (v > ref(*gaits[i])) continue;
         if (i == 0) shape_ = walkSettings_;
         else shape_ = motion::blendGait(*gaits[i - 1], *gaits[i],
@@ -298,7 +310,8 @@ bool Fielder::setHeight(float height) {
                                     segmentMass_[static_cast<size_t>(arm.end)]) / total
                                  : 0.0f;
     models_.assign(static_cast<size_t>(rig_.numJoints()), math::Mat4(1.0f));
-    pelvis_ = current_.locals[static_cast<size_t>(joints_.pelvis)].position;  // pelvis is the root joint
+    body_ = motion::BodyState{};
+    body_.position = current_.locals[static_cast<size_t>(joints_.pelvis)].position;  // pelvis is the root joint
     rig_.localToModel(current_, models_);
     restShoulderL_ = modelPos(models_, joints_.armL.start);
     restShoulderR_ = modelPos(models_, joints_.armR.start);
@@ -313,12 +326,33 @@ bool Fielder::setHeight(float height) {
         chestShoulderL_ = math::Vec3(toChest * math::Vec4(restShoulderL_, 1.0f));
         chestShoulderR_ = math::Vec3(toChest * math::Vec4(restShoulderR_, 1.0f));
     }
+    // Deepest crouch: the leg with the knee bent to its joint limit.
+    {
+        const float thigh = math::distance(modelPos(models_, joints_.legL.start), modelPos(models_, joints_.legL.mid));
+        const float shin = math::distance(modelPos(models_, joints_.legL.mid), modelPos(models_, joints_.legL.end));
+        reposition_.minReach = motion::bentReach(thigh, shin, limits_.limit(joints_.legL.mid).twistMax) / rig_.legLength();
+    }
     armLength_ = math::distance(modelPos(models_, joints_.armL.start), modelPos(models_, joints_.armL.mid)) +
                  math::distance(modelPos(models_, joints_.armL.mid), modelPos(models_, joints_.armL.end));
     if (joints_.toeL >= 0) {
         rig_.localToModel(current_, models_);
         const math::Vec3 d = modelPos(models_, joints_.toeL) - modelPos(models_, joints_.legL.end);
         ballDistance_ = math::length(math::Vec3(d.x, 0.0f, d.z));
+        ballDrop_ = -d.y;
+    }
+    {
+        motion::BodyRepositionJoints sj;
+        sj.pelvis = joints_.pelvis;
+        sj.legs[0] = joints_.legL;
+        sj.legs[1] = joints_.legR;
+        sj.toes[0] = joints_.toeL;
+        sj.toes[1] = joints_.toeR;
+        for (int i = 0; i < 3; ++i) sj.spine[i] = joints_.spine[i];
+        sj.clavicles[0] = joints_.clavicleL;
+        sj.clavicles[1] = joints_.clavicleR;
+        sj.arms[0] = joints_.armL;
+        sj.arms[1] = joints_.armR;
+        bodyReposition_.init(rig_, limits_, sj);
     }
     plantFeet();
     return true;
@@ -362,6 +396,7 @@ void Fielder::plantFeet() {
 
 void Fielder::tick(double dt) {
     if (joints_.pelvis < 0) return;  // not built yet (SimWorld ticks once while configuring)
+    tickSeconds_ = static_cast<float>(dt);
     previous_.locals = current_.locals;  // same size: no allocation
     previousRoot_ = root_;
     if (checkHeld_) return;  // frozen at a check stop
@@ -413,6 +448,12 @@ void Fielder::tick(double dt) {
         checkHeld_ = checkStops_ && autoDeliver_;
         frontStopped_ = false;
     }
+    // Single steps: standing still (not walking, picking or jumping), a step
+    // input takes steps until the fielder walks or acts.
+    const bool standing = (phase_ == Phase::Idle || (phase_ == Phase::Pose && !poseHand_)) && walker_.speed() < 0.2f &&
+                          math::length2(moveInput_) < 1e-6f && !jumper_.active();
+    if (!standing) stepWalk_ = false;
+    else if (math::length2(stepInput_) > 1e-6f) stepWalk_ = true;
     walk(static_cast<float>(dt));
     if (bounding_ && stepper_.swingFoot() != static_cast<int>(reachLeft_ ? motion::Foot::Left : motion::Foot::Right)) {
         // Back-foot contact (the long step down): the running goes on.
@@ -467,7 +508,18 @@ void Fielder::tick(double dt) {
         (front == motion::Foot::Left ? targets_.footL : targets_.footR).y +=
             frontLift_ * (striding ? 1.0f - stepper_.swingProgress() : 1.0f);
     }
-    repositionBody(static_cast<float>(dt));
+    // Limb test with a placed foot: one solve from the body's real constraints
+    // (motion::BodyReposition) does the body and legs instead.
+    // Single steps and walking too: the swinging foot reaches, the other
+    // carries the body. (Jogging, running, jumping, picking and bowling stay
+    // on the backup repositioning for now.)
+    const bool walking = phase_ == Phase::Idle && !jumper_.active() && !followThrough_;
+    if (walking && stepper_.stepping()) stepPlanted_ = 1 - stepper_.swingFoot();
+    // The limb test's hand target too (motion::BodyReposition; picking,
+    // throwing and bowling stay on the reach* functions for now).
+    const bool posedHand = phase_ == Phase::Pose && poseHand_;
+    const bool stance = stepWalk_ || walking || posedHand || (phase_ == Phase::Pose && posedFoot_ >= 0);
+    if (!stance) repositionBody(static_cast<float>(dt));
     // In the air the feet leave the ground (after the body settles over them).
     // (Not in a bound: there each leg has its own path, set above.)
     if (!(jumpMoving_ && jumpFoot_ >= 0)) {
@@ -483,7 +535,7 @@ void Fielder::tick(double dt) {
     // While the step-first lunge is in the air the body follows the feet the
     // usual way (repositionBody); the reach starts once the foot lands.
     const bool reachNow = phase_ == Phase::Return || phase_ == Phase::Throw || phase_ == Phase::Bowl ||
-                          (phase_ == Phase::Reach && pickTime_ > 0.0f) || (phase_ == Phase::Pose && poseHand_);
+                          (phase_ == Phase::Reach && pickTime_ > 0.0f);
     if (reachNow) {
         twistChest();
         if (phase_ != Phase::Bowl && phase_ != Phase::Throw) {  // throw, bowl: no reverse IK, the arm IK alone takes the hand
@@ -492,9 +544,10 @@ void Fielder::tick(double dt) {
             reachBody();
         }
     }
-    solveIk();
+    if (!stance) solveIk();
     if (reachNow && !stepper_.stepping()) rebalance();  // a swinging foot is no support
     swingArms(static_cast<float>(dt));
+    if (stance) repositionFromFeet();  // after the arm swing: a hand target's arm wins
     stabiliseHead(static_cast<float>(dt));
     if (reachNow) {
         reachArm(reachLeft_, goal_);
@@ -530,7 +583,8 @@ void Fielder::tick(double dt) {
 
 void Fielder::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
-    control_ = gait_ == motion::Gait::Run ? runSettings_ : gait_ == motion::Gait::Jog ? jogSettings_ : walkSettings_;
+    control_ = gait_ == motion::Gait::Walk ? walkSettings_ : runSettings_;
+    if (gait_ != motion::Gait::Walk) control_.speed = runPace_;  // the pace set with the wheel
     // A run-up delivery keeps running whatever the gait keys say.
     if (autoDeliver_) control_ = runSettings_;
     if (jumper_.active() &&
@@ -626,6 +680,20 @@ void Fielder::walk(float dt) {
     // Run-up delivery: the feet keep running straight at the batter
     // (stance along the run line) whatever the body's turn.
     stepper_.setStanceTurn(autoDeliver_ || followThrough_ ? bowlBaseYaw_ - walker_.yaw() : 0.0f);
+    // Single steps: the stepper picks the foot (the leading side's foot, else
+    // alternating) and swings it to its spot; the body follows from the
+    // body reposition. The root (and the camera with it) stays between the
+    // feet every tick, so it glides along with the swinging foot.
+    if (stepWalk_) {
+        stepper_.tick(dt, stepInput_, stepSettings_);
+        if (stepper_.stepping()) stepPlanted_ = 1 - stepper_.swingFoot();
+        const math::Transform before = root_;
+        const math::Vec3 mid = root_.transformPoint(0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right)));
+        root_.position.x = mid.x;
+        root_.position.z = mid.z;
+        stepper_.rebase(before, root_);
+        return;
+    }
     if (picking && !followThrough_ && !autoDeliver_ && !(bowlTurn && bowlStage_ == BowlStage::Back && strideWaiting_ && !autoDeliver_)) {  // turning side-on, the feet step round
         // Only a lunge step moves a foot; back in gait mode after the pick,
         // the gait's settle steps it back to stance (the ideal standing spot).
@@ -642,14 +710,11 @@ void Fielder::walk(float dt) {
 motion::GaitStyle Fielder::gaitStyle() const {
     const motion::WalkSettings& w = shape_;
     motion::GaitStyle s;
-    s.flightLift = w.flightLift;
-    s.heelRise = w.heelRise;
     s.toeOffPitch = w.toeOffPitch;
     s.landPitch = w.landPitch;
     s.peakAt = w.swingPeakAt;
-    s.ballDistance = ballDistance_;
     s.widthScale = w.widthScale;
-    s.flightCarry = w.flightCarry;
+    s.landAhead = w.landAhead;
     return s;
 }
 
@@ -684,7 +749,7 @@ void Fielder::addGaitMotion(float dt) {
     lean_ += (math::clamp(want, math::Vec2(-w.maxLean), math::Vec2(w.maxLean)) - lean_) * follow;
 
     math::Transform& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)];
-    pelvis.position = pelvis_ + offset;
+    pelvis.position = body_.position + offset;
     // Pelvis turns toward the forward leg (+X left: a positive turn about +Y
     // takes the left hip back); the chest turns back against it.
     const float twist = -w.pelvisTwist * amount * legPhase_;
@@ -707,19 +772,63 @@ void Fielder::repositionBody(float dt) {
     motion::LegSupport right{modelPos(models_, joints_.legR.start) - restPelvis, toModel.transformPoint(targets_.footR)};
 
     // The lower foot carries the body; even weight when both are level.
-    // Running, both feet are in the air in flight, so the weight follows the
-    // gait phase instead (stance foot, handing over to the landing foot).
-    float stance = math::clamp(0.5f + 0.5f * (left.foot.y - right.foot.y) / stanceBlendHeight_, 0.0f, 1.0f);
-    const float phase = stepper_.rightWeight(shape_.flightFraction);
-    if (phase >= 0.0f) stance = math::lerp(stance, phase, motion::runShare(shape_.flightFraction));
+    const float stance = math::clamp(0.5f + 0.5f * (left.foot.y - right.foot.y) / stanceBlendHeight_, 0.0f, 1.0f);
     motion::RepositionSettings reposition = reposition_;
     reposition.sideFollow = shape_.sideFollow;  // runners barely shift sideways
     // Moving, the root already travels smoothly; chasing the stance foot
     // (which slides back every step) would make the body lag and surge.
     reposition.forwardFollow = 1.0f - math::clamp(walker_.speed() / std::max(shape_.speed, 0.1f), 0.0f, 1.0f);
     reposition.restZ = restPelvis.z;
-    pelvis_ = motion::repositionBody(pelvis_, left, right, rig_.legLength(), stance, reposition, dt);
-    current_.locals[static_cast<size_t>(joints_.pelvis)].position = pelvis_;
+    // Standing rules (straight-leg height, hip drop); moving, the gait's own
+    // pelvis motion (addGaitMotion) takes over.
+    reposition.standShare = reposition.forwardFollow;
+
+    motion::repositionBody(body_, left, right, rig_.legLength(), stance, reposition, dt);
+    math::Transform& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)];
+    pelvis.position = body_.position;
+    pelvis.rotation = body_.rotation() * pelvis.rotation;
+}
+
+void Fielder::repositionFromFeet() {
+    // The body follows its targets (motion::BodyReposition): the placed (or
+    // stepping) foot moves, the other stands; the limb test's hand target.
+    // Targets are the player's intent: each gets as near as the body allows.
+    const math::Transform toModel = math::inverse(root_);
+    const bool posed = phase_ == Phase::Pose && !poseHand_ && posedFoot_ >= 0;
+    motion::BodyTargets t;
+    t.planted = posed && !stepWalk_ ? 1 - posedFoot_ : stepPlanted_;
+    t.plantedAnkle = toModel.transformPoint(t.planted == 0 ? targets_.footL : targets_.footR);
+    t.movingAnkle = toModel.transformPoint(t.planted == 1 ? targets_.footL : targets_.footR);
+    t.down[0] = !stepper_.inAir(motion::Foot::Left);
+    t.down[1] = !stepper_.inAir(motion::Foot::Right);
+    // Hand targets: each hand swings on an arc round its shoulder opposite
+    // the other leg, by that leg's thigh angle (forward as the other foot
+    // steps forward; hanging with the feet together): armLegRatio of it.
+    // Positive about +X takes a hanging hand back. The limb test's hand
+    // target replaces its hand's.
+    rig_.localToModel(current_, models_);
+    auto thigh = [&](int hip, math::Vec3 ankle) {  // forward angle of the hip-to-ankle line (rad)
+        const math::Vec3 h = modelPos(models_, hip);
+        return std::atan2(ankle.z - h.z, std::max(h.y - ankle.y, 1e-3f));
+    };
+    const math::Vec3 ankles[2] = {t.planted == 0 ? t.plantedAnkle : t.movingAnkle, t.planted == 1 ? t.plantedAnkle : t.movingAnkle};
+    const float legAngle[2] = {thigh(joints_.legL.start, ankles[0]), thigh(joints_.legR.start, ankles[1])};
+    auto swing = [&](int shoulder, math::Vec3 restShoulder, math::Vec3 restWrist, float otherLeg) {
+        const float angle = -armLegRatio_ * otherLeg;
+        return modelPos(models_, shoulder) + math::fromAxisAngle(math::kRight, angle) * (restWrist - restShoulder);
+    };
+    t.hand[0] = t.hand[1] = true;
+    t.handGoal[0] = swing(joints_.armL.start, restShoulderL_, restWristL_, legAngle[1]);
+    t.handGoal[1] = swing(joints_.armR.start, restShoulderR_, restWristR_, legAngle[0]);
+    if (phase_ == Phase::Pose && poseHand_) t.handGoal[reachLeft_ ? 0 : 1] = goal_;
+    bodyRepositionSettings_.kneePole = ik_.kneePole;
+    bodyRepositionSettings_.elbowPole = reach_.elbowPole;
+    bodyRepositionSettings_.pelvisMin = reach_.pelvisMin;
+    bodyRepositionSettings_.pelvisMax = reach_.pelvisMax;
+    bodyReposition_.solve(current_, models_, t, bodyRepositionSettings_);
+    // Leaving the test, the usual repositioning carries on from here.
+    body_ = motion::BodyState{};
+    body_.position = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
 }
 
 void Fielder::solveIk() {
@@ -733,27 +842,49 @@ void Fielder::solveIk() {
     math::swingTwist(current_.locals[static_cast<size_t>(joints_.pelvis)].rotation, math::kUp, pelvisSwing, pelvisTurn);
     const math::Vec3 kneePole = pelvisTurn * ik_.kneePole;
 
+    // A lifted heel raises the ankle about the ball of the foot (last tick's
+    // lift): the ball stays put, the ankle swings up round it.
+    auto ankle = [&](math::Vec3 target, int i) {
+        const float p = heelLift_[i];
+        return model(target) + math::kUp * (ballDistance_ * std::sin(p) - ballDrop_ * (1.0f - std::cos(p))) +
+               math::kForward * (ballDistance_ * (1.0f - std::cos(p)) + ballDrop_ * std::sin(p));
+    };
     rig_.localToModel(current_, models_);
-    ik::solveTwoBone(joints_.legL, models_, model(targets_.footL), kneePole, ik_.soften, current_);
-    ik::solveTwoBone(joints_.legR, models_, model(targets_.footR), kneePole, ik_.soften, current_);
+    ik::solveTwoBone(joints_.legL, models_, ankle(targets_.footL, 0), kneePole, ik_.soften, current_);
+    ik::solveTwoBone(joints_.legR, models_, ankle(targets_.footR, 1), kneePole, ik_.soften, current_);
     limits_.apply(current_);
 
-    // Feet keep the stepper's pitch in character space (flat when walking)
-    // whatever the shin does; the toes bend to stay down while the heel rises.
+    // Feet keep the stepper's pitch in character space (flat when walking).
+    // Past the ankle's range the foot turns with the leg (BIOMECHANICS 3.1):
+    //   tip = how far the ankle's joint limit turns the flat foot's toes down;
+    //   tip > 0: the heel lifts by it (toes bend back as much); tip < 0: the toes rise.
+    // The heel lift raises the ankle next tick so the ball of the foot stays
+    // down (heelLift_, smoothed so it cannot flicker).
     rig_.localToModel(current_, models_);
     const ik::TwoBoneChain* legs[2] = {&joints_.legL, &joints_.legR};
     const int toes[2] = {joints_.toeL, joints_.toeR};
     for (int i = 0; i < 2; ++i) {
         const motion::Foot f = static_cast<motion::Foot>(i);
-        math::Quat shin = modelRot(models_, legs[i]->mid);
+        const math::Quat shin = modelRot(models_, legs[i]->mid);
         // While bowling, the striding foot turns to point straight (the facing
         // before the action) while it is in the air, and stays so.
         const float straighten = stepper_.stepping() ? stepper_.swingProgress() : 1.0f;
         const float yaw = phase_ == Phase::Bowl && strideFoot_ == i ? (bowlBaseYaw_ - walker_.yaw()) * straighten : 0.0f;
+
+        const bool planted = !(stepper_.stepping() && stepper_.swingFoot() == i);
+        const math::Quat flat = math::fromAxisAngle(math::kUp, yaw) * math::fromAxisAngle(math::kRight, stepper_.footPitch(f));
+        const math::Quat limited = shin * ik::clampRotation(math::normalize(math::inverse(shin) * flat), limits_.limit(legs[i]->end));
+        auto toesDown = [](math::Quat q) { return std::asin(math::clamp(-(q * math::kForward).y, -1.0f, 1.0f)); };
+        const float tip = planted ? toesDown(limited) - toesDown(flat) : 0.0f;
+        const float heel = std::max(tip, 0.0f), toesUp = std::max(-tip, 0.0f);
+        heelLift_[i] += (heel - heelLift_[i]) * std::min(1.0f, kHeelRate * tickSeconds_);
+
+        const float pitch = std::max(stepper_.footPitch(f), heelLift_[i]) - toesUp;
         current_.locals[static_cast<size_t>(legs[i]->end)].rotation = math::normalize(
-            math::inverse(shin) * math::fromAxisAngle(math::kUp, yaw) * math::fromAxisAngle(math::kRight, stepper_.footPitch(f)));
+            math::inverse(shin) * math::fromAxisAngle(math::kUp, yaw) * math::fromAxisAngle(math::kRight, pitch));
         if (toes[i] >= 0)
-            current_.locals[static_cast<size_t>(toes[i])].rotation = math::fromAxisAngle(math::kRight, stepper_.toeBend(f));
+            current_.locals[static_cast<size_t>(toes[i])].rotation =
+                math::fromAxisAngle(math::kRight, std::min(stepper_.toeBend(f), -heelLift_[i]));  // toes stay flat
     }
     limits_.apply(current_);
 }
@@ -872,7 +1003,7 @@ void Fielder::reachPelvis() {
 
 void Fielder::reachBody() {
     // RepositionBody driven by the hand (Step 2.4), on top of the foot
-    // repositioning (pelvis_ is not changed, so both apply): the body moves
+    // repositioning (body_ is not changed, so both apply): the body moves
     // toward the target by what is left (body += dir * error), the hips shift
     // back against the centre of mass's overhang (counterbalance, x gain, at
     // most maxHipShift), and the reposition leg clamp keeps both planted feet
@@ -1432,12 +1563,15 @@ void Fielder::setPoseHand(bool left, math::Vec3 world) {
 void Fielder::setPoseFoot(motion::Foot foot, math::Vec3 world) {
     if (phase_ != Phase::Idle && phase_ != Phase::Pose) return;
     phase_ = Phase::Pose;
+    posedFoot_ = static_cast<int>(foot);
     stepper_.place(foot, math::inverse(root_).transformPoint(world));
 }
 
 void Fielder::clearPose() {
     if (phase_ != Phase::Pose) return;
     phase_ = Phase::Idle;
+    posedFoot_ = -1;
+    bodyReposition_.reset();
     poseHand_ = false;
     plantFeet();
 }

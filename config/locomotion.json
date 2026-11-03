@@ -8,12 +8,13 @@
     "acceleration": 5.0,    // m/s^2; full speed within the first step (full-size steps at once)
     "deceleration": 5.0,    // m/s^2; stops within about one step
     "turnRateDeg": 180,     // per second
-    "stepK": 0.33,          // step length = stepK * height * (v / refSpeed)^0.42 (0.6 m at 1.8 m)
+    "stepK": 0.25,          // step length = stepK * height * (v / refSpeed)^0.42 (0.45 m at 1.8 m: short, smooth steps)
     "refSpeed": 1.35,
     "swingFraction": 0.8,   // swing time / step period; the rest is double support
     "minSwing": 0.3,        // s
     "maxSwing": 0.5,        // s; also used for the settling steps when stopping
-    "stepHeight": 0.08,     // swing arc apex
+    "stepHeight": 0.15,     // ankle apex in swing: shortens the leg ~12 cm, so the swing knee bends ~60 deg (real gait peak)
+    "swingPeakAt": 0.3,     // apex early in the swing (heel up first), then the foot goes on low to the landing
     "settleDistance": 0.12, // m; on stop, a foot closer than this to its stance spot stays put
     "bob": 0.025,           // pelvis bob peak-to-peak at full speed, lowest in double support
     "sway": 0.02,           // pelvis sway toward the stance foot
@@ -35,7 +36,6 @@
     "headRate": 6.0,        // 1/s, head turn smoothing
     // Foot roll: heel strike (toes up), flat, heel rise over the ball, toe-off.
     "landPitchDeg": -10,    // toes up at heel strike
-    "heelRise": 0.4,        // stance heel rises over the last 40 % of the other foot's swing
     "toeOffPitchDeg": 18    // plantarflexion at toe-off (15-20 deg)
   },
   // Pace presets (Ctrl: jog, Shift: run). The gait shape blends
@@ -52,9 +52,6 @@
     "refSpeed": 3.0,
     "swingFraction": 1.0,    // no double support
     "flightFraction": 0.2,   // stance ~40 % of the stride
-    "flightLift": 0.08,      // back foot rises after toe-off (heel recovery starts)
-    "flightCarry": 0.8,      // and moves forward at this share of body speed
-    "heelRise": 0.5,
     "toeOffPitchDeg": 25,
     "landPitchDeg": -8,      // rearfoot/midfoot strike
     "swingPeakAt": 0.42,     // early apex: heel recovery
@@ -78,20 +75,21 @@
     "armRate": 10.0
   },
   "run": {
-    "speed": 5.0,            // m/s (sprint to ~9 m/s comes later)
+    "speed": 5.0,            // m/s, full run (sprint to ~9 m/s comes later)
+    "minSpeed": 2.5,         // m/s, slowest run (mouse wheel down while Shift is held)
+    "paceStep": 0.25,        // m/s per mouse-wheel notch
     // No backSpeed / sideSpeed: backing up and sidesteps stay at jog pace and shape.
     "acceleration": 4.0,
     "turnRateDeg": 240,
     "stepK": 0.92,           // 1.66 m step at 5 m/s: ~181 steps/min
     "refSpeed": 5.0,
     "flightFraction": 0.4,   // stance ~30 % of the stride
-    "flightLift": 0.15,
-    "flightCarry": 1.0,
     "toeOffPitchDeg": 35,
     "landPitchDeg": -3,      // midfoot
     "swingPeakAt": 0.38,
     "stepHeight": 0.36,      // heel higher toward the buttock
     "widthScale": 0.8,       // feet near, not on, the midline; each keeps its own lane
+    "landAhead": 0.35,       // foot lands ~1/3 of its contact travel ahead of the hips (shin near vertical; most contact behind)
     "sideFollow": 0.25,      // ~1-2 cm sideways pelvis shift
     "bob": 0.06,             // less oscillation as speed rises
     "sway": 0.008,
@@ -104,6 +102,17 @@
     "elbowBiasDeg": 88,
     "elbowSwingDeg": 10,
     "armRate": 12.0
+  },
+  // Single steps while standing (motion::StepSettings): one foot at a time;
+  // the body follows from body reposition (fielder_joints.json "bodyReposition").
+  "step": {
+    "stepLength": 0.4,       // m forward, ahead of the planted foot (short, comfortable step)
+    "backStepLength": 0.3,   // m back
+    "sideStepLength": 0.3,   // m to the side (the foot on that side leads)
+    "stepDuration": 0.6,     // s per step: weight shift, then the swing (about 0.4 s, BIOMECHANICS 4.2)
+    "liftAt": 0.0,           // share of the step the foot stays down first (0: lifts at once; no weight shift without gravity)
+    "stepHeight": 0.2,       // m ankle apex: the knee bends, the heel rises (about 25 cm, 4.5)
+    "swingPeakAt": 0.35      // apex early in the swing (heel up first, toes low at landing)
   },
   // Standing jump (motion::JumpSettings): crouch, push-off, ballistic flight, landing.
   "jump": {

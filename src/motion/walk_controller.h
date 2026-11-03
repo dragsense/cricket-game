@@ -45,15 +45,13 @@ struct WalkSettings {
     // Running (all 0 / neutral for walking). Use swingFraction 1 with a
     // flight phase (no double support).
     float flightFraction = 0.0f; // share of each swing with both feet off the ground
-    float flightLift = 0.0f;     // m the toes leave the ground at push-off
-    float heelRise = 0.0f;       // share of the other foot's swing the stance heel rises over
     float toeOffPitch = 0.0f;    // rad, foot plantarflexion at toe-off
     float landPitch = 0.0f;      // rad, foot pitch at landing (negative = toes up)
     float swingPeakAt = 0.5f;    // swing time share of the arc apex (earlier = heel recovery)
     float widthScale = 1.0f;     // share of standing width the feet land at
+    float landAhead = 0.5f;      // share of a foot's ground travel that is ahead of the hips at landing
     float pelvisTwist = 0.0f;    // rad, pelvis turn toward the forward leg
     float chestCounter = 0.0f;   // chest turn against the pelvis, share of pelvisTwist
-    float flightCarry = 0.0f;    // share of body speed the back foot moves forward at after toe-off
     float sideFollow = 1.0f;     // share of the sideways shift over the stance foot the pelvis takes
     float pelvisDrop = 0.0f;     // m the pelvis sits lower (stance knee flexes more when running)
 };

@@ -10,7 +10,6 @@ namespace motion {
 namespace {
 
 constexpr float kMinStep = 0.01f;  // metres; shorter moves are not worth a step
-constexpr float kShuffleWidthFraction = 0.6f;  // closing foot stops this share of stance width from the other
 constexpr float kStartTie = 0.05f; // metres; feet this close in distance-to-go count as level
 constexpr float kPitchSettle = 0.75f;  // swing share by which the foot reaches its landing pitch
 constexpr float kToeRelax = 0.3f;      // swing share by which bent toes straighten after push-off
@@ -38,8 +37,7 @@ void FootStepper::reset(math::Vec3 left, math::Vec3 right) {
     stance_[1] = right;
     stanceWidth_ = std::fabs(left.x - right.x);
     pitch_[0] = pitch_[1] = toe_[0] = toe_[1] = 0.0f;
-    carry_[0] = carry_[1] = launch_ = math::Vec3(0.0f);
-    swing_ = -1;
+    swing_ = early_ = -1;
     t_ = 0.0f;
     wait_ = 0.0f;
     idle_ = true;
@@ -50,27 +48,23 @@ void FootStepper::rebase(const math::Transform& from, const math::Transform& to)
     for (math::Vec3& f : feet_) f = toNew.transformPoint(f);
     from_ = toNew.transformPoint(from_);
     to_ = toNew.transformPoint(to_);
-    launch_ = toNew.transformDirection(launch_);
-    for (math::Vec3& v : carry_) v = toNew.transformDirection(v);
+    earlyFrom_ = toNew.transformPoint(earlyFrom_);
+    earlyTo_ = toNew.transformPoint(earlyTo_);
 }
 
 void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, float stepHeight, float settleDistance,
                            const GaitStyle& style) {
     const bool moving = math::length2(velocity) > math::kEpsilon;
-    // A foot lands ahead of its stance spot by half its stance time of travel,
-    // so it passes under the hip mid-stance. Re-aimed every tick: the body
+    // A foot lands ahead of its stance spot by landAhead of its stance time
+    // of travel (walking half: it passes under the hip mid-stance; running
+    // less: most of the contact is behind the hips). Re-aimed every tick: the body
     // keeps moving (and turning) during the swing.
     auto target = [&](int f, float swingLeft) {
         math::Vec3 stance = stance_[f];
         stance.x *= style.widthScale;
         if (stanceTurn_ != 0.0f) stance = math::fromAxisAngle(math::kUp, stanceTurn_) * stance;
-        math::Vec3 p = stance + velocity * (swingLeft + 0.5f * g.stance);
+        math::Vec3 p = stance + velocity * (swingLeft + style.landAhead * g.stance);
         p.y = stance_[f].y;
-        if (stanceTurn_ != 0.0f) return p;  // along the run line: no side-shuffle rule
-        // Sideways walking is a side shuffle: the lead foot steps out and the
-        // trail foot closes beside it; the feet never cross (+X is left).
-        const float other = feet_[1 - f].x, gap = kShuffleWidthFraction * stanceWidth_ * style.widthScale;
-        p.x = f == 0 ? std::max(p.x, other + gap) : std::min(p.x, other - gap);
         return p;
     };
 
@@ -98,14 +92,15 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
             f = move[0] > move[1] ? 0 : 1;
         }
         swing_ = f;
+        liftAt_ = 0.0f;
         from_ = feet_[f];
-        launch_ = moving ? carry_[f] : math::Vec3(0.0f);  // keeps the speed it had after toe-off
-        carry_[f] = math::Vec3(0.0f);
         t_ = 0.0f;
         wait_ = 0.0f;
         stretch_ = nextStretch_;
         nextStretch_ = 1.0f;
-        dur_ = g.swing * stretch_;
+        // A swing lasts the step plus the flight, so it overlaps the other
+        // foot's by the flight and each foot keeps its stance time on the ground.
+        dur_ = (g.swing + g.flight) * stretch_;
     }
     // Aimed at the predicted landing spot while the swing is young; from
     // kAimLock on the spot is fixed (held in the world), so the foot comes
@@ -119,43 +114,48 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
     pitch_[swing] = math::lerp(style.toeOffPitch, style.landPitch, smoothstep(t / kPitchSettle));
     toe_[swing] *= 1.0f - smoothstep(t / kToeRelax);
 
-    // Stance foot: late in the other foot's swing the heel rises and the foot
-    // rolls over its ball (toes stay down), then the toes push off into the
-    // flight: it leaves the ground and starts forward (heel recovery), so the
-    // feet are never both down a full step apart. The next swing starts there.
-    if (style.heelRise > 0.0f && moving) {
-        // (Timed as a normal step: a stretched swing's extra time comes after.)
-        const float roll = smoothstep((std::min(1.0f, t * stretch_) - (1.0f - style.heelRise)) / style.heelRise);
-        // A stretched swing's extra time is all flight (the stance foot
-        // pushes off as early, in time, as in a normal step).
-        const float flight = g.flight + (dur_ - dur_ / stretch_);
-        const float flightShare = dur_ > 0.0f ? std::min(flight / dur_, 1.0f) : 0.0f;
-        const float lift = flightShare > 0.0f ? smoothstep((t - (1.0f - flightShare)) / flightShare) : 0.0f;
-        // Before the roll, a heel-strike landing (toes up) lowers to flat.
-        const float pitch = roll > 0.0f ? style.toeOffPitch * roll
-                                        : pitch_[stance] * (1.0f - std::min(1.0f, kFootFlatRate * dt));
-        pitch_[stance] = pitch;
-        toe_[stance] = -std::max(pitch, 0.0f);
-        feet_[stance].y = stance_[stance].y + style.ballDistance * std::sin(std::max(pitch, 0.0f)) + style.flightLift * lift;
-        carry_[stance] = math::Vec3(velocity.x, 0.0f, velocity.z) * (style.flightCarry * lift);
-        feet_[stance] += carry_[stance] * dt;
+    // Stance foot: a heel-strike landing (toes up) lowers to flat.
+    pitch_[stance] *= 1.0f - std::min(1.0f, kFootFlatRate * dt);
+    toe_[stance] *= 1.0f - std::min(1.0f, kFootFlatRate * dt);
+
+    // Running: the standing foot leaves the ground before the swinging one
+    // lands (flight). With only the flight time left in this swing it starts
+    // its own next swing, along the same arc; when this foot lands, that swing
+    // carries on as the current one. Walking (no flight) never does.
+    if (moving && g.flight > 0.0f && swing_ >= 0 && early_ < 0 && (1.0f - t_) * dur_ <= g.flight) {
+        early_ = stance;
+        earlyFrom_ = feet_[stance];
+        earlyTime_ = 0.0f;
+    }
+    if (early_ >= 0) {
+        earlyTime_ += dt;
+        const float swingTime = std::max(g.swing + g.flight, 0.05f);
+        const float u = math::clamp(earlyTime_ / swingTime, 0.0f, 1.0f);
+        if (u < kAimLock) earlyTo_ = target(early_, std::max(swingTime - earlyTime_, 0.0f));
+        math::Vec3 p = math::lerp(earlyFrom_, earlyTo_, smoothstep(u));
+        p.y += stepHeight * swingArc(u, style.peakAt);
+        feet_[early_] = p;
+        pitch_[early_] = math::lerp(style.toeOffPitch, style.landPitch, smoothstep(u / kPitchSettle));
+        if (swing_ < 0) {  // the other foot has landed: this swing is now the current one
+            swing_ = early_;
+            from_ = earlyFrom_;
+            to_ = earlyTo_;
+            dur_ = swingTime;
+            t_ = u;
+            wait_ = 0.0f;
+            stretch_ = 1.0f;
+            early_ = -1;
+        }
     }
 }
 
-float FootStepper::rightWeight(float flightShare) const {
-    if (swing_ < 0) return -1.0f;
-    // A stretched swing: the extra time is flight (weight hands over as early).
-    const float f = math::clamp(1.0f - (1.0f - flightShare) / stretch_, 0.0f, 0.9f);
-    const float toSwing = f > 0.0f ? smoothstep((t_ - (1.0f - f)) / f) : 0.0f;
-    const float right = swing_ == static_cast<int>(Foot::Right) ? toSwing : 1.0f - toSwing;
-    return right;
-}
-
-void FootStepper::advanceSwing(float dt, float duration, float height, float peakAt) {
+void FootStepper::advanceSwing(float dt, float duration, float height, float peakAt, float liftAt) {
     t_ = std::min(1.0f, t_ + dt / std::max(duration, 0.05f));
-    // Hermite: leaves with the launch velocity, lands softly (zero speed).
-    const float t = t_, launch = t * (1.0f - t) * (1.0f - t) * std::max(duration, 0.05f);
-    math::Vec3 p = math::lerp(from_, to_, smoothstep(t)) + launch_ * launch;
+    // The foot stays down until `liftAt` (the weight moves off it), then swings.
+    const float lift = math::clamp(liftAt, 0.0f, 0.9f);
+    // Eases off and lands softly (zero speed at both ends).
+    const float t = math::clamp((t_ - lift) / (1.0f - lift), 0.0f, 1.0f);
+    math::Vec3 p = math::lerp(from_, to_, smoothstep(t));
     // Arc apex at `peakAt` (0.5: centred; earlier: heel recovery).
     p.y += height * swingArc(t, peakAt);
     feet_[swing_] = p;
@@ -194,7 +194,6 @@ bool FootStepper::startStep(math::Vec2 dir, const StepSettings& s) {
 
     swing_ = f;
     from_ = feet_[f];
-    launch_ = math::Vec3(0.0f);
     to_ = target[f];
     t_ = 0.0f;
     return true;
@@ -203,8 +202,8 @@ bool FootStepper::startStep(math::Vec2 dir, const StepSettings& s) {
 bool FootStepper::stepTo(Foot f, math::Vec3 spot) {
     if (swing_ >= 0) return false;
     swing_ = static_cast<int>(f);
+    liftAt_ = 0.0f;
     from_ = feet_[swing_];
-    launch_ = math::Vec3(0.0f);
     to_ = math::Vec3(spot.x, from_.y, spot.z);
     t_ = 0.0f;
     return true;
@@ -217,8 +216,11 @@ void FootStepper::place(Foot f, math::Vec3 spot) {
 }
 
 void FootStepper::tick(float dt, math::Vec2 dir, const StepSettings& s) {
-    if (swing_ < 0 && !startStep(dir, s)) return;
-    advanceSwing(dt, s.stepDuration, s.stepHeight);
+    if (swing_ < 0) {
+        if (!startStep(dir, s)) return;
+        liftAt_ = s.liftAt;
+    }
+    advanceSwing(dt, s.stepDuration, s.stepHeight, s.peakAt, liftAt_);
 }
 
 } // namespace motion

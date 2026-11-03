@@ -10,6 +10,8 @@
 
 #include "math/math.h"
 
+#include <algorithm>
+
 namespace motion {
 
 struct StepSettings {
@@ -18,6 +20,8 @@ struct StepSettings {
     float sideStepLength = 0.3f;
     float stepDuration = 0.4f;    // seconds per swing
     float stepHeight = 0.08f;     // swing arc apex above the ground
+    float peakAt = 0.5f;          // swing time share of the arc apex (early: knee bends, heel up)
+    float liftAt = 0.0f;          // step time share the foot stays down first (weight moves off it)
 };
 
 struct GaitTiming;
@@ -25,14 +29,11 @@ struct GaitTiming;
 // Swing shape and foot roll for gait mode; the defaults are walking (flat
 // feet, centred arc, standing width).
 struct GaitStyle {
-    float flightLift = 0.0f;    // m the toes leave the ground at push-off (running flight)
-    float heelRise = 0.0f;      // share of the other foot's swing the stance heel rises over
     float toeOffPitch = 0.0f;   // rad, plantarflexion at toe-off (positive = toes down)
     float landPitch = 0.0f;     // rad, foot pitch at landing
     float peakAt = 0.5f;        // swing time share of the arc apex
-    float ballDistance = 0.1f;  // m, ankle to the ball of the foot (heel-rise pivot)
     float widthScale = 1.0f;    // share of standing width the feet land at
-    float flightCarry = 0.0f;   // share of body speed the back foot moves forward at after toe-off
+    float landAhead = 0.5f;     // share of a foot's ground travel that is ahead of the hips at landing
 };
 
 enum class Foot : int { Left = 0, Right = 1 };
@@ -70,9 +71,8 @@ public:
     // ends and the gait carries on with the other foot next, as running (the
     // stance spots are kept; reset() would move them to where the feet are).
     void landed(Foot last) {
-        swing_ = -1;
+        swing_ = early_ = -1;
         t_ = wait_ = 0.0f;
-        carry_[0] = carry_[1] = launch_ = math::Vec3(0.0f);
         idle_ = false;
         last_ = static_cast<int>(last);
     }
@@ -95,12 +95,10 @@ public:
     void place(Foot f, math::Vec3 spot);
 
     bool stepping() const { return swing_ >= 0; }
+    // Foot `f` is off the ground (swinging, or a run's early swing in flight).
+    bool inAir(Foot f) const { return swing_ == static_cast<int>(f) || early_ == static_cast<int>(f); }
     int swingFoot() const { return swing_; }     // -1 when both are planted
     float swingProgress() const { return t_; }  // [0, 1] while stepping
-    // Running: share of the body's weight on the right foot from the gait
-    // phase (the stance foot, handing over to the swing foot through the
-    // flight); -1 when both feet are planted.
-    float rightWeight(float flightShare) const;
     // Foot pitch in character space (rad, positive = toes down) and toe bend
     // (rad, negative = toes up, keeping them on the ground while the heel rises).
     float footPitch(Foot f) const { return pitch_[static_cast<int>(f)]; }
@@ -108,12 +106,10 @@ public:
 
 private:
     bool startStep(math::Vec2 dir, const StepSettings& s);
-    void advanceSwing(float dt, float duration, float height, float peakAt = 0.5f);
+    void advanceSwing(float dt, float duration, float height, float peakAt = 0.5f, float liftAt = 0.0f);
 
     math::Vec3 feet_[2]{};    // current positions (swing foot moves along the arc)
     math::Vec3 from_{0.0f}, to_{0.0f};
-    math::Vec3 launch_{0.0f};     // swing foot's starting velocity relative to the step (m/s)
-    math::Vec3 carry_[2]{};       // gait mode: back foot's forward velocity after toe-off
     math::Vec3 stance_[2]{};  // gait mode's standing spots
     float pitch_[2]{}, toe_[2]{};
     float wait_ = 0.0f;       // gait mode: time both feet have been planted
@@ -124,8 +120,13 @@ private:
     int start_ = static_cast<int>(Foot::Left);  // gait mode: foot that started the last walk
     float stanceWidth_ = 0.2f;
     float t_ = 0.0f;          // swing progress [0, 1]
+    float liftAt_ = 0.0f;     // single steps: share of the step before the foot lifts
     int swing_ = -1;          // swinging foot index, -1 when both are planted
     int last_ = static_cast<int>(Foot::Right);
+    // Running: the standing foot's next swing, started early (flight).
+    int early_ = -1;
+    math::Vec3 earlyFrom_{0.0f}, earlyTo_{0.0f};
+    float earlyTime_ = 0.0f;  // s since it left the ground
 };
 
 } // namespace motion

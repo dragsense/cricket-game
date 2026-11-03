@@ -378,13 +378,21 @@ bool CricketApp::pumpEvents() {
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
     if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
     if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
-    controlled.setMoveInput(move, true, heading_);
-    controlled.setJumpInput(actions_.down(input_, core::Action::Jump));
+    // Limb test: the fielder stands still (no walking, running or jumping).
+    controlled.setMoveInput(limbTest_ ? math::Vec2(0.0f) : move, true, heading_);
+    // Limb test: WASD takes single steps instead (the body follows the feet).
+    controlled.setStepInput(limbTest_ ? move : math::Vec2(0.0f));
+    controlled.setJumpInput(!limbTest_ && actions_.down(input_, core::Action::Jump));
 
-    // Pace: walk by default, hold Shift to run, Ctrl to jog (Shift wins).
-    controlled.setGait(actions_.down(input_, core::Action::Run)   ? motion::Gait::Run
-                       : actions_.down(input_, core::Action::Jog) ? motion::Gait::Jog
-                                                                  : motion::Gait::Walk);
+    // Pace: walk by default, hold Shift to run; while Shift is held the mouse
+    // wheel sets the run's pace (slow run .. full run) and the camera does not
+    // zoom. (Bowling aim keeps its own Shift + wheel.)
+    const bool runKey = actions_.down(input_, core::Action::Run);
+    controlled.setGait(runKey ? motion::Gait::Run : motion::Gait::Walk);
+    if (runKey && !bowlAim_ && !input_.uiWantsMouse && input_.wheel != 0.0f) {
+        controlled.adjustRunPace(input_.wheel);
+        input_.wheel = 0.0f;
+    }
     if (runUp_) {
         // U: straight at the batter, the speed building from a jog to a run
         // (the walker's acceleration), until J's jump takes off.
@@ -397,13 +405,15 @@ bool CricketApp::pumpEvents() {
     sim_.bowler().setJumpFoot(!runUp_ && !sim_.bowler().bowling() ? -1
                               : static_cast<int>(sim_.bowler().holdingLeft() ? motion::Foot::Right : motion::Foot::Left));
 
-    if (actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
-    if (actions_.pressed(input_, core::Action::Pick))
+    // Limb test: no picking, balls or throwing (no ball reaches the hand).
+    if (!limbTest_ && actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
+    if (!limbTest_ && actions_.pressed(input_, core::Action::Pick))
         sim_.fielder().startPick(actions_.down(input_, core::Action::PickStep));
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5 && !limbTest_; ++i)
         if (actions_.pressed(input_, static_cast<core::Action>(static_cast<int>(core::Action::LaunchBall1) + i))) launchBall(i);
-    if (actions_.pressed(input_, core::Action::ThrowBall)) releaseToFielder();
-    if (actions_.pressed(input_, core::Action::GiveBall) && !sim_.fielder().holding() && !sim_.fielder().throwing()) {
+    if (!limbTest_ && actions_.pressed(input_, core::Action::ThrowBall)) releaseToFielder();
+    if (!limbTest_ && actions_.pressed(input_, core::Action::GiveBall) && !sim_.fielder().holding() &&
+        !sim_.fielder().throwing()) {
         sim_.stopBall();
         sim_.fielder().giveBall();
         ballBackTimer_ = -1.0f;
@@ -468,7 +478,7 @@ void CricketApp::updatePose(float seconds) {
         poseActive_ = false;
     }
     if (actions_.pressed(input_, core::Action::PoseLimb)) {
-        poseLimb_ = (poseLimb_ + 1) % 4;
+        poseLimb_ = (poseLimb_ + 1) % 4;  // right foot, left foot, right hand, left hand
         poseActive_ = false;
     }
     if (input_.uiWantsKeyboard) return;
@@ -495,7 +505,8 @@ void CricketApp::updatePose(float seconds) {
     const math::Vec3 move = actions_.down(input_, core::Action::Run) ? math::kUp * ahead + right * side
                                                                     : forward * ahead + right * side;
     poseTarget_ += move * (cfg_.engine.getFloat("debug.limbTestSpeed", 0.5f) * seconds);
-    poseTarget_.y = std::max(poseTarget_.y, 0.0f);
+    // The target goes anywhere (in the air or below the ground); the leg
+    // reaches as near as the body allows.
     if (hand) fielder.setPoseHand(left, poseTarget_);
     else fielder.setPoseFoot(left ? motion::Foot::Left : motion::Foot::Right, poseTarget_);
 }

@@ -11,9 +11,10 @@
 #include "ik/joint_limits.h"
 #include "ik/limb_ik.h"
 #include "math/math.h"
-#include "motion/body_reposition.h"
+#include "motion/body_reposition_backup.h"
 #include "motion/foot_stepper.h"
 #include "motion/jump_controller.h"
+#include "motion/body_reposition.h"
 #include "motion/throw_arc.h"
 #include "motion/walk_controller.h"
 #include "rig/rig.h"
@@ -113,9 +114,19 @@ public:
         face_ = face;
         faceYaw_ = faceYaw;
     }
+    // Single steps while standing (character space, x = left, y = forward;
+    // zero for none): each step swings one foot (locomotion.json "step") and
+    // the body follows from the stance solve. Held, the steps go on.
+    void setStepInput(math::Vec2 dir) { stepInput_ = dir; }
     // Pace (config/locomotion.json "walk", "jog", "run"). The speed eases to
     // the new pace and the gait shape blends with the actual speed.
     void setGait(motion::Gait gait) { gait_ = gait; }
+    // Run pace: `notches` of the mouse wheel (up faster), each runPaceStep
+    // m/s, between the run's minSpeed and its speed (locomotion.json "run").
+    void adjustRunPace(float notches) {
+        runPace_ = math::clamp(runPace_ + notches * runPaceStep_, runMinSpeed_, runSettings_.speed);
+    }
+    float runPace() const { return runPace_; }
     motion::Gait gait() const { return gait_; }
     float speed() const { return walker_.speed(); }  // m/s
     // Jump key held (not picking). Standing, holding starts the crouch;
@@ -330,6 +341,10 @@ private:
     void plantFeet();
     void walk(float dt);
     void repositionBody(float dt);
+    // Limb test: a placed foot stops where its leg reaches (hip range), and a
+    // raised foot lifts only as the weight arrives over the other.
+    // Limb test with a placed foot: body and legs from motion::BodyReposition.
+    void repositionFromFeet();
     void addGaitMotion(float dt);
     void swingArms(float dt);
     void stabiliseHead(float dt);
@@ -439,13 +454,28 @@ private:
     float reachError_ = 0.0f;
     motion::RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
+    int posedFoot_ = -1;  // limb test: the foot last placed (motion::Foot), -1 none
+    math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
+    bool stepWalk_ = false;         // single steps in use (standing)
+    int stepPlanted_ = 1;           // single steps: the foot carrying the body (motion::Foot)
+    motion::StepSettings stepSettings_;
+    float heelLift_[2] = {0.0f, 0.0f};         // radians, smoothed heel lift past the ankle's range (solveIk)
+    static constexpr float kHeelRate = 15.0f;  // 1/s, how fast the heel lift follows (no flicker)
+    float tickSeconds_ = 1.0f / 120.0f;        // this tick's step
+    motion::BodyReposition bodyReposition_;              // limb test: body and legs from real constraints
+    motion::BodyRepositionSettings bodyRepositionSettings_;
+    float armLegRatio_ = 1.0f;  // a hand's swing angle per the other leg's thigh angle
     float ballDistance_ = 0.1f;  // ankle to ball of the foot (m), from the skeleton
+    float ballDrop_ = 0.03f;     // ball of the foot below the ankle (m), from the skeleton
     void blendShape();
 
     motion::WalkSettings walkSettings_, jogSettings_, runSettings_;  // jog starts from walk, run from jog
     motion::WalkSettings control_;  // chosen pace: target speeds, acceleration, turn rate
     motion::WalkSettings shape_;    // gait shape blended by the actual speed
     motion::Gait gait_ = motion::Gait::Walk;
+    float runPace_ = 5.0f;      // m/s, the run's current pace (mouse wheel)
+    float runMinSpeed_ = 2.5f;  // m/s, slowest run
+    float runPaceStep_ = 0.25f; // m/s per wheel notch
     motion::WalkController walker_;
     motion::JumpSettings jump_;
     motion::JumpController jumper_;
@@ -479,7 +509,7 @@ private:
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians
     Joints joints_;
     IkTargets targets_;
-    math::Vec3 pelvis_{0.0f};  // pelvis position in character space, kept between ticks
+    motion::BodyState body_;  // pelvis position and foot-driven turn/drop in character space, kept between ticks
     rig::Pose previous_, current_;
     // Segment mass model (built with the skeleton): mass share per joint, its
     // single child (segment end) or -1, and the leaf tip in joint space.

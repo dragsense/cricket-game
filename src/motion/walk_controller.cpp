@@ -47,17 +47,15 @@ WalkSettings blendGait(const WalkSettings& a, const WalkSettings& b, float t) {
     r.headLead = math::lerp(a.headLead, b.headLead, t);
     r.headRate = math::lerp(a.headRate, b.headRate, t);
     r.flightFraction = math::lerp(a.flightFraction, b.flightFraction, t);
-    r.flightLift = math::lerp(a.flightLift, b.flightLift, t);
-    r.heelRise = math::lerp(a.heelRise, b.heelRise, t);
     r.toeOffPitch = math::lerp(a.toeOffPitch, b.toeOffPitch, t);
     r.landPitch = math::lerp(a.landPitch, b.landPitch, t);
     r.swingPeakAt = math::lerp(a.swingPeakAt, b.swingPeakAt, t);
     r.widthScale = math::lerp(a.widthScale, b.widthScale, t);
+    r.landAhead = math::lerp(a.landAhead, b.landAhead, t);
     r.pelvisTwist = math::lerp(a.pelvisTwist, b.pelvisTwist, t);
     r.chestCounter = math::lerp(a.chestCounter, b.chestCounter, t);
     r.pelvisDrop = math::lerp(a.pelvisDrop, b.pelvisDrop, t);
     r.sideFollow = math::lerp(a.sideFollow, b.sideFollow, t);
-    r.flightCarry = math::lerp(a.flightCarry, b.flightCarry, t);
     return r;
 }
 

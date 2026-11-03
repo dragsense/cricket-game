@@ -80,6 +80,12 @@ TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet plante
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
     fielder.tick(1.0 / 120.0);
     const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
+    auto jointAt = [&](const char* name) {
+        std::vector<math::Mat4> m(static_cast<size_t>(fielder.rig().numJoints()));
+        fielder.rig().localToModel(fielder.pose(), m);
+        return fielder.root().transformPoint(math::Vec3(m[static_cast<size_t>(fielder.rig().findJoint(name))][3]));
+    };
+    const math::Vec3 ballL = jointAt("toe_l");  // ball of the foot, standing flat
     reachFor(fielder, fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
     const math::Vec3 pelvisUp = boneUp(fielder, fielder.rig().findJoint("pelvis"));
     MESSAGE("pelvis up . ahead = ", math::dot(pelvisUp, ahead), "  reach error ", fielder.reachError());
@@ -88,11 +94,9 @@ TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet plante
     CHECK(math::distance(fielder.targets().footL, footL) < 1e-4f);
     CHECK(math::distance(fielder.targets().footR, footR) < 1e-4f);
 
-    // The ankles really are at the foot targets after the leg IK.
-    std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
-    fielder.rig().localToModel(fielder.pose(), models);
-    const math::Vec3 ankle = fielder.root().transformPoint(math::Vec3(models[static_cast<size_t>(fielder.rig().findJoint("foot_l"))][3]));
-    CHECK(math::distance(ankle, footL) < 0.015f);
+    // The foot really is planted after the leg IK: the ball of the foot stays
+    // put (the heel may rise once the shin passes the ankle's range).
+    CHECK(math::distance(jointAt("toe_l"), ballL) < 0.015f);
 }
 
 TEST_CASE("a ground ball too far for planted feet: lower, balanced, feet planted") {
@@ -329,3 +333,4 @@ TEST_CASE("running fielder keeps the body and feet in their lanes") {
     CHECK(footL.lo > -0.02f);      // feet never cross the midline (+X is left)
     CHECK(footR.hi < 0.02f);
 }
+

@@ -1,41 +1,88 @@
 #pragma once
-// Body repositioning (a "late update" after the foot targets are set): moves
-// the pelvis so both feet stay reachable. The body eases toward a comfortable
-// height above the support point (both feet, weighted by stance), then each
-// leg's hip-to-foot distance is clamped to [minReach, maxReach] * leg length,
-// lighter leg first so the stance leg wins when both can't be satisfied.
-// Pure math, no allocations.
+// Body repositioning from the body's targets: the feet now, the hands now,
+// the hips, chest and head later. The body follows wherever a target is put,
+// in the air or on the ground. Real body order (BIOMECHANICS 3.1, 9.1): each
+// part reaches with its own joints first; the next part in only takes what
+// that left, inside its own joint limits.
+//  Feet:
+//   1. The moving leg reaches its foot (two-bone IK, knee forward).
+//   2. Past the hip's range the pelvis tilts by the rest, over the standing
+//      hip: e.g. a foot far behind with a straight leg tips the body forward.
+//   3. Past the leg's length the pelvis moves toward the foot; the standing
+//      foot stays, so the body lowers (a lunge).
+//  Hands:
+//   1. The arm reaches (two-bone IK, elbow back and out).
+//   2. Out of the arm's reach: the clavicle, then chest, spine_02, spine_01
+//      swing the shoulder toward the hand, each inside its limit.
+//   3. Then the pelvis tilts at the hips (hip flexion: a bend to the ground).
+//   4. Then the body moves toward the hand; the planted feet stay, so the
+//      legs bend (a squat or lunge).
+// The planted feet never move. No allocations after init().
 
+#include "ik/joint_limits.h"
+#include "ik/limb_ik.h"
 #include "math/math.h"
+#include "rig/rig.h"
+
+#include <vector>
 
 namespace motion {
 
-struct RepositionSettings {
-    float standReach = 0.95f;  // comfortable hip-to-foot distance (fraction of leg length)
-    float minReach = 0.5f;     // deepest crouch
-    float maxReach = 0.98f;    // legs never fully straight
-    float softBand = 0.02f;    // the max reach eases in over this share of leg length (0: hard)
-    float followRate = 10.0f;  // 1/s, how fast the body settles toward the comfortable height
-    float sideFollow = 1.0f;   // share of the sideways shift over the stance foot the body takes
-    float forwardFollow = 1.0f; // share of the forward/back shift over the feet (0: stay at restZ)
-    float restZ = 0.0f;        // pelvis forward position when not following the feet
-    int iterations = 4;
+struct BodyRepositionSettings {
+    float legReach = 1.0f;          // share of the leg's length a leg straightens to
+    float armReach = 1.0f;          // share of the arm's length a hand reaches to
+    math::Vec3 kneePole{0.0f, 0.0f, 1.0f};        // knees point this way (pelvis frame)
+    math::Vec3 elbowPole{0.3f, 0.0f, -1.0f};      // left elbow points this way (mirrored for the right; +X is left)
+    math::Vec3 pelvisMin{0.0f}, pelvisMax{0.0f};  // pelvis rotation limits (rotation vector, rad)
+    int passes = 3;                 // passes per tick
 };
 
-struct LegSupport {
-    math::Vec3 hipOffset{0.0f};  // hip relative to the pelvis
-    math::Vec3 foot{0.0f};       // foot (ankle) target
+struct BodyRepositionJoints {
+    int pelvis = -1;
+    ik::TwoBoneChain legs[2];  // left, right: thigh, shin, foot
+    int toes[2] = {-1, -1};
+    int spine[3] = {-1, -1, -1};  // spine_01, spine_02, chest
+    int clavicles[2] = {-1, -1};
+    ik::TwoBoneChain arms[2];  // left, right: upper arm, forearm, hand
 };
 
-// The leg clamp of repositionBody on its own: moves `pelvis` so each hip is
-// within reach of its foot: `first` up to maxReach, `second` within
-// [minReach, maxReach] (x legLength, soft top), `first` then `second`, s.iterations times.
-math::Vec3 clampToLegs(math::Vec3 pelvis, const LegSupport& first, const LegSupport& second, float legLength,
-                       const RepositionSettings& s);
+// Where the body's targets are (character space).
+struct BodyTargets {
+    int planted = 1;               // 0 left, 1 right: the foot that stands
+    math::Vec3 plantedAnkle{0.0f}; // its ankle
+    math::Vec3 movingAnkle{0.0f};  // the other leg's ankle target
+    bool down[2] = {true, true};   // left, right foot on the ground (only a foot on the ground holds the body)
+    bool hand[2] = {false, false}; // left, right hand targets in use
+    math::Vec3 handGoal[2]{};      // wrist targets
+};
 
-// Returns the new pelvis position. `stanceWeight` in [0, 1]: 0 = left leg
-// carries the body, 1 = right leg. All points in the same space, +Y up.
-math::Vec3 repositionBody(math::Vec3 pelvis, const LegSupport& left, const LegSupport& right, float legLength,
-                          float stanceWeight, const RepositionSettings& s, float dt);
+class BodyReposition {
+public:
+    // Reads the rest pose's hips, legs and arms. Load-time only.
+    bool init(const rig::Rig& rig, const ik::JointLimits& limits, const BodyRepositionJoints& joints);
+
+    // Nothing carries over between ticks yet; kept for the callers.
+    void reset() {}
+
+    // Sets the pelvis, spine, legs and arms in use in `pose` (character
+    // space). The pelvis starts at its standing spot over the character root
+    // (which travels smoothly with the body). `models` is scratch of the
+    // rig's size. No allocations.
+    void solve(rig::Pose& pose, std::vector<math::Mat4>& models, const BodyTargets& t,
+               const BodyRepositionSettings& s) const;
+
+private:
+    // Joint `joint` turned by `rotation` in model space, clamped to its limit.
+    void rotateInModel(rig::Pose& pose, const std::vector<math::Mat4>& models, int joint, math::Quat rotation) const;
+
+    const rig::Rig* rig_ = nullptr;
+    const ik::JointLimits* limits_ = nullptr;
+    BodyRepositionJoints joints_;
+    math::Vec3 hipOffset_[2]{};    // hip from the pelvis (rest)
+    math::Vec3 restPelvis_{0.0f};  // pelvis standing spot (rest, character space)
+    math::Vec3 legDir_[2]{};       // rest hip-to-ankle direction (pelvis frame)
+    float legLength_[2]{};         // thigh + shin
+    float armLength_[2]{};         // upper arm + forearm
+};
 
 } // namespace motion

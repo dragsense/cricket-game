@@ -59,6 +59,7 @@ cricket_warnings(cricket_ik)
 
 # ---- motion: procedural body motion (own code) ------------------------------------
 add_library(cricket_motion STATIC
+    src/motion/body_reposition_backup.cpp
     src/motion/body_reposition.cpp
     src/motion/foot_stepper.cpp
     src/motion/jump_controller.cpp
