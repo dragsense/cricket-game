@@ -93,8 +93,27 @@ void BodyReposition::solve(rig::Pose& pose, std::vector<math::Mat4>& models, con
     pelvis.position = pelvisPos;
     pelvis.rotation = pelvisRot;
 
-    // --- Hands: each part only takes what the parts before it left ---
     const math::Vec3 hipCentre = 0.5f * (hipOffset_[0] + hipOffset_[1]);
+
+    // --- Chest: the spine turns it first, the pelvis takes the rest ---
+    if (t.chest && joints_.spine[2] >= 0) {
+        const int chest = joints_.spine[2];
+        const int spine[3] = {joints_.spine[2], joints_.spine[1], joints_.spine[0]};
+        for (int j : spine) {
+            if (j < 0) continue;
+            rig_->localToModel(pose, models);
+            rotateInModel(pose, models, j, math::normalize(t.chestRot * math::inverse(jointRot(models, chest))));
+        }
+        rig_->localToModel(pose, models);
+        const math::Quat rest = math::normalize(t.chestRot * math::inverse(jointRot(models, chest)));
+        const math::Vec3 hips = pelvisPos + pelvisRot * hipCentre;
+        pelvisRot = clampRotationVector(math::normalize(rest * pelvisRot), s.pelvisMin, s.pelvisMax);
+        pelvisPos = hips - pelvisRot * hipCentre;
+        pelvis.position = pelvisPos;
+        pelvis.rotation = pelvisRot;
+    }
+
+    // --- Hands: each part only takes what the parts before it left ---
     for (int pass = 0; pass < s.passes; ++pass) {
         for (int h = 0; h < 2; ++h) {
             if (!t.hand[h] || joints_.arms[h].start < 0) continue;

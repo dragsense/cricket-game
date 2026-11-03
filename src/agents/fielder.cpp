@@ -144,9 +144,10 @@ void Fielder::loadLocomotion(const core::Config& c) {
     load("jog", jogSettings_);
     runSettings_ = jogSettings_;  // the jog block is the run's base (no jog pace of its own)
     load("run", runSettings_);
-    runMinSpeed_ = c.getFloat("run.minSpeed", runMinSpeed_);
-    runPaceStep_ = c.getFloat("run.paceStep", runPaceStep_);
-    runPace_ = runSettings_.speed;
+    fastSpeed_ = c.getFloat("walk.fastSpeed", fastSpeed_);
+    postureLean_ = math::radians(c.getFloat("walk.postureLeanDeg", math::degrees(postureLean_)));
+    paceStep_ = c.getFloat("walk.paceStep", paceStep_);
+    pace_ = fastSpeed_;
     stepSettings_.stepLength = c.getFloat("step.stepLength", stepSettings_.stepLength);
     stepSettings_.backStepLength = c.getFloat("step.backStepLength", stepSettings_.backStepLength);
     stepSettings_.sideStepLength = c.getFloat("step.sideStepLength", stepSettings_.sideStepLength);
@@ -210,6 +211,10 @@ void Fielder::blendShape() {
         return forward ? g.speed : std::fabs(local.x) > std::fabs(local.y) ? g.sideSpeed : g.backSpeed;
     };
     const float v = walker_.speed();
+    if (gait_ == motion::Gait::FastWalk) {  // a fast walk keeps the walk's shape (step length and timing follow the speed)
+        shape_ = walkSettings_;
+        return;
+    }
     shape_ = runSettings_;
     for (int i = 0; i < 2; ++i) {
         if (v > ref(*gaits[i])) continue;
@@ -583,8 +588,8 @@ void Fielder::tick(double dt) {
 
 void Fielder::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
-    control_ = gait_ == motion::Gait::Walk ? walkSettings_ : runSettings_;
-    if (gait_ != motion::Gait::Walk) control_.speed = runPace_;  // the pace set with the wheel
+    control_ = gait_ == motion::Gait::Run ? runSettings_ : gait_ == motion::Gait::Jog ? jogSettings_ : walkSettings_;
+    if (gait_ == motion::Gait::FastWalk) control_.speed = pace_;  // the walk at the wheel's pace
     // A run-up delivery keeps running whatever the gait keys say.
     if (autoDeliver_) control_ = runSettings_;
     if (jumper_.active() &&
@@ -801,6 +806,15 @@ void Fielder::repositionFromFeet() {
     t.movingAnkle = toModel.transformPoint(t.planted == 1 ? targets_.footL : targets_.footR);
     t.down[0] = !stepper_.inAir(motion::Foot::Left);
     t.down[1] = !stepper_.inAir(motion::Foot::Right);
+    // Chest target: the walking posture holds the trunk slightly forward
+    // (postureLeanDeg), easing in from standing up to walking speed. The lean
+    // of speeding up and slowing down comes later from forces. Positive about
+    // +X tips the chest forward.
+    {
+        const float walking = math::clamp(walker_.speed() / std::max(walkSettings_.speed, 0.1f), 0.0f, 1.0f);
+        t.chest = true;
+        t.chestRot = math::fromAxisAngle(math::kRight, postureLean_ * walking);
+    }
     // Hand targets: each hand swings on an arc round its shoulder opposite
     // the other leg, by that leg's thigh angle (forward as the other foot
     // steps forward; hanging with the feet together): armLegRatio of it.

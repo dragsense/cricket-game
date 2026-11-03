@@ -71,7 +71,7 @@ public:
     // ends and the gait carries on with the other foot next, as running (the
     // stance spots are kept; reset() would move them to where the feet are).
     void landed(Foot last) {
-        swing_ = early_ = -1;
+        swing_ = -1;
         t_ = wait_ = 0.0f;
         idle_ = false;
         last_ = static_cast<int>(last);
@@ -95,8 +95,8 @@ public:
     void place(Foot f, math::Vec3 spot);
 
     bool stepping() const { return swing_ >= 0; }
-    // Foot `f` is off the ground (swinging, or a run's early swing in flight).
-    bool inAir(Foot f) const { return swing_ == static_cast<int>(f) || early_ == static_cast<int>(f); }
+    // Foot `f` is off the ground (swinging).
+    bool inAir(Foot f) const { return swing_ == static_cast<int>(f); }
     int swingFoot() const { return swing_; }     // -1 when both are planted
     float swingProgress() const { return t_; }  // [0, 1] while stepping
     // Foot pitch in character space (rad, positive = toes down) and toe bend
@@ -123,10 +123,6 @@ private:
     float liftAt_ = 0.0f;     // single steps: share of the step before the foot lifts
     int swing_ = -1;          // swinging foot index, -1 when both are planted
     int last_ = static_cast<int>(Foot::Right);
-    // Running: the standing foot's next swing, started early (flight).
-    int early_ = -1;
-    math::Vec3 earlyFrom_{0.0f}, earlyTo_{0.0f};
-    float earlyTime_ = 0.0f;  // s since it left the ground
 };
 
 } // namespace motion

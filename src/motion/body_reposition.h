@@ -10,7 +10,11 @@
 //      hip: e.g. a foot far behind with a straight leg tips the body forward.
 //   3. Past the leg's length the pelvis moves toward the foot; the standing
 //      foot stays, so the body lowers (a lunge).
-//  Hands:
+//  Chest:
+//   1. The spine turns the chest toward its target: chest, spine_02, then
+//      spine_01, each inside its limit.
+//   2. The pelvis tilts at the hips for the rest, inside its limits.
+//  Hands (reached from the trunk as it then stands):
 //   1. The arm reaches (two-bone IK, elbow back and out).
 //   2. Out of the arm's reach: the clavicle, then chest, spine_02, spine_01
 //      swing the shoulder toward the hand, each inside its limit.
@@ -52,6 +56,8 @@ struct BodyTargets {
     math::Vec3 plantedAnkle{0.0f}; // its ankle
     math::Vec3 movingAnkle{0.0f};  // the other leg's ankle target
     bool down[2] = {true, true};   // left, right foot on the ground (only a foot on the ground holds the body)
+    bool chest = false;            // chest target in use
+    math::Quat chestRot = math::identityQuat();  // chest orientation (character space; identity = upright, facing forward)
     bool hand[2] = {false, false}; // left, right hand targets in use
     math::Vec3 handGoal[2]{};      // wrist targets
 };

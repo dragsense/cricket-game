@@ -2,23 +2,26 @@
 // docs/BIOMECHANICS.md section 4 (walking gait).
 {
   "walk": {
-    "speed": 1.35,          // m/s at full input (comfortable adult walk)
+    "speed": 0.9,           // m/s at full input (calm walk: ~0.45 m steps at ~120 steps/min)
+    "fastSpeed": 2.2,       // m/s, fastest walk (Shift; the mouse wheel sets the pace from speed up to this)
+    "paceStep": 0.1,        // m/s per mouse-wheel notch
     "backSpeed": 0.9,       // m/s walking backward (S)
     "sideSpeed": 0.8,       // m/s sidestepping (A/D)
     "acceleration": 5.0,    // m/s^2; full speed within the first step (full-size steps at once)
     "deceleration": 5.0,    // m/s^2; stops within about one step
     "turnRateDeg": 180,     // per second
     "stepK": 0.25,          // step length = stepK * height * (v / refSpeed)^0.42 (0.45 m at 1.8 m: short, smooth steps)
-    "refSpeed": 1.35,
+    "refSpeed": 0.9,        // the walk's own speed: 0.45 m steps there, longer when walking faster
     "swingFraction": 0.8,   // swing time / step period; the rest is double support
     "minSwing": 0.3,        // s
     "maxSwing": 0.5,        // s; also used for the settling steps when stopping
-    "stepHeight": 0.15,     // ankle apex in swing: shortens the leg ~12 cm, so the swing knee bends ~60 deg (real gait peak)
-    "swingPeakAt": 0.3,     // apex early in the swing (heel up first), then the foot goes on low to the landing
+    "stepHeight": 0.18,     // ankle apex in swing: the swing knee bends and the foot clears the ground well
+    "swingPeakAt": 0.4,     // apex a little before mid-swing, so the foot stays up longer (no dragging)
     "settleDistance": 0.12, // m; on stop, a foot closer than this to its stance spot stays put
     "bob": 0.025,           // pelvis bob peak-to-peak at full speed, lowest in double support
     "sway": 0.02,           // pelvis sway toward the stance foot
-    "leanPerSpeedDeg": 2.0, // forward lean per m/s
+    "postureLeanDeg": 5.0,  // walking posture: the trunk held slightly forward (chest target; real ~2-7 deg)
+    "leanPerSpeedDeg": 2.0, // forward lean per m/s (old gait motion: jog, run, bowling)
     "leanPerAccelDeg": 3.0, // forward lean per m/s^2 (back when braking)
     "turnLeanDeg": 3.0,     // lean into turns per (rad/s * m/s)
     "maxLeanDeg": 10,
@@ -76,8 +79,6 @@
   },
   "run": {
     "speed": 5.0,            // m/s, full run (sprint to ~9 m/s comes later)
-    "minSpeed": 2.5,         // m/s, slowest run (mouse wheel down while Shift is held)
-    "paceStep": 0.25,        // m/s per mouse-wheel notch
     // No backSpeed / sideSpeed: backing up and sidesteps stay at jog pace and shape.
     "acceleration": 4.0,
     "turnRateDeg": 240,

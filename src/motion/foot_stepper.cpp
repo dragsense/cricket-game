@@ -37,7 +37,7 @@ void FootStepper::reset(math::Vec3 left, math::Vec3 right) {
     stance_[1] = right;
     stanceWidth_ = std::fabs(left.x - right.x);
     pitch_[0] = pitch_[1] = toe_[0] = toe_[1] = 0.0f;
-    swing_ = early_ = -1;
+    swing_ = -1;
     t_ = 0.0f;
     wait_ = 0.0f;
     idle_ = true;
@@ -48,8 +48,6 @@ void FootStepper::rebase(const math::Transform& from, const math::Transform& to)
     for (math::Vec3& f : feet_) f = toNew.transformPoint(f);
     from_ = toNew.transformPoint(from_);
     to_ = toNew.transformPoint(to_);
-    earlyFrom_ = toNew.transformPoint(earlyFrom_);
-    earlyTo_ = toNew.transformPoint(earlyTo_);
 }
 
 void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, float stepHeight, float settleDistance,
@@ -98,9 +96,7 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
         wait_ = 0.0f;
         stretch_ = nextStretch_;
         nextStretch_ = 1.0f;
-        // A swing lasts the step plus the flight, so it overlaps the other
-        // foot's by the flight and each foot keeps its stance time on the ground.
-        dur_ = (g.swing + g.flight) * stretch_;
+        dur_ = g.swing * stretch_;
     }
     // Aimed at the predicted landing spot while the swing is young; from
     // kAimLock on the spot is fixed (held in the world), so the foot comes
@@ -118,35 +114,6 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
     pitch_[stance] *= 1.0f - std::min(1.0f, kFootFlatRate * dt);
     toe_[stance] *= 1.0f - std::min(1.0f, kFootFlatRate * dt);
 
-    // Running: the standing foot leaves the ground before the swinging one
-    // lands (flight). With only the flight time left in this swing it starts
-    // its own next swing, along the same arc; when this foot lands, that swing
-    // carries on as the current one. Walking (no flight) never does.
-    if (moving && g.flight > 0.0f && swing_ >= 0 && early_ < 0 && (1.0f - t_) * dur_ <= g.flight) {
-        early_ = stance;
-        earlyFrom_ = feet_[stance];
-        earlyTime_ = 0.0f;
-    }
-    if (early_ >= 0) {
-        earlyTime_ += dt;
-        const float swingTime = std::max(g.swing + g.flight, 0.05f);
-        const float u = math::clamp(earlyTime_ / swingTime, 0.0f, 1.0f);
-        if (u < kAimLock) earlyTo_ = target(early_, std::max(swingTime - earlyTime_, 0.0f));
-        math::Vec3 p = math::lerp(earlyFrom_, earlyTo_, smoothstep(u));
-        p.y += stepHeight * swingArc(u, style.peakAt);
-        feet_[early_] = p;
-        pitch_[early_] = math::lerp(style.toeOffPitch, style.landPitch, smoothstep(u / kPitchSettle));
-        if (swing_ < 0) {  // the other foot has landed: this swing is now the current one
-            swing_ = early_;
-            from_ = earlyFrom_;
-            to_ = earlyTo_;
-            dur_ = swingTime;
-            t_ = u;
-            wait_ = 0.0f;
-            stretch_ = 1.0f;
-            early_ = -1;
-        }
-    }
 }
 
 void FootStepper::advanceSwing(float dt, float duration, float height, float peakAt, float liftAt) {

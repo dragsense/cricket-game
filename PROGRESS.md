@@ -101,6 +101,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   gravity). Pick, throw, bowl and jump still use the backup repositioning and reach*.
   Next: running fixes (mid-stance low point, running elbows ~90 deg), then tests. Tests not
   run this session; test_walk.cpp lost the run-flight test with the removed flight carry.
+  **2026-11-03 later:** running taken out for now (it read as a fast walk): Shift is a fast
+  walk (`Gait::FastWalk`, walk shape), Shift + mouse wheel sets 0.9-2.2 m/s; the run flight
+  overlap is removed from the stepper (back next session with a proper run). Walk: 0.9 m/s,
+  0.45 m steps (~120 steps/min, `refSpeed` 0.9), swing 0.18 m peaking at 0.4. Chest target
+  in BodyReposition (spine first, then pelvis); walking holds a 5 deg posture lean
+  (`postureLeanDeg`). Measured: the walk dips ~4-5 cm in double support quickly (straight
+  legs, no heel-toe roll); next: heel-to-toe foot roll in the step path, then running.
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

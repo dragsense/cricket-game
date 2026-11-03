@@ -384,13 +384,13 @@ bool CricketApp::pumpEvents() {
     controlled.setStepInput(limbTest_ ? move : math::Vec2(0.0f));
     controlled.setJumpInput(!limbTest_ && actions_.down(input_, core::Action::Jump));
 
-    // Pace: walk by default, hold Shift to run; while Shift is held the mouse
-    // wheel sets the run's pace (slow run .. full run) and the camera does not
-    // zoom. (Bowling aim keeps its own Shift + wheel.)
-    const bool runKey = actions_.down(input_, core::Action::Run);
-    controlled.setGait(runKey ? motion::Gait::Run : motion::Gait::Walk);
-    if (runKey && !bowlAim_ && !input_.uiWantsMouse && input_.wheel != 0.0f) {
-        controlled.adjustRunPace(input_.wheel);
+    // Pace: walk by default, hold Shift to walk fast; while Shift is held the
+    // mouse wheel sets the fast walk's pace (walk .. fastSpeed) and the camera
+    // does not zoom. (Running comes later; bowling aim keeps its own Shift + wheel.)
+    const bool fastKey = actions_.down(input_, core::Action::Run);
+    controlled.setGait(fastKey ? motion::Gait::FastWalk : motion::Gait::Walk);
+    if (fastKey && !bowlAim_ && !input_.uiWantsMouse && input_.wheel != 0.0f) {
+        controlled.adjustPace(input_.wheel);
         input_.wheel = 0.0f;
     }
     if (runUp_) {

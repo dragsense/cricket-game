@@ -121,12 +121,13 @@ public:
     // Pace (config/locomotion.json "walk", "jog", "run"). The speed eases to
     // the new pace and the gait shape blends with the actual speed.
     void setGait(motion::Gait gait) { gait_ = gait; }
-    // Run pace: `notches` of the mouse wheel (up faster), each runPaceStep
-    // m/s, between the run's minSpeed and its speed (locomotion.json "run").
-    void adjustRunPace(float notches) {
-        runPace_ = math::clamp(runPace_ + notches * runPaceStep_, runMinSpeed_, runSettings_.speed);
+    // Fast-walk pace: `notches` of the mouse wheel (up faster), each
+    // paceStep m/s, between the walk's speed and its fastSpeed
+    // (locomotion.json "walk").
+    void adjustPace(float notches) {
+        pace_ = math::clamp(pace_ + notches * paceStep_, walkSettings_.speed, fastSpeed_);
     }
-    float runPace() const { return runPace_; }
+    float pace() const { return pace_; }
     motion::Gait gait() const { return gait_; }
     float speed() const { return walker_.speed(); }  // m/s
     // Jump key held (not picking). Standing, holding starts the crouch;
@@ -473,9 +474,10 @@ private:
     motion::WalkSettings control_;  // chosen pace: target speeds, acceleration, turn rate
     motion::WalkSettings shape_;    // gait shape blended by the actual speed
     motion::Gait gait_ = motion::Gait::Walk;
-    float runPace_ = 5.0f;      // m/s, the run's current pace (mouse wheel)
-    float runMinSpeed_ = 2.5f;  // m/s, slowest run
-    float runPaceStep_ = 0.25f; // m/s per wheel notch
+    float pace_ = 2.2f;       // m/s, the fast walk's current pace (mouse wheel)
+    float fastSpeed_ = 2.2f;  // m/s, fastest walk
+    float paceStep_ = 0.1f;   // m/s per wheel notch
+    float postureLean_ = 0.087f;  // rad, walking posture: trunk held slightly forward
     motion::WalkController walker_;
     motion::JumpSettings jump_;
     motion::JumpController jumper_;
