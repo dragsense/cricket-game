@@ -32,6 +32,7 @@ struct GaitStyle {
     float toeOffPitch = 0.0f;   // rad, plantarflexion at toe-off (positive = toes down)
     float landPitch = 0.0f;     // rad, foot pitch at landing
     float peakAt = 0.5f;        // swing time share of the arc apex
+    float liftOffSpeed = 0.0f;  // forward speed at lift-off, shares of the average swing speed (0: from rest)
     float widthScale = 1.0f;    // share of standing width the feet land at
     float landAhead = 0.5f;     // share of a foot's ground travel that is ahead of the hips at landing
 };
@@ -106,7 +107,8 @@ public:
 
 private:
     bool startStep(math::Vec2 dir, const StepSettings& s);
-    void advanceSwing(float dt, float duration, float height, float peakAt = 0.5f, float liftAt = 0.0f);
+    void advanceSwing(float dt, float duration, float height, float peakAt = 0.5f, float liftAt = 0.0f,
+                      float liftOffSpeed = 0.0f);
 
     math::Vec3 feet_[2]{};    // current positions (swing foot moves along the arc)
     math::Vec3 from_{0.0f}, to_{0.0f};

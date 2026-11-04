@@ -139,6 +139,7 @@ void Fielder::loadLocomotion(const core::Config& c) {
         w.toeOffPitch = deg("toeOffPitchDeg", w.toeOffPitch);
         w.landPitch = deg("landPitchDeg", w.landPitch);
         w.swingPeakAt = get("swingPeakAt", w.swingPeakAt);
+        w.liftOffSpeed = get("liftOffSpeed", w.liftOffSpeed);
         w.widthScale = get("widthScale", w.widthScale);
         w.landAhead = get("landAhead", w.landAhead);
         w.pelvisTwist = deg("pelvisTwistDeg", w.pelvisTwist);
@@ -725,6 +726,7 @@ motion::GaitStyle Fielder::gaitStyle() const {
     s.toeOffPitch = w.toeOffPitch;
     s.landPitch = w.landPitch;
     s.peakAt = w.swingPeakAt;
+    s.liftOffSpeed = w.liftOffSpeed;
     s.widthScale = w.widthScale;
     s.landAhead = w.landAhead;
     return s;

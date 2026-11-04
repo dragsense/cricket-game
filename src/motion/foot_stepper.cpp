@@ -103,7 +103,7 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
     // down onto it instead of chasing a moving spot into the ground.
     if (t_ < kAimLock) to_ = target(swing_, (1.0f - t_) * dur_);
     const int swing = swing_, stance = 1 - swing_;
-    advanceSwing(dt, dur_, stepHeight * stretch_, style.peakAt);
+    advanceSwing(dt, dur_, stepHeight * stretch_, style.peakAt, 0.0f, style.liftOffSpeed);
 
     // Swing foot: pointed after toe-off, toes relax, then levels for landing.
     const float t = t_;
@@ -116,13 +116,17 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
 
 }
 
-void FootStepper::advanceSwing(float dt, float duration, float height, float peakAt, float liftAt) {
+void FootStepper::advanceSwing(float dt, float duration, float height, float peakAt, float liftAt, float liftOffSpeed) {
     t_ = std::min(1.0f, t_ + dt / std::max(duration, 0.05f));
     // The foot stays down until `liftAt` (the weight moves off it), then swings.
     const float lift = math::clamp(liftAt, 0.0f, 0.9f);
-    // Eases off and lands softly (zero speed at both ends).
+    // Leaves already moving forward at liftOffSpeed (it rolled off its toes;
+    // 0: from rest), so with the height easing in the path starts low and
+    // curves up; lands softly (zero speed).
     const float t = math::clamp((t_ - lift) / (1.0f - lift), 0.0f, 1.0f);
-    math::Vec3 p = math::lerp(from_, to_, smoothstep(t));
+    const float v0 = math::clamp(liftOffSpeed, 0.0f, 1.5f);
+    const float along = v0 * t + (3.0f - 2.0f * v0) * t * t + (v0 - 2.0f) * t * t * t;
+    math::Vec3 p = math::lerp(from_, to_, along);
     // Arc apex at `peakAt` (0.5: centred; earlier: heel recovery).
     p.y += height * swingArc(t, peakAt);
     feet_[swing_] = p;

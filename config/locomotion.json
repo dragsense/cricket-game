@@ -39,7 +39,11 @@
     "headRate": 6.0,        // 1/s, head turn smoothing
     // Foot roll: heel strike (toes up), flat, heel rise over the ball, toe-off.
     "landPitchDeg": -10,    // toes up at heel strike
-    "toeOffPitchDeg": 18    // plantarflexion at toe-off (15-20 deg)
+    "toeOffPitchDeg": 18,   // plantarflexion at toe-off (15-20 deg)
+    // The swing foot leaves already moving forward (it rolls off the toes), so
+    // its path starts low and arcs up: forward speed at lift-off in shares of
+    // its average swing speed (0: straight up first; 1: about 9 deg up).
+    "liftOffSpeed": 1.0
   },
   // Pace presets (Ctrl: jog, Shift: run). The gait shape blends
   // walk -> jog -> run by the actual speed. docs/BIOMECHANICS.md section 5.
