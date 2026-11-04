@@ -1,6 +1,6 @@
 #pragma once
-// Thin wrapper over Jolt Physics for generic rigid bodies (later: stumps,
-// bails, player bodies). Game code sees only this interface; Jolt stays in the .cpp.
+// Thin wrapper over Jolt Physics for generic rigid bodies (later: player
+// bodies, bat). Game code sees only this interface; Jolt stays in the .cpp.
 // Stepped by the fixed-timestep sim; keeps the previous and current transform
 // of every body so rendering can interpolate. World settings (gravity, air)
 // are shared with the ball solver.

@@ -12,7 +12,7 @@ set(ENTT_VERSION     "v3.15.0")
 set(DOCTEST_VERSION  "v2.5.2")
 set(OZZ_VERSION      "0.16.0")
 set(EFSW_VERSION     "1.4.1")            # file watcher: live config reload in dev builds
-set(JOLT_VERSION     "v5.3.0")           # rigid bodies: stumps, bails, later player bodies
+set(JOLT_VERSION     "v5.3.0")           # rigid bodies: player bodies, bat (later)
 # Dev tool (not linked): watchexec (winget install watchexec.watchexec) drives `run watch`.
 # Planned, not integrated yet:
 #   Milestone 1: ImGuizmo (draggable IK targets, Step 1.2)

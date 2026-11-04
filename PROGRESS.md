@@ -139,6 +139,10 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   that physics; without it a run is a fast walk. The fast walk (Shift + wheel pace) is
   removed: the player only walks. Next: the body's physics (mass, gravity, forces), then
   running on it (old run code is not the reference).
+  Stumps and bails removed (code, scene, config; the user's call so they do not confuse the
+  body physics). Rule (user): gravity, forces and mass always from one place
+  (`physics::PhysicsWorld` + physics_world.json, Jolt), library first, nothing invented;
+  body, bat and later objects use the same. Next: a plan for the body as a Jolt body.
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

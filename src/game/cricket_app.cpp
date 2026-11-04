@@ -158,7 +158,7 @@ bool CricketApp::init() {
 
     if (!sim_.initPhysics(cfg_.physicsWorld, cfg_.scene)) return false;
     sim_.initBall(cfg_.ball, cfg_.scene);
-    scene_ = buildTestScene(world_, *renderer_, cfg_.scene, sim_.wickets().layout());
+    scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
     ballPos_ = cfg_.scene.getVec3("ball.restPosition", math::Vec3(0.15f, 0.0f, 5.0f));
     ballPos_.y = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
 
@@ -225,8 +225,7 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
             cfg_.scene = std::move(fresh);
             sim_.initBall(cfg_.ball, cfg_.scene);
             destroyTestScene(world_, *renderer_, scene_);
-            sim_.rebuildWickets(cfg_.physicsWorld, cfg_.scene);
-            scene_ = buildTestScene(world_, *renderer_, cfg_.scene, sim_.wickets().layout());
+            scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
             appliedSettings_.showProbe = !debugSettings_.showProbe;  // re-apply probe visibility
         } else if (name == "physics_world.json") {
             cfg_.physicsWorld = std::move(fresh);
@@ -524,17 +523,6 @@ void CricketApp::fixedUpdate(double dt) {
     }
 }
 
-void CricketApp::updateWickets(float alpha) {
-    const match::Wickets& wickets = sim_.wickets();
-    if (!wickets.built()) return;
-    const physics::PhysicsWorld& physics = sim_.physicsWorld();
-    for (int i = 0; i < match::kWicketPieces; ++i) {
-        entt::entity e = scene_.wicketPieces[static_cast<size_t>(i)];
-        if (e == entt::null) continue;
-        world_.setTransform(e, wicketPieceVisual(wickets.layout(), i, physics.interpolated(wickets.body(i), alpha)));
-    }
-}
-
 void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
 
@@ -569,7 +557,6 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     updateFielder(alpha);
     updateThrowAim(alpha);
     updateBowlArc(alpha);
-    updateWickets(alpha);
     world_.syncToRenderer(*renderer_);
 
     if (debugSettings_.debugDraw) drawDebugGeometry(alpha);

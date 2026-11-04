@@ -26,13 +26,8 @@ bool SimWorld::initBowler(const rig::SkeletonDef& def, const core::Config& joint
 }
 
 bool SimWorld::initPhysics(const core::Config& physicsWorld, const core::Config& scene) {
-    wickets_.destroy(physics_);
-    if (!physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld))) return false;
-    return wickets_.build(physics_, scene, physicsWorld);
-}
-
-bool SimWorld::rebuildWickets(const core::Config& physicsWorld, const core::Config& scene) {
-    return physics_.ready() && wickets_.build(physics_, scene, physicsWorld);
+    (void)scene;
+    return physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld));
 }
 
 void SimWorld::initBall(const core::Config& ball, const core::Config& scene) {

@@ -8,7 +8,6 @@
 // with the loop's alpha.
 
 #include "agents/fielder.h"
-#include "match/wickets.h"
 #include "math/math.h"
 #include "physics/sim/sphere_solver.h"
 #include "physics/core/physics_world.h"
@@ -30,12 +29,8 @@ public:
 
     // Creates the fielder from its skeleton description. Load-time only.
     bool initFielder(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion);
-    // Creates the Jolt world from config/physics_world.json and the wickets
-    // (sizes from config/scene.json). Load time; calling again rebuilds them.
+    // Creates the Jolt world from config/physics_world.json. Load time.
     bool initPhysics(const core::Config& physicsWorld, const core::Config& scene);
-    // Rebuilds the wickets only (scene.json changed).
-    bool rebuildWickets(const core::Config& physicsWorld, const core::Config& scene);
-    const Wickets& wickets() const { return wickets_; }
     physics::PhysicsWorld& physicsWorld() { return physics_; }
     const physics::PhysicsWorld& physicsWorld() const { return physics_; }
 
@@ -75,7 +70,6 @@ private:
     agents::Fielder fielder_;
     agents::Fielder bowler_;
     physics::PhysicsWorld physics_;
-    Wickets wickets_;
     physics::GravityForce gravity_;
     physics::DragForce drag_;
     physics::SphereSolver ballSolver_;

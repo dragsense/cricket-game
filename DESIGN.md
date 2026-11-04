@@ -35,7 +35,7 @@ All versions are pinned in [cmake/dependencies.cmake](cmake/dependencies.cmake).
 | doctest | unit tests | M0 |
 | ozz-animation | skeletons, two-bone/aim IK, blending, skinning, clip playback | M1 |
 | ImGuizmo | dragging IK targets in the viewport | M1 |
-| Jolt Physics | generic rigid bodies (stumps, bails, later player bodies), behind `src/physics/core` | M3 |
+| Jolt Physics | generic rigid bodies (player bodies, bat; later), behind `src/physics/core` | M3 |
 | RmlUi | game menus / HUD | later |
 
 Anything else: ask first.
@@ -191,7 +191,8 @@ Cricket dimensions:
   drawn as merged painted dots.
 - **Pitch and creases:** a pitch strip plus bowling, popping and return creases (one
   merged mesh).
-- **Wickets:** stumps and bails, with each bail top at most 12.7 mm above the stumps.
+- **Wickets:** removed 2026-11-04 (the user's call, before the body physics); they come
+  back later as Jolt bodies.
 - **Ball:** a sphere using the `CricketBall` material kind (procedural seam shader).
 
 Small parts are merged with `render::appendMesh` to keep draw calls low.
@@ -309,8 +310,8 @@ queries later), in `src/physics/sim`: force generators (gravity, drag; spin and 
 later as new generators), box and sphere colliders with sphere contact tests
 (`ColliderSet`, fixed capacity, a surface per shape), and `SphereSolver` (substepped
 semi-implicit Euler, restitution bounce, grip-slip friction to rolling, rolling
-resistance to rest; spin and orientation). Stumps and bails are Jolt bodies
-(`match::Wickets`); the ball does not hit them yet. `src/physics/ball` only configures it
+resistance to rest; spin and orientation). (Stumps and bails were Jolt bodies until
+2026-11-04; removed for now.) `src/physics/ball` only configures it
 for the cricket ball. The predictor (3.4) will call the same `step()`.
 
 ### Agents / AI (M4+): not started

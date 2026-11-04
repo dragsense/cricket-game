@@ -54,7 +54,7 @@ std::vector<Vec3> fieldingCirclePoints(float radius, float halfPitch, float spac
 
 } // namespace
 
-TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c, const match::WicketLayout& wickets) {
+TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c) {
     TestScene scene;
     // Every scene entity goes through add(), so the scene can be rebuilt on config reload.
     auto add = [&](const render::MeshData& mesh, const MaterialDesc& mat, const math::Transform& t, bool shadows) {
@@ -127,19 +127,6 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c, c
         add(lines, paint, at(Vec3(0.0f)), false);
     }
 
-    // --- Wickets (Law 8): three stumps and two bails at each end, placed from
-    // the same layout as their Jolt bodies. ---
-    MaterialDesc wood = readMaterial(c, "stumps", {{0.93f, 0.88f, 0.75f}, 0.45f, 0.0f, 0.0f, 0.0f});
-    MaterialDesc bailWood = readMaterial(c, "bails", wood);
-    render::MeshData stumpMesh = render::makeCylinder(wickets.stumpRadius, wickets.stumpHeight, 24);
-    render::MeshData bailMesh = render::makeCylinder(wickets.bailRadius, wickets.bailLength, 12);
-    for (int i = 0; i < match::kWicketPieces; ++i) {
-        bool bail = wickets.isBail(i);
-        scene.wicketPieces[static_cast<size_t>(i)] =
-            add(bail ? bailMesh : stumpMesh, bail ? bailWood : wood,
-                wicketPieceVisual(wickets, i, wickets.rest[static_cast<size_t>(i)]), true);
-    }
-
     // --- Ball (Law 4): men's ball, 22.4-22.9 cm circumference. ---
     {
         float circumference = c.getFloat("ball.circumference", 0.2265f);
@@ -159,13 +146,6 @@ TestScene buildTestScene(World& w, render::Renderer& r, const core::Config& c, c
     w.registry().emplace<FollowsProbe>(scene.probe);
 
     return scene;
-}
-
-math::Transform wicketPieceVisual(const match::WicketLayout& wickets, int piece, const math::Transform& body) {
-    // Cylinder meshes start at their base; bodies are centred.
-    math::Transform t = body;
-    t.position = body.transformPoint(Vec3(0, -wickets.halfLength(piece), 0));
-    return t;
 }
 
 void destroyTestScene(World& w, render::Renderer& r, TestScene& scene) {
