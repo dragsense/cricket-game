@@ -13,6 +13,8 @@
     "maxContactConstraints": 1024,
     "maxSprings": 32,               // Jolt distance-constraint springs (load time)
     "maxJoints": 256,               // Jolt hinge and swing-twist joints (load time)
+    "jointVelocitySteps": 20,       // solver iterations for joints (Jolt override; 0: Jolt's 10). 20/5: a muscle-less crash overshoots 12 deg (was 17)
+    "jointPositionSteps": 5,        // > 0: (0: Jolt's 2)
     "tempAllocatorKb": 2048,        // preallocated; no heap use while stepping
     "threads": 0,                   // 0: single-threaded (tiny scene, mobile-friendly)
     "collisionSteps": 1,            // per 120 Hz tick

@@ -99,12 +99,15 @@ public:
     // (config/human_joints.json) and walk/run settings (config/locomotion.json),
     // and stands it at the spawn point.
     bool init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion);
-    // The body's mass in the shared physics world (HumanBody, gravity only:
-    // nothing holds it up until muscles exist): its height carries the pelvis
-    // while walking and in the limb test; the feet stand on the world's real
-    // surface (Jolt ground query). After init(); again after the world is
-    // rebuilt. False if the world is full.
+    // The body in the shared physics world (HumanBody: a Jolt body per bone
+    // with mass, real joint ranges, no muscles yet, so it folds under
+    // gravity): its centre of mass height carries the pelvis while walking
+    // and in the limb test; the feet stand on the world's real surface (Jolt
+    // ground query). After init(); again after the world is rebuilt. False if
+    // the world is full.
     bool attachPhysics(physics::PhysicsWorld& world);
+    const HumanBody& humanBody() const { return humanBody_; }
+    const ik::JointLimits& jointLimits() const { return limits_; }
     // Re-reads config/locomotion.json without moving the fielder.
     void loadLocomotion(const core::Config& locomotion);
     // Rebuilds the skeleton at a new height (allocates; not per tick).

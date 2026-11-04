@@ -38,6 +38,8 @@ struct PhysicsSettings {
     int maxContactConstraints = 1024;
     int maxSprings = 32;
     int maxJoints = 256;
+    int jointVelocitySteps = 0;  // > 0: solver velocity iterations for joints (Jolt override; 0: the world's)
+    int jointPositionSteps = 0;  // > 0: solver position iterations for joints
     int tempAllocatorKb = 2048;
     int threads = 0;  // 0: single-threaded job system
     int collisionSteps = 1;
@@ -67,6 +69,7 @@ struct BodyDesc {
     bool lockRotation = false;  // dynamic: translates only (no tumbling)
     bool verticalOnly = false;  // dynamic: moves up and down only (no rotation either)
     float mass = 1.0f;  // kg; dynamic only
+    uint32_t collisionGroup = 0;  // > 0: never collides with bodies of the same group (parts of one object)
     float friction = 0.5f;
     float restitution = 0.3f;
 };

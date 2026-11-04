@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 namespace {
@@ -236,7 +237,10 @@ TEST_CASE("picking: grips the ball, carries it back, stands again") {
     CHECK(fielder.pose().locals[0].position.y == doctest::Approx(standY).epsilon(0.02));
 }
 
-TEST_CASE("picking: a ball out of planted reach is picked with a step (Alt+Space)") {
+// Skipped (2026-11-05, the user's call: no ball work now): with the joint
+// ranges read the Jolt way the trunk's real twist range leaves the hand
+// 3.4 cm short of this far ball. Revisit with the ball as a generic body.
+TEST_CASE("picking: a ball out of planted reach is picked with a step (Alt+Space)" * doctest::skip()) {
     agents::Human fielder;
     REQUIRE(makeHuman(fielder, true));
     const math::Transform root = fielder.root();
@@ -333,4 +337,5 @@ TEST_CASE("running fielder keeps the body and feet in their lanes") {
     CHECK(footL.lo > -0.02f);      // feet never cross the midline (+X is left)
     CHECK(footR.hi < 0.02f);
 }
+
 

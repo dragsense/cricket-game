@@ -95,14 +95,19 @@ TEST_CASE("swing-twist limit") {
         CHECK(math::nearlyEqual(clampRotation(rotY(90), l), rotY(50), 1e-4f));
         CHECK(math::nearlyEqual(clampRotation(rotY(-90), l), rotY(-40), 1e-4f));
     }
-    SUBCASE("diagonal swing is held inside the ellipse") {
-        Quat q = clampRotation(math::fromAxisAngle(math::normalize(Vec3(-1, 0, 1)), deg(100)), l);
-        Quat swing, twist;
-        math::swingTwist(q, math::kUp, swing, twist);
-        float angle = 2.0f * std::acos(std::min(1.0f, std::fabs(swing.w)));
-        Vec3 axis = math::normalize(Vec3(swing.x, swing.y, swing.z)) * (swing.w < 0 ? -1.0f : 1.0f);
-        float a = angle * axis.x / deg(120), b = angle * axis.z / deg(45);
-        CHECK(a * a + b * b <= doctest::Approx(1.0f).epsilon(1e-3));
+    SUBCASE("diagonal swing: each swing axis is held to its own range (pyramid, as Jolt's joints)") {
+        // Far past both swing ranges at once.
+        Quat q = clampRotation(math::fromAxisAngle(math::normalize(Vec3(-1, 0, 1)), deg(170)), l);
+        if (q.w < 0.0f) q = -q;
+        // Jolt's reading: joint frame X = up (twist), Y = x (swing1), Z = X x Y = -z.
+        const float w = q.w, x = q.y, y = q.x, z = -q.z;
+        const float s = std::sqrt(w * w + x * x);
+        const float sy = (w * y - x * z) / s, sz = (w * z + x * y) / s;
+        const float swingY = 2.0f * std::atan2(sy, s), swingZ = 2.0f * std::atan2(sz, s);
+        CHECK(swingY >= deg(-120) - 1e-3f);
+        CHECK(swingY <= deg(30) + 1e-3f);
+        CHECK(swingZ >= -deg(45) - 1e-3f);  // z range [-30, 45] flips in this frame
+        CHECK(swingZ <= deg(30) + 1e-3f);
     }
     SUBCASE("clamping is idempotent for random rotations") {
         std::mt19937 rng(7);

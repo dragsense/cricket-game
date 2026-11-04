@@ -167,6 +167,18 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (tests/test_physics_joints.cpp): capsule rests on its side; free hinge stops at its
   limit; a 50 N m motor holds a 2 kg arm (sags by load / stiffness, 0.19 rad as Jolt's
   spring predicts), a 1 N m one cannot; a swing-twist motor reaches its target.
+- [x] **Human from generic parts** (2026-11-05): `HumanBody` builds 19 Jolt bodies (each
+  bone with mass: shape from the skeleton visual, de Leva share of 73 kg; neck, clavicles
+  and fingers ride their parents) joined at each joint with the human_joints.json ranges
+  (hinge: knee, elbow, toe; SixDOF: the rest); one collision group per human (its parts
+  skip each other, Jolt group filter). Motors off: it folds onto the ground (centre of
+  mass 0.99 -> 0.11 m). `ik::clampRotation` now measures ranges the way Jolt does (twist,
+  then pyramid swing, per axis), so the pose and the physics read them alike (the user's
+  OK); test_ik's ellipse check became a per-axis check. Joint solver iterations 20/5
+  (`jolt.jointVelocitySteps` / `jointPositionSteps`): the muscle-less crash overshoots
+  0.21 rad (default 0.30). The stepped pick of a ball 1.2 m ahead now ends 3.4 cm short
+  (trunk twist range); its test is skipped (the user: no ball work now). The drawn pose's
+  pelvis follows the falling centre of mass (expected until motors and display).
 - [x] **SixDOF joint** (the user's call: real, uneven ranges): `createSixDof` (Jolt
   SixDOF, pyramid swing, per-axis min/max, motors, `setSixDofTarget`). Real joints bend
   further one way (hip, ankle); Jolt's swing-twist only has even cones. Tests: the same

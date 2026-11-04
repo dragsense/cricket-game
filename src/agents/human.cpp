@@ -1132,11 +1132,12 @@ math::Vec3 Human::modelCentreOfMass() {
 bool Human::attachPhysics(physics::PhysicsWorld& world) {
     physics_ = &world;
     humanBody_ = HumanBody{};
-    // The centre of mass over the root at rest: the mass starts there.
+    // The centre of mass over the root at rest (the body starts standing).
     rig_.localToModel(rig_.restPose(), models_);
     const math::Vec3 com = modelCentreOfMass();
     restComHeight_ = com.y;
-    if (!humanBody_.init(world, def_.bodyMass, root_.transformPoint(com))) {
+    static uint32_t nextGroup = 1;  // each human's parts skip only each other
+    if (!humanBody_.init(world, def_, rig_, limits_, root_, nextGroup++)) {
         LOG_ERROR("fielder: no room for the body in the physics world");
         physics_ = nullptr;
         return false;

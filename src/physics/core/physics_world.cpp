@@ -17,6 +17,7 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/GroupFilterTable.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
@@ -106,6 +107,8 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     s.maxContactConstraints = c.getInt("jolt.maxContactConstraints", s.maxContactConstraints);
     s.maxSprings = c.getInt("jolt.maxSprings", s.maxSprings);
     s.maxJoints = c.getInt("jolt.maxJoints", s.maxJoints);
+    s.jointVelocitySteps = c.getInt("jolt.jointVelocitySteps", s.jointVelocitySteps);
+    s.jointPositionSteps = c.getInt("jolt.jointPositionSteps", s.jointPositionSteps);
     s.tempAllocatorKb = c.getInt("jolt.tempAllocatorKb", s.tempAllocatorKb);
     s.threads = c.getInt("jolt.threads", s.threads);
     s.collisionSteps = c.getInt("jolt.collisionSteps", s.collisionSteps);
@@ -139,6 +142,8 @@ struct PhysicsWorld::Impl {
     std::vector<JPH::Ref<JPH::SixDOFConstraint>> sixDofs;
     JPH::BodyID ground;
     PhysicsSettings settings;
+    // Parts of one object (same collision group) skip each other (Jolt group filter).
+    JPH::Ref<JPH::GroupFilterTable> sameGroup;
 
     Impl() {
         broadPhaseLayers.MapObjectToBroadPhaseLayer(kLayerStatic, JPH::BroadPhaseLayer(0));
@@ -193,6 +198,7 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     ps.mSpeculativeContactDistance = settings.speculativeContactDistance;
     m.system.SetPhysicsSettings(ps);
     m.slots.resize(static_cast<size_t>(settings.maxBodies));
+    m.sameGroup = new JPH::GroupFilterTable(1);  // one subgroup: Jolt never collides a subgroup with itself
     m.springs.reserve(static_cast<size_t>(std::max(settings.maxSprings, 0)));
     m.hinges.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
     m.swingTwists.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
@@ -273,6 +279,7 @@ BodyId PhysicsWorld::createBody(const BodyDesc& d) {
                                   motion, layer);
     bcs.mFriction = d.friction;
     bcs.mRestitution = d.restitution;
+    if (d.collisionGroup > 0) bcs.mCollisionGroup = JPH::CollisionGroup(m.sameGroup, d.collisionGroup, 0);
     bcs.mLinearDamping = m.settings.linearDamping;
     bcs.mAngularDamping = m.settings.angularDamping;
     if (motion == JPH::EMotionType::Dynamic) {
@@ -404,6 +411,13 @@ JPH::Ref<Constraint> makeJoint(JPH::PhysicsSystem& system, JPH::BodyID a, JPH::B
     return static_cast<Constraint*>(settings.Create(*b1, *b2));
 }
 
+// Joint solver iterations (Jolt overrides): more keep a joint inside its
+// limits under hard loads (a body landing on its joints).
+void applySteps(JPH::Constraint& c, const PhysicsSettings& s) {
+    if (s.jointVelocitySteps > 0) c.SetNumVelocityStepsOverride(static_cast<JPH::uint>(std::min(s.jointVelocitySteps, 255)));
+    if (s.jointPositionSteps > 0) c.SetNumPositionStepsOverride(static_cast<JPH::uint>(std::min(s.jointPositionSteps, 255)));
+}
+
 JPH::MotorSettings toJolt(const MotorDesc& d) {
     JPH::MotorSettings s(std::max(d.frequency, 0.0f), std::max(d.damping, 0.0f));
     s.SetTorqueLimit(std::max(d.maxTorque, 0.0f));
@@ -428,6 +442,7 @@ JointId PhysicsWorld::createHinge(BodyId a, BodyId b, const HingeDesc& d) {
     s.mLimitsMax = d.maxAngle;
     JPH::Ref<JPH::HingeConstraint> c = makeJoint<JPH::HingeConstraint>(m.system, m.slots[a].body, m.slots[b].body, s);
     if (!c) return kInvalidJoint;
+    applySteps(*c, m.settings);
     m.system.AddConstraint(c);
     m.hinges.push_back(c);
     m.swingTwists.push_back(nullptr);
@@ -454,6 +469,7 @@ JointId PhysicsWorld::createSwingTwist(BodyId a, BodyId b, const SwingTwistDesc&
     JPH::Ref<JPH::SwingTwistConstraint> c =
         makeJoint<JPH::SwingTwistConstraint>(m.system, m.slots[a].body, m.slots[b].body, s);
     if (!c) return kInvalidJoint;
+    applySteps(*c, m.settings);
     m.system.AddConstraint(c);
     m.hinges.push_back(nullptr);
     m.swingTwists.push_back(c);
@@ -483,6 +499,7 @@ JointId PhysicsWorld::createSixDof(BodyId a, BodyId b, const SixDofDesc& d) {
     s.SetLimitedAxis(A::RotationZ, d.minAngles.z, d.maxAngles.z);
     JPH::Ref<JPH::SixDOFConstraint> c = makeJoint<JPH::SixDOFConstraint>(m.system, m.slots[a].body, m.slots[b].body, s);
     if (!c) return kInvalidJoint;
+    applySteps(*c, m.settings);
     m.system.AddConstraint(c);
     m.hinges.push_back(nullptr);
     m.swingTwists.push_back(nullptr);

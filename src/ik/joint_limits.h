@@ -26,7 +26,11 @@ struct JointLimit {
     float swing2Min = 0.0f, swing2Max = 0.0f;  // second remaining axis
 };
 
-// Clamps a local rotation to the limit. Returns the clamped rotation.
+// Clamps a local rotation to the limit, measured the way Jolt's joints do
+// (hinge: the angle about its axis; swing-twist: twist about the twist axis,
+// then a pyramid swing: the angle about each swing axis clamped on its own),
+// so the pose and the physics body read the ranges alike. Returns the
+// clamped rotation.
 math::Quat clampRotation(math::Quat q, const JointLimit& limit);
 
 // Limit mirrored for the opposite side (rotations about Y and Z flip sign).

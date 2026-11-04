@@ -30,9 +30,6 @@ float twistAngle(math::Quat twist, math::Vec3 axis) {
 int swingAxis1(int twistAxis) { return twistAxis == 0 ? 1 : 0; }
 int swingAxis2(int twistAxis) { return twistAxis == 2 ? 1 : 2; }
 
-// Ellipse radius on one axis for the side the value is on.
-float radiusFor(float v, float minV, float maxV) { return v >= 0.0f ? maxV : -minV; }
-
 int parseAxis(const std::string& s) { return s == "x" ? 0 : s == "z" ? 2 : 1; }
 
 bool readRange(const nlohmann::json& j, const char* key, float& lo, float& hi) {
@@ -78,34 +75,48 @@ math::Quat clampRotation(math::Quat q, const JointLimit& lim) {
     math::Quat clampedTwist = math::fromAxisAngle(axis, t);
     if (lim.type == LimitType::Hinge) return clampedTwist;
 
-    // Swing as a rotation vector in the plane perpendicular to the twist axis.
-    if (swing.w < 0.0f) swing = -swing;
-    math::Vec3 sv(swing.x, swing.y, swing.z);
-    float sinHalf = math::length(sv);
-    if (sinHalf < 1e-7f) return clampedTwist;
-    float angle = 2.0f * std::atan2(sinHalf, swing.w);
-    math::Vec3 rv = sv * (angle / sinHalf);
+    // Swing-twist: measured and clamped the way Jolt's SixDOF joint does
+    // (pyramid swing; the physics body uses the same ranges, so both read
+    // them alike). Joint frame: X = the twist axis, Y = the first swing axis,
+    // Z = X x Y (the second swing axis, or its opposite: then its range flips).
+    const math::Vec3 fx = axis, fy = unitAxis(swingAxis1(lim.axis)), fz = math::cross(fx, fy);
+    const bool flip = math::dot(fz, unitAxis(swingAxis2(lim.axis))) < 0.0f;
+    const float zMin = flip ? -lim.swing2Max : lim.swing2Min, zMax = flip ? -lim.swing2Min : lim.swing2Max;
+    const math::Vec3 v(q.x, q.y, q.z);
+    const float w = q.w, x = math::dot(v, fx), y = math::dot(v, fy), z = math::dot(v, fz);
 
-    const math::Vec3 ax1 = unitAxis(swingAxis1(lim.axis));
-    const math::Vec3 ax2 = unitAxis(swingAxis2(lim.axis));
-    float a = math::dot(rv, ax1);
-    float b = math::dot(rv, ax2);
-    float ra = radiusFor(a, lim.swing1Min, lim.swing1Max);
-    float rb = radiusFor(b, lim.swing2Min, lim.swing2Max);
-
-    // Zero-width directions lock that component; the rest is an ellipse.
-    if (ra <= 0.0f) a = 0.0f;
-    if (rb <= 0.0f) b = 0.0f;
-    float e = (ra > 0.0f ? (a / ra) * (a / ra) : 0.0f) + (rb > 0.0f ? (b / rb) * (b / rb) : 0.0f);
-    if (e > 1.0f) {
-        float s = 1.0f / std::sqrt(e);
-        a *= s;
-        b *= s;
+    // q = swing * twist, twist about X (Jolt's Quat::GetSwingTwist).
+    const float s = std::sqrt(w * w + x * x);
+    float tx = 0.0f, tw = 1.0f, sy = y, sz = z, sw = 0.0f;
+    if (s > 1e-7f) {
+        tx = x / s;
+        tw = w / s;
+        sy = (w * y - x * z) / s;
+        sz = (w * z + x * y) / s;
+        sw = s;
     }
-    math::Vec3 clamped = a * ax1 + b * ax2;
-    float len = math::length(clamped);
-    math::Quat clampedSwing = len > 1e-7f ? math::fromAxisAngle(clamped / len, len) : math::identityQuat();
-    return math::normalize(clampedSwing * clampedTwist);
+    // Twist: its angle clamped to its range.
+    const float twistHalf = std::clamp(std::atan2(tx, tw), 0.5f * lim.twistMin, 0.5f * lim.twistMax);
+    tx = std::sin(twistHalf);
+    tw = std::cos(twistHalf);
+    // Swing (pyramid): the angle about Y then Z, each clamped to its range,
+    // and the swing rebuilt from them (Jolt's ClampSwingTwist).
+    const float hy = std::atan2(sy, sw), hz = std::atan2(sz, sw);
+    const float cy = std::clamp(hy, 0.5f * lim.swing1Min, 0.5f * lim.swing1Max);
+    const float cz = std::clamp(hz, 0.5f * zMin, 0.5f * zMax);
+    if (cy != hy || cz != hz) {
+        sy = std::sin(cy) * std::cos(cz);
+        sz = std::cos(cy) * std::sin(cz);
+        sw = std::cos(cy) * std::cos(cz);
+        const float n = std::sqrt(sy * sy + sz * sz + sw * sw);
+        sy /= n;
+        sz /= n;
+        sw /= n;
+    }
+    // swing * twist, back from the joint frame.
+    const float rw = sw * tw, rx = sw * tx, ry = sy * tw + sz * tx, rz = sz * tw - sy * tx;
+    const math::Vec3 r = rx * fx + ry * fy + rz * fz;
+    return math::normalize(math::Quat(rw, r.x, r.y, r.z));
 }
 
 JointLimit mirrored(const JointLimit& lim) {
