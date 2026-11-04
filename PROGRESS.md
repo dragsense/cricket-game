@@ -79,7 +79,7 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
      no added conditions): planted ball on its spot with toes flat (the body hangs from
      it), every joint inside its limit on every step, centre of mass over the planted
      foot (no ground contact yet: collisions and gravity later, the user's call), reaching ankle as near its target as these allow, joints
-     near neutral otherwise (`fielder_joints.json` "stance"). Heel lift comes from the
+     near neutral otherwise (`human_joints.json` "stance"). Heel lift comes from the
      toe joint. Replaced: the undo on a failed reach, the unloaded-leg lowering switch,
      the out-of-reach foot placement, the shin-length crouch floor and the weight-first
      lift delay. Measured (left foot 0.8 m ahead / 0.8 m back / 0.6 m aside / 0.4 m up):
@@ -161,10 +161,15 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   movers that are not bodies: the camera uses it (its own y = 0 assumption removed); the
   ball's colliders are placed from it. Limbs, the ball vs Jolt bodies and the camera vs
   objects do not collide yet. Tests: query, lift, a body resting on a moved ground.
+- [x] **Rename** (the user's call): one shared human body for every person (player,
+  fielder, batter, bowler, crowd): `agents::Fielder` -> `agents::Human` (human.h/.cpp),
+  `BodyPhysics` -> `HumanBody` (human-specific use of PhysicsWorld; generic physics stays
+  in PhysicsWorld), `FielderVisual` -> `HumanVisual`, config `human_skeleton.json` /
+  `human_joints.json` ("humanBody"). Roles (SimWorld fielder()/bowler()) keep their names.
 - [x] **Physics 4-5** (vertical only): `Fielder::attachPhysics` puts the body's mass in
   the world (SimWorld, also after a world rebuild); feet stand on the real surface under
   them (Jolt ground query); the body's height from its mass on the legs sets the pelvis
-  (`BodyTargets::bodyDrop`); fielder_joints.json "bodyPhysics" (20 kN/m, damping 0).
+  (`BodyTargets::bodyDrop`); human_joints.json "bodyPhysics" (20 kN/m, damping 0).
   Measured (walk 0.9 m/s): pelvis per-tick jump 0.45 mm (was 7-26 mm), worst knee jump
   15 deg (was 45 deg), pelvis bob 2.9 cm (real ~4-5 cm). Standing: pelvis 1.8 cm lower,
   knee 26 deg (real quiet standing 0-5 deg): the walking leg stiffness on a straight leg.
@@ -363,7 +368,7 @@ while walking, game logic. One step at a time; stop for a visual check after eac
   the clavicle toward the target within its swing-twist limit, then ozz two-bone IK
   places the hand at most `armReach` (0.97 × arm length) from the shoulder, so the
   elbow never locks. The leftover distance is kept in `Fielder::reachError()`.
-  Settings in `config/fielder_joints.json` "reach". No smoothing yet (2.6), so the arm
+  Settings in `config/human_joints.json` "reach". No smoothing yet (2.6), so the arm
   snaps to a new target. `test_reach.cpp` added.
 - [x] **2.2 Spine rotation** (built; tests pass; awaiting the user's visual check): runs
   before the clavicle. One `motion::swingToward` swing about the spine base, split into
@@ -461,10 +466,10 @@ check after each step.
   forward): the user supplies `assets/models/fielder.glb`
   (Mixamo FBX → Blender → glb). Skinned through gltfio, bone-name mapping in config,
   per-bone retarget correction; capsules kept as a debug toggle.: ozz RawSkeleton built at runtime from
-  `config/fielder_skeleton.json` (height ratios); per-bone capsule/box visual kept
+  `config/human_skeleton.json` (height ratios); per-bone capsule/box visual kept
   separate; debug bones, joints and axes; ImGui height slider and bone readouts;
   neutral standing pose.
-- [x] **1.2 Joint limits and IK** (unit-tested; the IK demo was removed after 1.3; ImGuizmo dropped at the user's request): `config/fielder_joints.json` (hinge and
+- [x] **1.2 Joint limits and IK** (unit-tested; the IK demo was removed after 1.3; ImGuizmo dropped at the user's request): `config/human_joints.json` (hinge and
   swing-twist); our own swing-twist clamp after every solve; ozz IKTwoBoneJob for the
   legs and arms with pole targets; IKAimJob for the head and chest; ImGuizmo targets.
 - [x] **1.3 Body repositioning** (built, `motion_tests`; awaiting the user's visual
@@ -473,13 +478,13 @@ check after each step.
   toward standing height above the stance-weighted feet, then each hip-to-ankle distance
   is clamped to [min, max] × leg length (from the skeleton), stance leg last. Stance
   weight comes from foot heights (the lower foot carries the body) until 1.4 sets it.
-  Tunables in `config/fielder_joints.json` "reposition". The IK demo is removed; arm
+  Tunables in `config/human_joints.json` "reposition". The IK demo is removed; arm
   and aim IK stay in `ik::` but are not driven until an action needs them.
 - [x] **1.4 Foot planting and stepping** (built, `motion_tests`; awaiting the user's
   visual check): `motion::FootStepper` keeps both feet locked; `W A S D` request a
   step (character space; held = keep stepping, alternating feet).
   The next spot is relative to the planted foot (stance width + step from
-  `config/fielder_joints.json` "stepping"); one foot swings at a time on a smoothstep
+  `config/human_joints.json` "stepping"); one foot swings at a time on a smoothstep
   arc with a sine lift; the body follows via 1.3. Free-fly camera removed
   (user's choice: only the orbit camera is user-controlled; scripted camera paths come
   with M8), freeing WASD/QE/Shift/C. No debug draw (user policy). Since 1.5, WASD walks
@@ -537,7 +542,7 @@ check after each step.
   - Side sway root cause: the min-reach clamp also acted on the lifted leg, so the
     tucked heel pushed the pelvis ±28 cm sideways; the unloaded leg now only limits
     max reach (pelvis now ±0.4 cm). This also caused the crossed-over look.
-  Tests: `test_walk.cpp` additions and new `agents_tests` (`test_fielder.cpp`, whole
+  Tests: `test_walk.cpp` additions and new `agents_tests` (`test_human.cpp`, whole
   fielder at run speed: pelvis sway and foot lanes). User confirmed fixed 2026-10-25.
 - [ ] Cross-cutting: config hot-reload key; slow motion (0.1–1x) and pause in ImGui;
   unit tests for joint limits, swing-twist and repositioning.

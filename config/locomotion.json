@@ -1,4 +1,4 @@
-// Fielder locomotion. Metres, seconds; angles in degrees. Sources in
+// Human locomotion. Metres, seconds; angles in degrees. Sources in
 // docs/BIOMECHANICS.md section 4 (walking gait).
 {
   "walk": {
@@ -108,7 +108,7 @@
     "armRate": 12.0
   },
   // Single steps while standing (motion::StepSettings): one foot at a time;
-  // the body follows from body reposition (fielder_joints.json "bodyReposition").
+  // the body follows from body reposition (human_joints.json "bodyReposition").
   "step": {
     "stepLength": 0.4,       // m forward, ahead of the planted foot (short, comfortable step)
     "backStepLength": 0.3,   // m back

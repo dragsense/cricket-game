@@ -71,7 +71,7 @@ The masses sum to 100 % with both arms and both legs counted. In quiet standing,
 whole-body CoM sits roughly at 0.55 H, just in front of the sacrum **[T]**.
 
 ### Implementation notes
-- `config/fielder_skeleton.json` stores **ratios, never metres**. Every bone length is
+- `config/human_skeleton.json` stores **ratios, never metres**. Every bone length is
   `ratio × height`, so the height slider rescales the whole skeleton.
 - Mapping to our bones (H = 1.80):
   - `thigh` = 0.245 H; `shin` = 0.246 H; the ankle sits 0.039 H above the ground.
@@ -143,7 +143,7 @@ hamstrings limit hip flexion to about 80–90° **[T]**. This cross-joint coupli
 in M1.
 
 ### Implementation notes
-- `config/fielder_joints.json` stores one entry per bone.
+- `config/human_joints.json` stores one entry per bone.
   - Hinge entries: `{ "type": "hinge", "axis": [1,0,0], "min_deg": .., "max_deg": .. }`.
   - Swing-twist entries: `{ "type": "swing_twist", "swing_x_deg", "swing_z_deg",
     "twist_min_deg", "twist_max_deg" }`, where the swing limits form an elliptical cone.
@@ -765,13 +765,13 @@ hip-heavy late (9.1); side bend shared evenly.
   path); the reach starts one movement time (plus a lunge's time) before that, so it
   arrives as the ball does; a moving ball is grabbed on contact.
 
-### Implementation notes (`config/fielder_joints.json` "reach")
+### Implementation notes (`config/human_joints.json` "reach")
 - Each tick (late update, after foot repositioning), every stage reduces the error and
   passes the rest on: arm → clavicle → spine → pelvis → body translation → lunge → hold.
   Proximal segments are posed first; the arm IK runs last.
 - `armReach` = 0.97 × arm length (the elbow never locks).
 - Spine weights: twist lumbar 0.2 / thoracic 0.8; bend lumbar 0.6 / thoracic 0.4. Each
-  bone is clamped by its swing-twist limit (`fielder_joints.json`).
+  bone is clamped by its swing-twist limit (`human_joints.json`).
 - Pelvis tilt limit from 9.3, raised with knee flexion (80° straight, 110° bent).
 - Body translation is an offset *added* to the foot repositioning offset; leg length
   clamps it. No minimum squat height at first.
@@ -1039,7 +1039,7 @@ MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6
 ## 13. The body as a mass on spring legs (M6 physics)
 
 - **Body mass:** 73.0 kg, the mean of de Leva 1996's male subjects (the segment mass
-  percentages in `fielder_skeleton.json` are of this) **[P]**.
+  percentages in `human_skeleton.json` are of this) **[P]**.
 - **Leg stiffness:** running about 11.2 kN/m below 5 m/s, 17.0 kN/m above, nearly constant
   across speeds ([review of 14 studies, PMC10368467](https://pmc.ncbi.nlm.nih.gov/articles/PMC10368467));
   stiffness scales with mass^0.67 across animals (Farley, Glasheen & McMahon 1993,

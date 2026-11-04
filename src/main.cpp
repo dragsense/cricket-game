@@ -27,8 +27,8 @@ int main(int /*argc*/, char** /*argv*/) {
     configs.engine.load(configs.dir + "/engine.json");
     configs.input.load(configs.dir + "/input.json");
     configs.scene.load(configs.dir + "/scene.json");
-    configs.fielderSkeleton.load(configs.dir + "/fielder_skeleton.json");
-    configs.fielderJoints.load(configs.dir + "/fielder_joints.json");
+    configs.humanSkeleton.load(configs.dir + "/human_skeleton.json");
+    configs.humanJoints.load(configs.dir + "/human_joints.json");
     configs.locomotion.load(configs.dir + "/locomotion.json");
     configs.physicsWorld.load(configs.dir + "/physics_world.json");
     configs.ball.load(configs.dir + "/ball.json");

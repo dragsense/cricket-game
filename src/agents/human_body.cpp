@@ -1,11 +1,11 @@
-#include "agents/body_physics.h"
+#include "agents/human_body.h"
 
 #include <cmath>
 
 namespace agents {
 
-bool BodyPhysics::init(physics::PhysicsWorld& world, float mass, math::Vec3 centreOfMass, const float restLeg[2],
-                       const BodyPhysicsSettings& s) {
+bool HumanBody::init(physics::PhysicsWorld& world, float mass, math::Vec3 centreOfMass, const float restLeg[2],
+                       const HumanBodySettings& s) {
     physics::BodyDesc d;
     d.shape = physics::ShapeType::Sphere;
     d.radius = 0.05f;
@@ -37,7 +37,7 @@ bool BodyPhysics::init(physics::PhysicsWorld& world, float mass, math::Vec3 cent
     return true;
 }
 
-void BodyPhysics::setFeet(physics::PhysicsWorld& world, math::Vec3 bodyRef, const math::Vec3 ankles[2],
+void HumanBody::setFeet(physics::PhysicsWorld& world, math::Vec3 bodyRef, const math::Vec3 ankles[2],
                           const bool down[2], float dt) {
     if (!ready()) return;
     for (int i = 0; i < 2; ++i) {
@@ -49,11 +49,11 @@ void BodyPhysics::setFeet(physics::PhysicsWorld& world, math::Vec3 bodyRef, cons
     }
 }
 
-float BodyPhysics::height(const physics::PhysicsWorld& world) const {
+float HumanBody::height(const physics::PhysicsWorld& world) const {
     return ready() ? world.transform(body_).position.y : 0.0f;
 }
 
-float BodyPhysics::verticalSpeed(const physics::PhysicsWorld& world) const {
+float HumanBody::verticalSpeed(const physics::PhysicsWorld& world) const {
     return ready() ? world.linearVelocity(body_).y : 0.0f;
 }
 

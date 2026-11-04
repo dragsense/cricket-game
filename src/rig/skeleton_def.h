@@ -1,5 +1,5 @@
 #pragma once
-// Skeleton description loaded from config/fielder_skeleton.json. Every length
+// Skeleton description loaded from config/human_skeleton.json. Every length
 // is a ratio of standing height, so one height value scales the whole body.
 // Pure data: the ozz skeleton is built from it by rig::Rig, and the body
 // visual (game layer) reads the "visual" part. Load-time only.

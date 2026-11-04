@@ -100,7 +100,7 @@ Dated log. Format: decision, reason, alternatives rejected.
   - Archive URLs: re-extraction still touches timestamps.
 ## 2026-10-24: Fielder skeleton built at runtime from height ratios (M1)
 - **Decision:** ozz-animation 0.16.0 (runtime plus offline `RawSkeleton` and
-  `SkeletonBuilder`) builds the skeleton from `config/fielder_skeleton.json`. The config
+  `SkeletonBuilder`) builds the skeleton from `config/human_skeleton.json`. The config
   stores ratios of height, not metres. All rest rotations are identity, so the rest pose
   is the standing pose, and the joint axes match the character axes.
 - **Reason:** one height value rescales the body. Identical joint frames keep joint

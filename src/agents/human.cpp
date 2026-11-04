@@ -1,4 +1,4 @@
-#include "agents/fielder.h"
+#include "agents/human.h"
 
 #include "core/config.h"
 #include "core/log.h"
@@ -22,7 +22,7 @@ math::Quat modelRot(const std::vector<math::Mat4>& models, int joint) {
 
 } // namespace
 
-bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion) {
+bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion) {
     def_ = def;
     jointsConfig_ = &joints;
     root_.position = def.spawnPosition;
@@ -101,7 +101,7 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     return setHeight(height);
 }
 
-void Fielder::loadLocomotion(const core::Config& c) {
+void Human::loadLocomotion(const core::Config& c) {
     // Load-time only (builds path strings). "jog" starts from the walk values,
     // "run" from the jog values.
     auto load = [&](const std::string& block, motion::WalkSettings& w) {
@@ -207,7 +207,7 @@ void Fielder::loadLocomotion(const core::Config& c) {
     control_ = shape_ = walkSettings_;
 }
 
-void Fielder::blendShape() {
+void Human::blendShape() {
     // Walk below walking speed, then walk -> jog -> run by the actual speed,
     // measured against each pace's speed in the direction of travel.
     const motion::WalkSettings* gaits[2] = {&walkSettings_, &runSettings_};
@@ -227,7 +227,7 @@ void Fielder::blendShape() {
     }
 }
 
-bool Fielder::setHeight(float height) {
+bool Human::setHeight(float height) {
     if (!rig_.build(def_, height)) return false;
     if (!jointsConfig_ || !limits_.load(*jointsConfig_, rig_)) return false;
 
@@ -376,7 +376,7 @@ bool Fielder::setHeight(float height) {
     return true;
 }
 
-void Fielder::placeAt(math::Vec3 position, float yaw) {
+void Human::placeAt(math::Vec3 position, float yaw) {
     root_.position = position;
     root_.rotation = math::fromAxisAngle(math::kUp, yaw);
     previousRoot_ = root_;
@@ -387,7 +387,7 @@ void Fielder::placeAt(math::Vec3 position, float yaw) {
     plantFeet();
 }
 
-void Fielder::autoDeliver(float releaseAngle, float releaseTilt) {
+void Human::autoDeliver(float releaseAngle, float releaseTilt) {
     if (phase_ != Phase::Bowl) return;
     autoDeliver_ = true;
     autoReleaseAngle_ = releaseAngle;
@@ -406,13 +406,13 @@ void Fielder::autoDeliver(float releaseAngle, float releaseTilt) {
     bowlYaw_ = bowlBaseYaw_;
 }
 
-void Fielder::plantFeet() {
+void Human::plantFeet() {
     // Feet planted where they stand in the rest pose (character space).
     rig_.localToModel(rig_.restPose(), models_);
     stepper_.reset(modelPos(models_, joints_.legL.end), modelPos(models_, joints_.legR.end));
 }
 
-void Fielder::tick(double dt) {
+void Human::tick(double dt) {
     if (joints_.pelvis < 0) return;  // not built yet (SimWorld ticks once while configuring)
     tickSeconds_ = static_cast<float>(dt);
     previous_.locals = current_.locals;  // same size: no allocation
@@ -596,10 +596,10 @@ void Fielder::tick(double dt) {
     }
     // The body's mass: the feet on the ground hold it for the next physics
     // step (the world steps after the fielders).
-    if (physics_ && bodyPhysics_.ready()) {
+    if (physics_ && humanBody_.ready()) {
         const math::Vec3 ankles[2] = {targets_.footL, targets_.footR};
         const bool down[2] = {!stepper_.inAir(motion::Foot::Left), !stepper_.inAir(motion::Foot::Right)};
-        bodyPhysics_.setFeet(*physics_, root_.position + math::kUp * restComHeight_, ankles, down,
+        humanBody_.setFeet(*physics_, root_.position + math::kUp * restComHeight_, ankles, down,
                              static_cast<float>(dt));
     }
     // Shoulders carried by the chest (not the clavicle) while bowling, for
@@ -614,7 +614,7 @@ void Fielder::tick(double dt) {
     }
 }
 
-void Fielder::walk(float dt) {
+void Human::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
     control_ = gait_ == motion::Gait::Run ? runSettings_ : gait_ == motion::Gait::Jog ? jogSettings_ : walkSettings_;
     // A run-up delivery keeps running whatever the gait keys say.
@@ -739,7 +739,7 @@ void Fielder::walk(float dt) {
                       w.settleDistance, gaitStyle());
 }
 
-motion::GaitStyle Fielder::gaitStyle() const {
+motion::GaitStyle Human::gaitStyle() const {
     const motion::WalkSettings& w = shape_;
     motion::GaitStyle s;
     s.toeOffPitch = w.toeOffPitch;
@@ -752,7 +752,7 @@ motion::GaitStyle Fielder::gaitStyle() const {
     return s;
 }
 
-void Fielder::addGaitMotion(float dt) {
+void Human::addGaitMotion(float dt) {
     const motion::WalkSettings& w = shape_;
     const float amount = math::clamp(walker_.speed() / std::max(w.speed, 0.1f), 0.0f, 1.0f);
 
@@ -796,7 +796,7 @@ void Fielder::addGaitMotion(float dt) {
     }
 }
 
-void Fielder::repositionBody(float dt) {
+void Human::repositionBody(float dt) {
     // Hip offsets from the rest pose; the pelvis is the root joint, so its
     // local position is in character space.
     rig_.localToModel(rig_.restPose(), models_);
@@ -823,7 +823,7 @@ void Fielder::repositionBody(float dt) {
     pelvis.rotation = body_.rotation() * pelvis.rotation;
 }
 
-void Fielder::repositionFromFeet() {
+void Human::repositionFromFeet() {
     // The body follows its targets (motion::BodyReposition): the placed (or
     // stepping) foot moves, the other stands; the limb test's hand target.
     // Targets are the player's intent: each gets as near as the body allows.
@@ -837,8 +837,8 @@ void Fielder::repositionFromFeet() {
     t.down[1] = !stepper_.inAir(motion::Foot::Right);
     // The body's height comes from its mass on the legs (physics), not from
     // a standing height.
-    if (physics_ && bodyPhysics_.ready())
-        t.bodyDrop = root_.position.y + restComHeight_ - bodyPhysics_.height(*physics_);
+    if (physics_ && humanBody_.ready())
+        t.bodyDrop = root_.position.y + restComHeight_ - humanBody_.height(*physics_);
     t.push[0] = stepper_.pushOff(motion::Foot::Left);
     t.push[1] = stepper_.pushOff(motion::Foot::Right);
     // Chest target: the walking posture holds the trunk slightly forward
@@ -880,7 +880,7 @@ void Fielder::repositionFromFeet() {
     body_.position = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
 }
 
-void Fielder::solveIk() {
+void Human::solveIk() {
     const math::Transform toModel = math::inverse(root_);
     auto model = [&](math::Vec3 w) { return toModel.transformPoint(w); };
 
@@ -938,7 +938,7 @@ void Fielder::solveIk() {
     limits_.apply(current_);
 }
 
-void Fielder::swingArms(float dt) {
+void Human::swingArms(float dt) {
     const motion::WalkSettings& w = shape_;
 
     // Full swing walking forward, little when sidestepping or backing up.
@@ -975,7 +975,7 @@ void Fielder::swingArms(float dt) {
     }
 }
 
-void Fielder::stabiliseHead(float dt) {
+void Human::stabiliseHead(float dt) {
     const motion::WalkSettings& w = shape_;
 
     // Lead turns: the head looks toward the requested heading before the body.
@@ -997,7 +997,7 @@ void Fielder::stabiliseHead(float dt) {
     head = math::normalize(math::slerp(head, level, math::clamp(w.headStabilise, 0.0f, 1.0f)));
 }
 
-void Fielder::rotateInModel(int joint, math::Quat rotation) {
+void Human::rotateInModel(int joint, math::Quat rotation) {
     // Model rotation M = P * L, so a model-space rotation R becomes the local
     // L' = P^-1 * R * P * L.
     const math::Quat parent = modelRot(models_, rig_.parent(joint));
@@ -1006,7 +1006,7 @@ void Fielder::rotateInModel(int joint, math::Quat rotation) {
     local = ik::clampRotation(local, limits_.limit(joint));
 }
 
-void Fielder::reachSpine() {
+void Human::reachSpine() {
     // Stages run in recruitment order (BIOMECHANICS 9.1), each taking the
     // error the ones before it left: spine, pelvis, body here; clavicle and
     // arm in reachArm(), after the leg IK. One pass each, no retries.
@@ -1035,7 +1035,7 @@ void Fielder::reachSpine() {
     }
 }
 
-void Fielder::reachPelvis() {
+void Human::reachPelvis() {
     // Tilt forward (hip flexion), turn and side-tilt about the hip centre for
     // what the spine could not reach: the same swing, clamped to the pelvis
     // limits. The pelvis is the root joint, so its rotation is in character space.
@@ -1050,7 +1050,7 @@ void Fielder::reachPelvis() {
     rig_.localToModel(current_, models_);
 }
 
-void Fielder::reachBody() {
+void Human::reachBody() {
     // RepositionBody driven by the hand (Step 2.4), on top of the foot
     // repositioning (body_ is not changed, so both apply): the body moves
     // toward the target by what is left (body += dir * error), the hips shift
@@ -1074,7 +1074,7 @@ void Fielder::reachBody() {
     pelvis = clampPelvisToLegs(pelvis + move + shift);
 }
 
-void Fielder::rebalance() {
+void Human::rebalance() {
     // Balance (BIOMECHANICS 3, 9.5), measured rather than predicted: a deep
     // squat swings the knees forward, which no estimate sees. Each pass takes
     // the actual centre of mass after the leg IK, moves the pelvis to cancel
@@ -1087,7 +1087,7 @@ void Fielder::rebalance() {
     }
 }
 
-math::Vec3 Fielder::balanceOverhang(math::Vec3 pelvisMove) {
+math::Vec3 Human::balanceOverhang(math::Vec3 pelvisMove) {
     // Centre of mass (models_ current) plus the reaching arm, which is posed
     // last: its mass will sit about midway between the shoulder and its reach
     // point. A pelvis move shifts it by pelvisMassShare_ of the move.
@@ -1109,7 +1109,7 @@ math::Vec3 Fielder::balanceOverhang(math::Vec3 pelvisMove) {
     return math::Vec3(e.x, 0.0f, e.y) / pelvisMassShare_;
 }
 
-math::Vec3 Fielder::clampPelvisToLegs(math::Vec3 pelvis) {
+math::Vec3 Human::clampPelvisToLegs(math::Vec3 pelvis) {
     // The reposition leg clamp with both feet planted and no squat limit;
     // legs stay within the IK soften ratio so the ankles reach their targets.
     motion::RepositionSettings legs = reposition_;
@@ -1122,7 +1122,7 @@ math::Vec3 Fielder::clampPelvisToLegs(math::Vec3 pelvis) {
     return motion::clampToLegs(pelvis, left, right, rig_.legLength(), legs);
 }
 
-math::Vec3 Fielder::modelCentreOfMass() {
+math::Vec3 Human::modelCentreOfMass() {
     math::Vec3 sum(0.0f);
     float total = 0.0f;
     for (size_t j = 0; j < segmentMass_.size(); ++j) {
@@ -1137,13 +1137,13 @@ math::Vec3 Fielder::modelCentreOfMass() {
     return total > 0.0f ? sum / total : math::Vec3(0.0f);
 }
 
-bool Fielder::attachPhysics(physics::PhysicsWorld& world) {
+bool Human::attachPhysics(physics::PhysicsWorld& world) {
     physics_ = &world;
-    bodyPhysics_ = BodyPhysics{};
+    humanBody_ = HumanBody{};
     if (jointsConfig_) {
-        BodyPhysicsSettings& s = bodyPhysicsSettings_;
-        s.legStiffness = jointsConfig_->getFloat("bodyPhysics.legStiffness", s.legStiffness);
-        s.legDamping = jointsConfig_->getFloat("bodyPhysics.legDamping", s.legDamping);
+        HumanBodySettings& s = humanBodySettings_;
+        s.legStiffness = jointsConfig_->getFloat("humanBody.legStiffness", s.legStiffness);
+        s.legDamping = jointsConfig_->getFloat("humanBody.legDamping", s.legDamping);
     }
     // At rest: the centre of mass over the root, each leg's length from it to
     // its ankle (the spring's rest length).
@@ -1152,7 +1152,7 @@ bool Fielder::attachPhysics(physics::PhysicsWorld& world) {
     restComHeight_ = com.y;
     const float rest[2] = {math::distance(com, modelPos(models_, joints_.legL.end)),
                            math::distance(com, modelPos(models_, joints_.legR.end))};
-    if (!bodyPhysics_.init(world, def_.bodyMass, root_.transformPoint(com), rest, bodyPhysicsSettings_)) {
+    if (!humanBody_.init(world, def_.bodyMass, root_.transformPoint(com), rest, humanBodySettings_)) {
         LOG_ERROR("fielder: no room for the body in the physics world");
         physics_ = nullptr;
         return false;
@@ -1160,12 +1160,12 @@ bool Fielder::attachPhysics(physics::PhysicsWorld& world) {
     return true;
 }
 
-math::Vec3 Fielder::centreOfMass() {
+math::Vec3 Human::centreOfMass() {
     rig_.localToModel(current_, models_);
     return root_.transformPoint(modelCentreOfMass());
 }
 
-void Fielder::reachArm(bool left, math::Vec3 goal) {
+void Human::reachArm(bool left, math::Vec3 goal) {
     // Bowling keeps the arm nearly straight: the reach limit is the circle's
     // radius and the IK does not soften toward full extension.
     const bool bowl = phase_ == Phase::Bowl;
@@ -1230,7 +1230,7 @@ void Fielder::reachArm(bool left, math::Vec3 goal) {
     rotateInModel(arm.end, math::fromTo(normal, math::safeNormalize(ball - palm, normal)));
 }
 
-void Fielder::grip(bool left, float amount) {
+void Human::grip(bool left, float amount) {
     // Each finger and thumb bone turns toward the palm about its curl axis.
     const int side = left ? 0 : 1;
     const float curl[3] = {reach_.fingerCurl.x, reach_.fingerCurl.y, reach_.fingerCurl.z};
@@ -1245,7 +1245,7 @@ void Fielder::grip(bool left, float amount) {
     }
 }
 
-void Fielder::startPick(bool step) {
+void Human::startPick(bool step) {
     if (jumper_.active()) return;
     // At once, whatever the ball is doing: the hand on the ball's side
     // (rest shoulders), unless a fixed one is set.
@@ -1259,25 +1259,25 @@ void Fielder::startPick(bool step) {
     if (step && reach_.maxLunge > 0.0f) lungeToward(ball);  // the reach waits for the foot to land
 }
 
-void Fielder::clearReach() {
+void Human::clearReach() {
     if (phase_ == Phase::Reach) startReturn();
 }
 
-float Fielder::handTime(float distance) const {
+float Human::handTime(float distance) const {
     return motion::movementTime(distance, reach_.fittsWidth, reach_.fittsA, reach_.fittsB);
 }
 
-void Fielder::startReturn() {
+void Human::startReturn() {
     carryFrom_ = goal_;
     returnDuration_ = handTime(math::distance(carryFrom_, reachLeft_ ? restWristL_ : restWristR_));
     phase_ = Phase::Return;
 }
 
-motion::ThrowArc Fielder::slotArc() const {
+motion::ThrowArc Human::slotArc() const {
     return motion::makeThrowArc(restChest_, math::identityQuat(), reachLeft_, throw_.slotRadiusFactor * armLength_);
 }
 
-motion::ThrowArc Fielder::chestArc(float slotAngle, float tilt) const {
+motion::ThrowArc Human::chestArc(float slotAngle, float tilt) const {
     // Around the throwing shoulder, radius swingRadiusFactor x arm length,
     // toward the slot point (angle 0), in the plane of
     // the slot point and the facing direction (horizontal for a sidearm slot,
@@ -1296,14 +1296,14 @@ motion::ThrowArc Fielder::chestArc(float slotAngle, float tilt) const {
     return arc;
 }
 
-math::Vec3 Fielder::heldHand(float twist) const {
+math::Vec3 Human::heldHand(float twist) const {
     // The hand stays where the slot click put it relative to the trunk: the
     // trunk's turn (turnShare of the throw angle, about twistAxis_ through
     // the chest) carries it, as it carries the shoulder.
     return restChest_ + math::fromAxisAngle(twistAxis_, twist * throw_.turnShare) * (slotArc().point(throwSlot_) - restChest_);
 }
 
-void Fielder::beginThrow(float slotAngle) {
+void Human::beginThrow(float slotAngle) {
     bowlTwist_ = false;
     chestLean_ = 0.0f;
     if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
@@ -1319,7 +1319,7 @@ void Fielder::beginThrow(float slotAngle) {
     phase_ = Phase::Throw;
 }
 
-void Fielder::windThrow(float tilt, float backAngle) {
+void Human::windThrow(float tilt, float backAngle) {
     if (phase_ != Phase::Throw || throwStage_ == ThrowStage::Swing) return;
     throwTilt_ = tilt;
     throwBack_ = math::clamp(backAngle, -math::kTwoPi, 0.0f);
@@ -1329,13 +1329,13 @@ void Fielder::windThrow(float tilt, float backAngle) {
     twistFrom_ = chestTwist_;
 }
 
-void Fielder::tiltThrow(float tilt) {
+void Human::tiltThrow(float tilt) {
     if (phase_ != Phase::Throw || throwStage_ == ThrowStage::Swing) return;
     throwTilt_ = tilt;
     twistAxis_ = chestArc(throwSlot_, tilt).normal;
 }
 
-void Fielder::releaseThrow(float releaseAngle) {
+void Human::releaseThrow(float releaseAngle) {
     if (phase_ != Phase::Throw || throwStage_ != ThrowStage::Wind) return;
     releaseAngle_ = math::clamp(releaseAngle, throwBack_ + 0.1f, throwBack_ + math::kTwoPi);
     throwStage_ = ThrowStage::Swing;
@@ -1357,11 +1357,11 @@ void Fielder::releaseThrow(float releaseAngle) {
     }
 }
 
-void Fielder::cancelThrow() {
+void Human::cancelThrow() {
     if (phase_ == Phase::Throw && throwStage_ != ThrowStage::Swing) startReturn();
 }
 
-void Fielder::updateThrow(float dt) {
+void Human::updateThrow(float dt) {
     // The trunk drives the throw (BIOMECHANICS 10.2, proximal to distal):
     // the hand goes to the slot point and holds; the chest winds back to the
     // force point carrying the hand with it (its place on the trunk does not
@@ -1433,7 +1433,7 @@ void Fielder::updateThrow(float dt) {
     }
 }
 
-void Fielder::twistChest() {
+void Human::twistChest() {
     // The trunk turns turnShare of the throw angle about twistAxis_ (the arm
     // swings round the shoulder for the rest): pelvisShare on the pelvis (clamped to
     // its limits), the rest over spine_01, spine_02 and chest by the reach
@@ -1474,7 +1474,7 @@ void Fielder::twistChest() {
     }
 }
 
-void Fielder::startBowl(float tilt, float releaseAngle) {
+void Human::startBowl(float tilt, float releaseAngle) {
     if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
     throwTilt_ = tilt;
     // Release between the horizontal behind and the horizontal in front.
@@ -1486,7 +1486,7 @@ void Fielder::startBowl(float tilt, float releaseAngle) {
     phase_ = Phase::Bowl;
 }
 
-motion::ThrowArc Fielder::bowlArc(float tilt) const {
+motion::ThrowArc Human::bowlArc(float tilt) const {
     // The bowling circle around the rest shoulder, square to the batter,
     // leaned by `tilt` out to the bowling-arm side; it stays put while the
     // body moves.
@@ -1494,11 +1494,11 @@ motion::ThrowArc Fielder::bowlArc(float tilt) const {
                                   bowlRadius(), tilt);
 }
 
-math::Vec3 Fielder::arcBetween(math::Vec3 from, math::Vec3 to, float u) const {
+math::Vec3 Human::arcBetween(math::Vec3 from, math::Vec3 to, float u) const {
     return arcAround(shoulderNow(reachLeft_), from, to, u);
 }
 
-math::Vec3 Fielder::frontPathPoint(math::Vec3 point, float gap, float u) const {
+math::Vec3 Human::frontPathPoint(math::Vec3 point, float gap, float u) const {
     // From the front hand at rest round its own shoulder (via the front) to
     // the end of the bowling hand's way, kept apart by frontGap per axis.
     const math::Vec3 shoulder = shoulderNow(!reachLeft_);
@@ -1506,7 +1506,7 @@ math::Vec3 Fielder::frontPathPoint(math::Vec3 point, float gap, float u) const {
     return arcAround(shoulder, restHandNow(!reachLeft_), end - (end - shoulder) * bowl_.frontGap, u, true);
 }
 
-math::Vec3 Fielder::arcAround(math::Vec3 shoulder, math::Vec3 from, math::Vec3 to, float u, bool viaFront) {
+math::Vec3 Human::arcAround(math::Vec3 shoulder, math::Vec3 from, math::Vec3 to, float u, bool viaFront) {
     // In the plane of the shoulder, `from` and `to`: round the shoulder the
     // short way (with `viaFront`, the other way if the short way would set
     // off backward), the radius going from from's to to's.
@@ -1520,28 +1520,28 @@ math::Vec3 Fielder::arcAround(math::Vec3 shoulder, math::Vec3 from, math::Vec3 t
     return shoulder + (e0 * std::cos(a) + e1 * std::sin(a)) * r;
 }
 
-math::Vec3 Fielder::shoulderNow(bool left) const { return left ? liveShoulderL_ : liveShoulderR_; }
+math::Vec3 Human::shoulderNow(bool left) const { return left ? liveShoulderL_ : liveShoulderR_; }
 
-math::Vec3 Fielder::restHandNow(bool left) const {
+math::Vec3 Human::restHandNow(bool left) const {
     return (left ? restWristL_ : restWristR_) + shoulderNow(left) - (left ? restShoulderL_ : restShoulderR_);
 }
 
-math::Vec3 Fielder::bottomPoint() const {
+math::Vec3 Human::bottomPoint() const {
     return (shoulderNow(reachLeft_)) - math::kUp * bowlRadius();
 }
 
-math::Vec3 Fielder::frontDownPoint(math::Vec3 point, float gap, float u) const {
+math::Vec3 Human::frontDownPoint(math::Vec3 point, float gap, float u) const {
     return frontPathPoint(point, gap, 1.0f - u);  // back down the same way
 }
 
-math::Vec3 Fielder::actionPathPoint(math::Vec3 point, float gap, float u) const {
+math::Vec3 Human::actionPathPoint(math::Vec3 point, float gap, float u) const {
     // From the resting hand round the shoulder to `gap` beyond the point.
     const math::Vec3 shoulder = shoulderNow(reachLeft_);
     const math::Vec3 d = point - shoulder;
     return arcAround(shoulder, restHandNow(reachLeft_), point + math::safeNormalize(d, math::kUp) * gap, u, true);
 }
 
-motion::ThrowArc Fielder::actionCircle(float turn, float radius) const {
+motion::ThrowArc Human::actionCircle(float turn, float radius) const {
     // +X is left: the bowling-arm side is +X for the left arm, -X for the
     // right; the sign makes + turn go toward it.
     const float side = reachLeft_ ? 1.0f : -1.0f;
@@ -1554,14 +1554,14 @@ motion::ThrowArc Fielder::actionCircle(float turn, float radius) const {
     return arc;
 }
 
-void Fielder::setActionPoint(math::Vec3 point) {
+void Human::setActionPoint(math::Vec3 point) {
     // The farther behind the shoulder, the more pace.
     actionOffset_ = point - shoulderNow(reachLeft_);
     const math::Vec3 d = math::safeNormalize(point - (shoulderNow(reachLeft_)), math::kUp);
     bowlPace_ = math::clamp(0.5f * (1.0f - math::dot(d, math::kForward)), 0.0f, 1.0f);
 }
 
-void Fielder::actionBowl(math::Vec3 point, float gap, float turn) {
+void Human::actionBowl(math::Vec3 point, float gap, float turn) {
     if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
     // + turn is outward (bowling-arm side): no swivel.
     elbowSwivel_ = math::clamp(-turn / std::max(bowl_.elbowUpTurn, 0.01f), 0.0f, 1.0f);
@@ -1591,11 +1591,11 @@ void Fielder::actionBowl(math::Vec3 point, float gap, float turn) {
     phase_ = Phase::Bowl;
 }
 
-bool Fielder::bodyTurned() const {
+bool Human::bodyTurned() const {
     return std::abs(std::remainder(bowlYaw_ - walker_.yaw(), math::kTwoPi)) <= bowl_.turnDone;
 }
 
-void Fielder::downBowl() {
+void Human::downBowl() {
     if (!actionHeld()) return;
     // From the action point round the shoulder down to the bottom point.
     // Whole-player turn once the hand leaves the action point: bodyBase (the
@@ -1607,7 +1607,7 @@ void Fielder::downBowl() {
     strideWaiting_ = true;  // the front foot steps once the hand is part way down (updateBowl)
 }
 
-void Fielder::releaseBowl(float releaseAngle, float releaseTilt) {
+void Human::releaseBowl(float releaseAngle, float releaseTilt) {
     if (!armDown()) return;
     // From the bottom point on round the release circle the bowling way
     // (larger angles: from the bottom, back, over the top) to the release.
@@ -1620,11 +1620,11 @@ void Fielder::releaseBowl(float releaseAngle, float releaseTilt) {
     throwTime_ = 0.0f;
 }
 
-void Fielder::cancelCoil() {
+void Human::cancelCoil() {
     if (coiled() || armDown()) startReturn();
 }
 
-void Fielder::setPoseHand(bool left, math::Vec3 world) {
+void Human::setPoseHand(bool left, math::Vec3 world) {
     if (phase_ != Phase::Idle && phase_ != Phase::Pose) return;
     phase_ = Phase::Pose;
     poseHand_ = true;
@@ -1632,14 +1632,14 @@ void Fielder::setPoseHand(bool left, math::Vec3 world) {
     poseGoal_ = world;
 }
 
-void Fielder::setPoseFoot(motion::Foot foot, math::Vec3 world) {
+void Human::setPoseFoot(motion::Foot foot, math::Vec3 world) {
     if (phase_ != Phase::Idle && phase_ != Phase::Pose) return;
     phase_ = Phase::Pose;
     posedFoot_ = static_cast<int>(foot);
     stepper_.place(foot, math::inverse(root_).transformPoint(world));
 }
 
-void Fielder::clearPose() {
+void Human::clearPose() {
     if (phase_ != Phase::Pose) return;
     phase_ = Phase::Idle;
     posedFoot_ = -1;
@@ -1648,7 +1648,7 @@ void Fielder::clearPose() {
     plantFeet();
 }
 
-void Fielder::updateBowl(float dt) {
+void Human::updateBowl(float dt) {
     // BIOMECHANICS 11.2: angles on the bowling circle (0 top, +90 in front),
     // unwrapped so the hand only moves forward: start (front, low) -> past the
     // bottom -> 3/2 pi (horizontal behind) -> top -> release, speeding up all
@@ -1833,7 +1833,7 @@ void Fielder::updateBowl(float dt) {
     }
 }
 
-void Fielder::updatePick(float dt) {
+void Human::updatePick(float dt) {
     if (phase_ == Phase::Idle || phase_ == Phase::Throw || phase_ == Phase::Bowl || phase_ == Phase::Pose) return;
     const math::Transform toModel = math::inverse(root_);
     const math::Vec3 ball = toModel.transformPoint(reachTarget_);
@@ -1857,7 +1857,7 @@ void Fielder::updatePick(float dt) {
     goal_ = math::lerp(reachLeft_ ? restWristL_ : restWristR_, end, s);
 }
 
-void Fielder::finishPick(float) {
+void Human::finishPick(float) {
     // The reach is done (at full stretch if the ball is out of reach): a hand
     // on the ball grips it; either way it goes back to the standing pose.
     if (phase_ != Phase::Reach || pickTime_ < 1.0f) return;
@@ -1865,7 +1865,7 @@ void Fielder::finishPick(float) {
     startReturn();
 }
 
-void Fielder::lungeToward(math::Vec3 ball) {
+void Human::lungeToward(math::Vec3 ball) {
     // The foot nearer the ball steps to land beside it (BIOMECHANICS 8: low
     // pickups put the foot by the ball), lungeShort short of it, at most maxLunge.
     const motion::Foot foot = math::distance(stepper_.foot(motion::Foot::Left), ball) <=
@@ -1878,19 +1878,19 @@ void Fielder::lungeToward(math::Vec3 ball) {
     stepper_.stepTo(foot, from + math::safeNormalize(flat, math::kForward) * length);
 }
 
-math::Vec3 Fielder::ballSpot(bool left) const {
+math::Vec3 Human::ballSpot(bool left) const {
     // Half the palm down the hand (-Y), out along the palm normal.
     return math::Vec3(0.0f, -reach_.palmCentre, 0.0f) +
            math::Vec3(left ? -1.0f : 1.0f, 0.0f, 0.0f) * (reach_.ballRadius + reach_.palmThickness);
 }
 
-math::Vec3 Fielder::ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const {
+math::Vec3 Human::ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const {
     // In front of the holding palm.
     const ik::TwoBoneChain& arm = reachLeft_ ? joints_.armL : joints_.armR;
     return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.end)] * math::Vec4(ballSpot(reachLeft_), 1.0f)));
 }
 
-void Fielder::interpolatedPose(float alpha, rig::Pose& out) const {
+void Human::interpolatedPose(float alpha, rig::Pose& out) const {
     out.locals.resize(current_.locals.size());
     for (size_t i = 0; i < current_.locals.size(); ++i)
         out.locals[i] = math::lerp(previous_.locals[i], current_.locals[i], alpha);

@@ -1,4 +1,4 @@
-#include "game/fielder_visual.h"
+#include "game/human_visual.h"
 
 #include "core/config.h"
 #include "core/log.h"
@@ -20,7 +20,7 @@ render::MaterialDesc readMaterial(const core::Config& c, const std::string& name
 
 } // namespace
 
-void FielderVisual::build(World& world, render::Renderer& renderer, const rig::SkeletonDef& def, const rig::Rig& rig,
+void HumanVisual::build(World& world, render::Renderer& renderer, const rig::SkeletonDef& def, const rig::Rig& rig,
                           const core::Config& config) {
     parts_.clear();
     for (int j = 0; j < rig.numJoints(); ++j) {
@@ -51,7 +51,7 @@ void FielderVisual::build(World& world, render::Renderer& renderer, const rig::S
     LOG_INFO("fielder visual: {} parts", parts_.size());
 }
 
-void FielderVisual::update(World& world, const rig::Rig& rig, const std::vector<math::Mat4>& models,
+void HumanVisual::update(World& world, const rig::Rig& rig, const std::vector<math::Mat4>& models,
                            const math::Transform& root) {
     const float h = rig.height();
     for (const Part& p : parts_) {
@@ -62,7 +62,7 @@ void FielderVisual::update(World& world, const rig::Rig& rig, const std::vector<
     }
 }
 
-void FielderVisual::setVisible(render::Renderer& renderer, World& world, bool visible) {
+void HumanVisual::setVisible(render::Renderer& renderer, World& world, bool visible) {
     for (const Part& p : parts_) renderer.setObjectVisible(world.registry().get<Renderable>(p.entity).object, visible);
 }
 

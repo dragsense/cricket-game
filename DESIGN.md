@@ -198,7 +198,7 @@ Cricket dimensions:
 Small parts are merged with `render::appendMesh` to keep draw calls low.
 
 ### Rig (M1): skeleton built (Step 1.1)
-- `rig::SkeletonDef` (`src/rig/skeleton_def.*`) parses `config/fielder_skeleton.json`.
+- `rig::SkeletonDef` (`src/rig/skeleton_def.*`) parses `config/human_skeleton.json`.
   Every offset is a **ratio of standing height** (Drillis & Contini / Winter ratios,
   de Leva 1996 masses; tables and derivations in
   [docs/BIOMECHANICS.md](docs/BIOMECHANICS.md) section 1). Left-side bones are defined
@@ -227,7 +227,7 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
 
 ### IK (M1): joint limits and limb IK built (Step 1.2)
 - `ik::JointLimits` (`src/ik/joint_limits.*`, our own code): per-joint limits from
-  `config/fielder_joints.json`.
+  `config/human_joints.json`.
   - **Hinge:** twist about one axis, clamped.
   - **Swing-twist:** `math::swingTwist` decomposition. The twist is clamped to a range;
     the swing rotation vector is clamped to an asymmetric ellipse (a radius for each
@@ -254,7 +254,7 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
   running and the limb test): every tick after the foot
   targets are set, the pelvis eases toward standing height above the stance-weighted
   feet, and each hip-to-ankle distance is clamped to [min, max] × leg length
-  (`config/fielder_joints.json` "reposition").
+  (`config/human_joints.json` "reposition").
 - `motion::WalkController` (`src/motion/walk_controller.*`): camera-relative WASD →
   desired velocity in character space, eased start and stop, limited turn rate, slowing
   on sharp turns. W turns to the camera heading; A/D sidestep and S backs up without

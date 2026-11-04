@@ -70,7 +70,7 @@ struct ThrowSettings {
     float minStride = 0.3f;
     float maxStride = 0.9f;
     // Test: the swing stops at the release point, the ball still held,
-    // until Fielder::letGo.
+    // until Human::letGo.
     bool pauseAtRelease = false;
     float minSpeed = 10.0f;      // m/s at release with no wind-up
     float maxSpeed = 31.0f;      // m/s at release from maxBack

@@ -1,4 +1,4 @@
-// Fielder skeleton. Every length is a fraction of standing height H (no metres),
+// Human skeleton. Every length is a fraction of standing height H (no metres),
 // from Drillis & Contini / Winter ratios: see docs/BIOMECHANICS.md section 1.
 // Axes (character space): +Y up, +Z forward, +X = character's LEFT.
 // All rest rotations are identity, so the rest pose IS the neutral standing pose

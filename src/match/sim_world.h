@@ -7,7 +7,7 @@
 // Every tick copies `current` into `previous`; the renderer blends the two
 // with the loop's alpha.
 
-#include "agents/fielder.h"
+#include "agents/human.h"
 #include "math/math.h"
 #include "physics/sim/sphere_solver.h"
 #include "physics/core/physics_world.h"
@@ -48,14 +48,14 @@ public:
         return {ballPosition(alpha), math::slerp(ballPrevious_.orientation, ball_.orientation, alpha), math::Vec3(1.0f)};
     }
 
-    agents::Fielder& fielder() { return fielder_; }
-    const agents::Fielder& fielder() const { return fielder_; }
+    agents::Human& fielder() { return fielder_; }
+    const agents::Human& fielder() const { return fielder_; }
     // The bowler (M5): the same body, standing at `position` facing `yaw`
     // radians, holding a ball. Load-time only.
     bool initBowler(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion,
                     math::Vec3 position, float yaw);
-    agents::Fielder& bowler() { return bowler_; }
-    const agents::Fielder& bowler() const { return bowler_; }
+    agents::Human& bowler() { return bowler_; }
+    const agents::Human& bowler() const { return bowler_; }
 
     // Interpolated probe transform for rendering.
     math::Transform probeTransform(float alpha) const {
@@ -67,8 +67,8 @@ public:
 
 private:
     ProbeState previous_, current_;
-    agents::Fielder fielder_;
-    agents::Fielder bowler_;
+    agents::Human fielder_;
+    agents::Human bowler_;
     physics::PhysicsWorld physics_;
     physics::GravityForce gravity_;
     physics::DragForce drag_;

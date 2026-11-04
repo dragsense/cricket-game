@@ -17,7 +17,7 @@ class Config;
 
 namespace game {
 
-class FielderVisual {
+class HumanVisual {
 public:
     // Creates one entity per bone with a visual. Load-time only.
     void build(World& world, render::Renderer& renderer, const rig::SkeletonDef& def, const rig::Rig& rig,

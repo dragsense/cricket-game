@@ -1,7 +1,7 @@
 // Whole-fielder checks: runs the real fielder from config and measures how the
 // body moves (side-to-side sway while running, reaching for a ball).
 
-#include "agents/fielder.h"
+#include "agents/human.h"
 #include "core/config.h"
 #include "rig/skeleton_def.h"
 
@@ -22,10 +22,10 @@ struct Range {
     float span() const { return hi - lo; }
 };
 
-bool makeFielder(agents::Fielder& fielder, bool lunge = false) {
+bool makeHuman(agents::Human& fielder, bool lunge = false) {
     core::Config skeleton, joints, locomotion;
-    if (!skeleton.load(CRICKET_CONFIG_DIR "/fielder_skeleton.json") ||
-        !joints.load(CRICKET_CONFIG_DIR "/fielder_joints.json") ||
+    if (!skeleton.load(CRICKET_CONFIG_DIR "/human_skeleton.json") ||
+        !joints.load(CRICKET_CONFIG_DIR "/human_joints.json") ||
         !locomotion.load(CRICKET_CONFIG_DIR "/locomotion.json"))
         return false;
     rig::SkeletonDef def;
@@ -41,7 +41,7 @@ bool makeFielder(agents::Fielder& fielder, bool lunge = false) {
 
 // Places the ball and picks it; returns once the reach is fully eased in
 // (before the grip hold ends and the return starts).
-void reachFor(agents::Fielder& fielder, math::Vec3 ball) {
+void reachFor(agents::Human& fielder, math::Vec3 ball) {
     fielder.setReachTarget(ball);
     fielder.startPick();
     for (int i = 0; i < 240 && fielder.reachProgress() < 1.0f; ++i) fielder.tick(1.0 / 120.0);
@@ -49,13 +49,13 @@ void reachFor(agents::Fielder& fielder, math::Vec3 ball) {
 }
 
 // World direction of a joint's local +Y (up the spine).
-math::Vec3 boneUp(const agents::Fielder& fielder, int joint) {
+math::Vec3 boneUp(const agents::Human& fielder, int joint) {
     std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
     fielder.rig().localToModel(fielder.pose(), models);
     return fielder.root().transformDirection(math::normalize(math::Vec3(models[static_cast<size_t>(joint)][1])));
 }
 
-math::Vec3 boneForward(const agents::Fielder& fielder, int joint) {
+math::Vec3 boneForward(const agents::Human& fielder, int joint) {
     std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
     fielder.rig().localToModel(fielder.pose(), models);
     return fielder.root().transformDirection(math::normalize(math::Vec3(models[static_cast<size_t>(joint)][2])));
@@ -64,8 +64,8 @@ math::Vec3 boneForward(const agents::Fielder& fielder, int joint) {
 } // namespace
 
 TEST_CASE("reaching for a ball on the ground ahead bends the spine forward") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
     reachFor(fielder, fielder.root().position + ahead * 0.5f + math::Vec3(0, 0.036f, 0));
     const math::Vec3 chestUp = boneUp(fielder, fielder.rig().findJoint("chest"));
@@ -75,8 +75,8 @@ TEST_CASE("reaching for a ball on the ground ahead bends the spine forward") {
 }
 
 TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet planted") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
     fielder.tick(1.0 / 120.0);
     const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
@@ -100,8 +100,8 @@ TEST_CASE("reaching for a ground ball tilts the pelvis and keeps the feet plante
 }
 
 TEST_CASE("a ground ball too far for planted feet: lower, balanced, feet planted") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
     fielder.tick(1.0 / 120.0);
     const float standY = fielder.pose().locals[0].position.y;  // pelvis (root joint), character space
@@ -119,8 +119,8 @@ TEST_CASE("a ground ball too far for planted feet: lower, balanced, feet planted
 }
 
 TEST_CASE("a ground ball beside the foot is reached") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     const math::Transform& root = fielder.root();
     const math::Vec3 left = root.transformDirection(math::kRight);  // +X is left
     const math::Vec3 ahead = root.transformDirection(math::kForward);
@@ -138,8 +138,8 @@ TEST_CASE("ground balls near the feet: reach sweep") {
         for (int iz = 0; iz <= 4; ++iz) {
             const float x = 0.15f * static_cast<float>(ix), z = 0.15f * static_cast<float>(iz);
             if (x * x + z * z > 0.6f * 0.6f) continue;
-            agents::Fielder fielder;
-            REQUIRE(makeFielder(fielder));
+            agents::Human fielder;
+            REQUIRE(makeHuman(fielder));
             const math::Transform root = fielder.root();
             reachFor(fielder, root.transformPoint(math::Vec3(x, 0.036f, z)));
             ++total;
@@ -154,8 +154,8 @@ TEST_CASE("ground balls near the feet: reach sweep") {
 }
 
 TEST_CASE("a ball far out of reach leaves an error (the dive case later)") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     const math::Vec3 ahead = fielder.root().transformDirection(math::kForward);
     reachFor(fielder, fielder.root().position + ahead * 3.0f + math::Vec3(0, 0.036f, 0));
     MESSAGE("reach error ", fielder.reachError());
@@ -172,8 +172,8 @@ TEST_CASE("a ball far out of reach leaves an error (the dive case later)") {
 }
 
 TEST_CASE("reaching for a ball to the side and behind twists the chest toward it") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     const math::Transform& root = fielder.root();
     const math::Vec3 left = root.transformDirection(math::kRight);  // +X is left
     reachFor(fielder, root.position + left * 0.5f - root.transformDirection(math::kForward) * 0.7f +
@@ -184,8 +184,8 @@ TEST_CASE("reaching for a ball to the side and behind twists the chest toward it
 }
 
 TEST_CASE("the fielder starts with the ball in hand; placing it releases it") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     CHECK(fielder.holding());
     fielder.setMoveInput(math::Vec2(0.0f, 1.0f), true, 0.0f);  // still held while walking
     for (int i = 0; i < 120; ++i) fielder.tick(1.0 / 120.0);
@@ -197,8 +197,8 @@ TEST_CASE("the fielder starts with the ball in hand; placing it releases it") {
 TEST_CASE("grip: a closed hand brings the thumb tip toward the ball") {
     // The fielder starts holding the ball in the right hand (closed grip);
     // placing the ball relaxes it.
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     std::vector<math::Mat4> models(static_cast<size_t>(fielder.rig().numJoints()));
     auto thumbToPalm = [&]() {
         // Thumb tip to the held ball's spot in front of the right palm (+X).
@@ -218,8 +218,8 @@ TEST_CASE("grip: a closed hand brings the thumb tip toward the ball") {
 }
 
 TEST_CASE("picking: grips the ball, carries it back, stands again") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     fielder.tick(1.0 / 120.0);  // settled standing height
     const math::Transform root = fielder.root();
     const float standY = fielder.pose().locals[0].position.y;
@@ -237,8 +237,8 @@ TEST_CASE("picking: grips the ball, carries it back, stands again") {
 }
 
 TEST_CASE("picking: a ball out of planted reach is picked with a step (Alt+Space)") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder, true));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder, true));
     const math::Transform root = fielder.root();
     const math::Vec3 footL = fielder.targets().footL, footR = fielder.targets().footR;
     fielder.setReachTarget(root.transformPoint(math::Vec3(0.1f, 0.036f, 1.2f)));
@@ -255,8 +255,8 @@ TEST_CASE("picking: a ball out of planted reach is picked with a step (Alt+Space
 }
 
 TEST_CASE("picking: with a step, the foot moves first, before the body bends") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder, true));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder, true));
     fielder.tick(1.0 / 120.0);
     const math::Transform root = fielder.root();
     const float standY = fielder.pose().locals[0].position.y;
@@ -271,8 +271,8 @@ TEST_CASE("picking: with a step, the foot moves first, before the body bends") {
 }
 
 TEST_CASE("picking: hand mode Right uses the right hand for a ball on the left") {
-    agents::Fielder fielder;
-    REQUIRE(makeFielder(fielder));
+    agents::Human fielder;
+    REQUIRE(makeHuman(fielder));
     fielder.setHandMode(agents::HandMode::Right);
     const math::Transform root = fielder.root();
     const math::Vec3 ball = root.transformPoint(math::Vec3(0.3f, 0.036f, 0.4f));  // +X is left
@@ -289,8 +289,8 @@ TEST_CASE("picking: hand mode Right uses the right hand for a ball on the left")
 
 TEST_CASE("picking: a still ball in range is reached at once, a nearer one sooner") {
     auto timeToReach = [](float z) {
-        agents::Fielder fielder;
-        REQUIRE(makeFielder(fielder));
+        agents::Human fielder;
+        REQUIRE(makeHuman(fielder));
         fielder.setReachTarget(fielder.root().transformPoint(math::Vec3(0.2f, 0.036f, z)));
         fielder.startPick();
         int ticks = 0;
@@ -307,12 +307,12 @@ TEST_CASE("picking: a still ball in range is reached at once, a nearer one soone
 
 TEST_CASE("running fielder keeps the body and feet in their lanes") {
     core::Config skeleton, joints, locomotion;
-    REQUIRE(skeleton.load(CRICKET_CONFIG_DIR "/fielder_skeleton.json"));
-    REQUIRE(joints.load(CRICKET_CONFIG_DIR "/fielder_joints.json"));
+    REQUIRE(skeleton.load(CRICKET_CONFIG_DIR "/human_skeleton.json"));
+    REQUIRE(joints.load(CRICKET_CONFIG_DIR "/human_joints.json"));
     REQUIRE(locomotion.load(CRICKET_CONFIG_DIR "/locomotion.json"));
     rig::SkeletonDef def;
     REQUIRE(rig::loadSkeletonDef(skeleton, def));
-    agents::Fielder fielder;
+    agents::Human fielder;
     REQUIRE(fielder.init(def, def.height, joints, locomotion));
 
     fielder.setGait(motion::Gait::Run);

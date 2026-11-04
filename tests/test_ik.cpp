@@ -54,8 +54,8 @@ struct Fixture {
 
     Fixture() {
         core::Config skel, joints;
-        REQUIRE(skel.load(CRICKET_CONFIG_DIR "/fielder_skeleton.json"));
-        REQUIRE(joints.load(CRICKET_CONFIG_DIR "/fielder_joints.json"));
+        REQUIRE(skel.load(CRICKET_CONFIG_DIR "/human_skeleton.json"));
+        REQUIRE(joints.load(CRICKET_CONFIG_DIR "/human_joints.json"));
         REQUIRE(rig::loadSkeletonDef(skel, def));
         REQUIRE(rig.build(def, 1.8f));
         REQUIRE(limits.load(joints, rig));

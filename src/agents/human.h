@@ -8,7 +8,7 @@
 // steady the head, reach for the hand target if there is one (standing
 // only; docs/BIOMECHANICS.md section 9), then clamp every joint to its limits.
 
-#include "agents/body_physics.h"
+#include "agents/human_body.h"
 #include "ik/joint_limits.h"
 #include "ik/limb_ik.h"
 #include "math/math.h"
@@ -45,7 +45,7 @@ struct IkSettings {
 // Which hand picks: the one on the ball's side (default), or a fixed one.
 enum class HandMode { Auto, Left, Right };
 
-// Hand-driven reaching and picking (config/fielder_joints.json "reach").
+// Hand-driven reaching and picking (config/human_joints.json "reach").
 struct ReachSettings {
     float armReach = 0.97f;         // share of full arm length the hand reaches; the elbow never locks
     float wristOffset = 0.08f;      // m; wrist goal back from the ball centre toward the shoulder (palm on the ball)
@@ -93,13 +93,13 @@ struct ReachSettings {
     float lungeHeight = 0.06f;    // m swing arc apex
 };
 
-class Fielder {
+class Human {
 public:
     // Builds the skeleton at `height` metres, loads joint limits and IK settings
-    // (config/fielder_joints.json) and walk/run settings (config/locomotion.json),
+    // (config/human_joints.json) and walk/run settings (config/locomotion.json),
     // and stands it at the spawn point.
     bool init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion);
-    // The body's mass in the shared physics world (BodyPhysics): its height
+    // The body's mass in the shared physics world (HumanBody): its height
     // carries the pelvis while walking and in the limb test; the feet stand
     // on the world's real surface (Jolt ground query). After init(); again
     // after the world is rebuilt. False if the world is full.
@@ -462,8 +462,8 @@ private:
     float heelLift_[2] = {0.0f, 0.0f};         // radians, smoothed heel lift past the ankle's range (solveIk)
     static constexpr float kHeelRate = 15.0f;  // 1/s, how fast the heel lift follows (no flicker)
     float tickSeconds_ = 1.0f / 120.0f;        // this tick's step
-    BodyPhysics bodyPhysics_;                  // the body's mass (Jolt), vertical only for now
-    BodyPhysicsSettings bodyPhysicsSettings_;
+    HumanBody humanBody_;                  // the body's mass (Jolt), vertical only for now
+    HumanBodySettings humanBodySettings_;
     physics::PhysicsWorld* physics_ = nullptr;
     float restComHeight_ = 0.0f;               // m, the centre of mass above the root at rest
     motion::BodyReposition bodyReposition_;              // limb test: body and legs from real constraints

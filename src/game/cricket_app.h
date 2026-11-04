@@ -9,7 +9,7 @@
 #include "core/file_watcher.h"
 #include "core/input.h"
 #include "debug/debug_overlay.h"
-#include "game/fielder_visual.h"
+#include "game/human_visual.h"
 #include "game/test_scene.h"
 #include "game/world.h"
 #include "match/sim_world.h"
@@ -26,8 +26,8 @@ struct AppConfigs {
     core::Config engine;  // config/engine.json
     core::Config input;   // config/input.json
     core::Config scene;   // config/scene.json
-    core::Config fielderSkeleton;  // config/fielder_skeleton.json
-    core::Config fielderJoints;    // config/fielder_joints.json
+    core::Config humanSkeleton;  // config/human_skeleton.json
+    core::Config humanJoints;    // config/human_joints.json
     core::Config locomotion;       // config/locomotion.json
     core::Config physicsWorld;     // config/physics_world.json
     core::Config ball;             // config/ball.json
@@ -91,10 +91,10 @@ private:
     match::SimWorld sim_;
     World world_;
     TestScene scene_;
-    FielderVisual fielderVisual_;
+    HumanVisual humanVisual_;
     rig::Pose fielderPose_;                  // interpolated, render side
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
-    FielderVisual bowlerVisual_;
+    HumanVisual bowlerVisual_;
     rig::Pose bowlerPose_;
     std::vector<math::Mat4> bowlerModels_;
     debug::DebugSettings debugSettings_;

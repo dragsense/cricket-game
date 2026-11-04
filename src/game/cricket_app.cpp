@@ -164,18 +164,18 @@ bool CricketApp::init() {
     ballPos_.y = cfg_.scene.getFloat("ball.circumference", 0.2265f) / math::kTwoPi;
 
     rig::SkeletonDef skeletonDef;
-    if (!rig::loadSkeletonDef(cfg_.fielderSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef, cfg_.fielderJoints, cfg_.locomotion)) return false;
+    if (!rig::loadSkeletonDef(cfg_.humanSkeleton, skeletonDef) || !sim_.initFielder(skeletonDef, cfg_.humanJoints, cfg_.locomotion)) return false;
     sim_.fielder().setThrowSettings(readThrowSettings(cfg_.throwing));
-    const agents::Fielder& fielder = sim_.fielder();
-    fielderVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.fielderSkeleton);
+    const agents::Human& fielder = sim_.fielder();
+    humanVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.humanSkeleton);
     fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
-    if (!sim_.initBowler(skeletonDef, cfg_.fielderJoints, cfg_.locomotion,
+    if (!sim_.initBowler(skeletonDef, cfg_.humanJoints, cfg_.locomotion,
                          cfg_.bowling.getVec3("bowler.position", math::Vec3(0.4f, 0.0f, -9.4f)),
                          math::radians(cfg_.bowling.getFloat("bowler.yawDeg", 0.0f))))
         return false;
     applyBowlSettings();
-    const agents::Fielder& bowler = sim_.bowler();
-    bowlerVisual_.build(world_, *renderer_, bowler.def(), bowler.rig(), cfg_.fielderSkeleton);
+    const agents::Human& bowler = sim_.bowler();
+    bowlerVisual_.build(world_, *renderer_, bowler.def(), bowler.rig(), cfg_.humanSkeleton);
     bowlerModels_.assign(static_cast<size_t>(bowler.rig().numJoints()), math::Mat4(1.0f));
     limbTest_ = e.getBool("debug.limbTest", false);
     if (limbTest_) bowlerVisual_.setVisible(*renderer_, world_, false);
@@ -243,16 +243,16 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         } else if (name == "bowling.json") {
             cfg_.bowling = std::move(fresh);  // the bowler's place applies on restart
             applyBowlSettings();
-        } else if (name == "fielder_skeleton.json") {
-            cfg_.fielderSkeleton = std::move(fresh);
-            LOG_INFO("reload: fielder_skeleton.json changed; restart to rebuild the fielder");
+        } else if (name == "human_skeleton.json") {
+            cfg_.humanSkeleton = std::move(fresh);
+            LOG_INFO("reload: human_skeleton.json changed; restart to rebuild the fielder");
             continue;
-        } else if (name == "fielder_joints.json") {
-            cfg_.fielderJoints = std::move(fresh);
-            agents::Fielder& f = sim_.fielder();
-            f.init(f.def(), f.rig().height(), cfg_.fielderJoints, cfg_.locomotion);  // limits + IK settings
-            agents::Fielder& b = sim_.bowler();
-            b.init(b.def(), b.rig().height(), cfg_.fielderJoints, cfg_.locomotion);
+        } else if (name == "human_joints.json") {
+            cfg_.humanJoints = std::move(fresh);
+            agents::Human& f = sim_.fielder();
+            f.init(f.def(), f.rig().height(), cfg_.humanJoints, cfg_.locomotion);  // limits + IK settings
+            agents::Human& b = sim_.bowler();
+            b.init(b.def(), b.rig().height(), cfg_.humanJoints, cfg_.locomotion);
         } else if (name == "locomotion.json") {
             cfg_.locomotion = std::move(fresh);
             sim_.fielder().loadLocomotion(cfg_.locomotion);
@@ -350,7 +350,7 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::ToggleOverlay)) debugSettings_.showOverlay = !debugSettings_.showOverlay;
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
 
-    // Fielder movement: the fielder always turns to the camera's heading,
+    // Human movement: the fielder always turns to the camera's heading,
     // standing, walking or running, unless free view (V) holds the heading; W walks forward, S backs up, A/D sidestep
     // (character space, +X left).
     auto axis = [&](core::Action pos, core::Action neg) {
@@ -374,7 +374,7 @@ bool CricketApp::pumpEvents() {
         LOG_INFO("Bowling slow motion {}", slowMotion_ ? "on" : "off");
     }
     if (!limbTest_ && actions_.pressed(input_, core::Action::RandomBowl)) randomBowl();
-    agents::Fielder& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
+    agents::Human& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
     if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
     if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
@@ -455,7 +455,7 @@ bool CricketApp::pumpEvents() {
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
-        changedConfigs_ = {"engine.json", "input.json", "scene.json", "fielder_skeleton.json", "locomotion.json",
+        changedConfigs_ = {"engine.json", "input.json", "scene.json", "human_skeleton.json", "locomotion.json",
                           "physics_world.json", "ball.json", "ball_launch.json", "throw.json",
                           "bowling.json"};
     else if (cfg_.liveReload)
@@ -465,7 +465,7 @@ bool CricketApp::pumpEvents() {
 }
 
 void CricketApp::updatePose(float seconds) {
-    agents::Fielder& fielder = sim_.fielder();
+    agents::Human& fielder = sim_.fielder();
     if (actions_.pressed(input_, core::Action::ClearReach)) {
         fielder.clearPose();
         poseActive_ = false;
@@ -587,10 +587,10 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
 }
 
 void CricketApp::updateFielder(float alpha) {
-    const agents::Fielder& fielder = sim_.fielder();
+    const agents::Human& fielder = sim_.fielder();
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
-    fielderVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
+    humanVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
     if (sim_.ballInFlight()) {
         const math::Transform ball = sim_.ballTransform(alpha);  // rolls and spins
         ballPos_ = ball.position;
@@ -602,7 +602,7 @@ void CricketApp::updateFielder(float alpha) {
         ball.position = ballPos_;
         world_.setTransform(scene_.ball, ball);
     }
-    const agents::Fielder& bowler = sim_.bowler();
+    const agents::Human& bowler = sim_.bowler();
     bowler.interpolatedPose(alpha, bowlerPose_);
     if (!bowler.rig().localToModel(bowlerPose_, bowlerModels_)) return;
     bowlerVisual_.update(world_, bowler.rig(), bowlerModels_, bowler.interpolatedRoot(alpha));
@@ -621,7 +621,7 @@ void CricketApp::updateThrowAim(float alpha) {
     // far it winds back), the hand riding with it; the wheel leans the circle
     // before and after; a click on it is the release point, and the chest
     // throws. R lets go of the throw.
-    agents::Fielder& fielder = sim_.fielder();
+    agents::Human& fielder = sim_.fielder();
     if (bowlAim_ || (!fielder.holding() && !fielder.throwing())) {
         throwStep_ = 0;
         return;
@@ -679,7 +679,7 @@ void CricketApp::randomBowl() {
     // point within config/bowling.json "random". At runUp.jumpSpeed he jumps; in
     // the air the hand goes to the action point (updateBowlArc), then the way
     // down (the front foot strides) and the release follow on their own.
-    agents::Fielder& bowler = sim_.bowler();
+    agents::Human& bowler = sim_.bowler();
     if (!bowler.holding() || bowler.bowling() || runUp_) return;
     auto range = [&](const std::string& key, float lo, float hi) {
         const float a = cfg_.bowling.getFloat(key + ".min", lo), b = cfg_.bowling.getFloat(key + ".max", hi);
@@ -700,7 +700,7 @@ void CricketApp::randomBowl() {
     runUp_ = true;
     runUpJumpSpeed_ = cfg_.bowling.getFloat("runUp.jumpSpeed", runUpJumpSpeed_);
     bowlStep_ = 1;
-    autoRelease_ = false;  // the bowler times the rest himself (Fielder::autoDeliver)
+    autoRelease_ = false;  // the bowler times the rest himself (Human::autoDeliver)
     autoBowl_ = true;
 }
 
@@ -714,7 +714,7 @@ void CricketApp::updateBowlArc(float alpha) {
     // pivoting on the bottom point straight below the shoulder, leaned out
     // to the bowling-arm side by the wheel) and a third click on it sets the
     // release point and bowls the hand round it. R lets go.
-    agents::Fielder& bowler = sim_.bowler();
+    agents::Human& bowler = sim_.bowler();
     const math::Transform root = bowler.interpolatedRoot(alpha);
     auto toWorld = [&](motion::ThrowArc arc) {
         arc.centre = root.transformPoint(arc.centre);
@@ -822,7 +822,7 @@ void CricketApp::drawDebugGeometry(float alpha) {
 
     // Limb test: the chosen limb's target (red once moved, yellow at the
     // limb before that); the bowling arc is hidden.
-    const agents::Fielder& fielder = sim_.fielder();
+    const agents::Human& fielder = sim_.fielder();
     if (limbTest_) {
         const bool hand = poseLimb_ >= 2;
         const bool left = poseLimb_ % 2 == 1;
@@ -867,7 +867,7 @@ void CricketApp::drawDebugGeometry(float alpha) {
             }
         };
         if (!limbTest_) {
-            const agents::Fielder& bowler = sim_.bowler();
+            const agents::Human& bowler = sim_.bowler();
             const math::Transform root = bowler.interpolatedRoot(alpha);
             const math::Vec3 actionPoint = bowler.actionCircle(actionTurn_, actionSize_ * bowler.armLength()).point(actionAngle_);
             if (bowlAim_ && bowlStep_ == 0) {

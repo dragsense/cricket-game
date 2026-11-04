@@ -14,7 +14,7 @@ namespace {
 
 SkeletonDef loadDef() {
     core::Config c;
-    REQUIRE(c.load(CRICKET_CONFIG_DIR "/fielder_skeleton.json"));
+    REQUIRE(c.load(CRICKET_CONFIG_DIR "/human_skeleton.json"));
     SkeletonDef def;
     REQUIRE(loadSkeletonDef(c, def));
     return def;

@@ -12,19 +12,19 @@
 
 namespace agents {
 
-// config/fielder_joints.json "bodyPhysics".
-struct BodyPhysicsSettings {
+// config/human_joints.json "humanBody".
+struct HumanBodySettings {
     float legStiffness = 20000.0f;  // N/m per leg (spring-mass walking, Geyer et al. 2006)
     float legDamping = 0.0f;        // damping ratio (the spring-mass model has none)
 };
 
-class BodyPhysics {
+class HumanBody {
 public:
     // Creates the body (`mass` kg at `centreOfMass`, world) and a foot anchor
     // and leg spring per leg, slack beyond each foot's rest distance
     // (`restLeg`, centre of mass to ankle at rest). False if the world is full.
     bool init(physics::PhysicsWorld& world, float mass, math::Vec3 centreOfMass, const float restLeg[2],
-              const BodyPhysicsSettings& s);
+              const HumanBodySettings& s);
     bool ready() const { return body_ != physics::kInvalidBody; }
 
     // Before the physics step: each foot's ankle (world) and whether it is on

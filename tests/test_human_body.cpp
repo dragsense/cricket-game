@@ -1,7 +1,7 @@
 // The body's mass in the shared physics world: gravity from
 // config/physics_world.json, held up by push-only spring legs.
 
-#include "agents/body_physics.h"
+#include "agents/human_body.h"
 #include "core/config.h"
 
 #include <doctest/doctest.h>
@@ -21,8 +21,8 @@ bool makeWorld(physics::PhysicsWorld& w) {
 TEST_CASE("body physics: standing on two spring legs, the body settles by m g / 2 k") {
     physics::PhysicsWorld w;
     REQUIRE(makeWorld(w));
-    agents::BodyPhysics body;
-    agents::BodyPhysicsSettings s;
+    agents::HumanBody body;
+    agents::HumanBodySettings s;
     s.legDamping = 1.0f;  // settle for the check (the model itself has none)
     const math::Vec3 com(0.0f, 1.0f, 0.0f);
     const math::Vec3 ankles[2] = {com + math::Vec3(0.1f, -0.9f, 0.0f), com + math::Vec3(-0.1f, -0.9f, 0.0f)};
@@ -47,10 +47,10 @@ TEST_CASE("body physics: standing on two spring legs, the body settles by m g / 
 TEST_CASE("body physics: with both feet off the ground the body falls freely") {
     physics::PhysicsWorld w;
     REQUIRE(makeWorld(w));
-    agents::BodyPhysics body;
+    agents::HumanBody body;
     const float rest[2] = {0.9f, 0.9f};
     const math::Vec3 com(0.0f, 1.0f, 0.0f);
-    REQUIRE(body.init(w, 73.0f, com, rest, agents::BodyPhysicsSettings{}));
+    REQUIRE(body.init(w, 73.0f, com, rest, agents::HumanBodySettings{}));
     const math::Vec3 ankles[2] = {com - math::Vec3(0.0f, 0.9f, 0.0f), com - math::Vec3(0.0f, 0.9f, 0.0f)};
     const bool down[2] = {false, false};
     for (int i = 0; i < 12; ++i) {

@@ -2,7 +2,7 @@
 // Joint limits: hinge and swing-twist (elliptical cone + twist range), applied
 // to local joint rotations after every IK solve. Rotations are relative to the
 // rest pose, whose joint frames are aligned with the character (see
-// config/fielder_joints.json). Our own code: no listed library provides it.
+// config/human_joints.json). Our own code: no listed library provides it.
 
 #include "math/math.h"
 #include "rig/rig.h"
@@ -35,7 +35,7 @@ JointLimit mirrored(const JointLimit& limit);
 // One limit per rig joint.
 class JointLimits {
 public:
-    // Reads config/fielder_joints.json "joints"; names without a side suffix
+    // Reads config/human_joints.json "joints"; names without a side suffix
     // apply to the left bone and, mirrored, to the right. Load-time only.
     bool load(const core::Config& config, const rig::Rig& rig);
 

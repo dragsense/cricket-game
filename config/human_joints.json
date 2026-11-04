@@ -1,4 +1,4 @@
-// Fielder joint limits and IK settings. Degrees. Ranges from docs/BIOMECHANICS.md
+// Human joint limits and IK settings. Degrees. Ranges from docs/BIOMECHANICS.md
 // section 2 (clinical ROM; spine and neck ranges split across their bones).
 //
 // Limits are rotations relative to the rest (standing) pose, in the joint's local
@@ -157,8 +157,8 @@
     "rollPasses": 2          // body-then-roll passes per tick
   },
 
-  // The body's mass on spring legs (BIOMECHANICS 13; agents::BodyPhysics).
-  "bodyPhysics": {
+  // The body's mass on spring legs (BIOMECHANICS 13; agents::HumanBody).
+  "humanBody": {
     "legStiffness": 20000,   // N/m per leg (spring-mass walking model, Geyer et al. 2006)
     "legDamping": 0.0        // damping ratio (the spring-mass model has none)
   },
