@@ -32,6 +32,7 @@ struct GaitStyle {
     float toeOffPitch = 0.0f;   // rad, plantarflexion at toe-off (positive = toes down)
     float landPitch = 0.0f;     // rad, foot pitch at landing
     float peakAt = 0.5f;        // swing time share of the arc apex
+    float pushTime = 0.12f;     // s, a foot pushes off over this long before it lifts (pre-swing)
     float liftOffSpeed = 0.0f;  // forward speed at lift-off, shares of the average swing speed (0: from rest)
     float widthScale = 1.0f;    // share of standing width the feet land at
     float landAhead = 0.5f;     // share of a foot's ground travel that is ahead of the hips at landing
@@ -104,6 +105,10 @@ public:
     // (rad, negative = toes up, keeping them on the ground while the heel rises).
     float footPitch(Foot f) const { return pitch_[static_cast<int>(f)]; }
     float toeBend(Foot f) const { return toe_[static_cast<int>(f)]; }
+    // Gait mode: share [0, 1] of the push-off a foot is in: rises over the
+    // last pushTime before it lifts, then fades over the first half of its
+    // swing (the ankle comes back up for clearance).
+    float pushOff(Foot f) const { return push_[static_cast<int>(f)]; }
 
 private:
     bool startStep(math::Vec2 dir, const StepSettings& s);
@@ -113,7 +118,7 @@ private:
     math::Vec3 feet_[2]{};    // current positions (swing foot moves along the arc)
     math::Vec3 from_{0.0f}, to_{0.0f};
     math::Vec3 stance_[2]{};  // gait mode's standing spots
-    float pitch_[2]{}, toe_[2]{};
+    float pitch_[2]{}, toe_[2]{}, push_[2]{};
     float wait_ = 0.0f;       // gait mode: time both feet have been planted
     float dur_ = 0.0f;        // gait mode: this swing's duration
     float stretch_ = 1.0f, nextStretch_ = 1.0f;  // gait mode: this / the next swing's stretch

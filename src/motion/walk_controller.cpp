@@ -51,6 +51,7 @@ WalkSettings blendGait(const WalkSettings& a, const WalkSettings& b, float t) {
     r.landPitch = math::lerp(a.landPitch, b.landPitch, t);
     r.swingPeakAt = math::lerp(a.swingPeakAt, b.swingPeakAt, t);
     r.liftOffSpeed = math::lerp(a.liftOffSpeed, b.liftOffSpeed, t);
+    r.pushTime = math::lerp(a.pushTime, b.pushTime, t);
     r.widthScale = math::lerp(a.widthScale, b.widthScale, t);
     r.landAhead = math::lerp(a.landAhead, b.landAhead, t);
     r.pelvisTwist = math::lerp(a.pelvisTwist, b.pelvisTwist, t);

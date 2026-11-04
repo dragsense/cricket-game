@@ -153,7 +153,7 @@
     // turns the foot about its heel (toes up) or ball (heel up, toes bent).
     "dorsiflexionDeg": 10,   // shin forward before the heel lifts (walking about 10)
     "plantarflexionDeg": 10, // shin back before the toes rise off the ground
-    "heelBack": 0.05,        // m, heel contact behind the ankle
+    "pushOffDeg": 20,        // ankle plantarflexion at full push-off (toe-off 15-20; the unloading foot points)
     "rollPasses": 2          // body-then-roll passes per tick
   },
 

@@ -116,6 +116,17 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   and the body is solved again on the rolled ankles (`rollPasses` 2). Replaces "feet
   flat". Not yet measured (dip, heel-off timing). Later, with the user's OK: remove the old
   heel lift in `Fielder::solveIk` and the stepper's foot pitch / toe bend.
+  **2026-11-04 later:** heel and ball contacts come from the skeleton's shoe (foot box back
+  edge, under the toe joint, on the sole; no guessed numbers on the body side). The roll
+  only lifts the ankle where the heel/ball meets the ground (air foot just turns). Push-off:
+  the stepper gives each foot a push share over `pushTime` before lift-off (target side);
+  the body moves the ankle range toward `pushOffDeg` plantarflexion, so the heel rises and
+  the knee bends before toe-off (lift-off knee snap gone, measured). A foot in the air no
+  longer pulls the body. Swing foot leaves moving forward (`liftOffSpeed`, low arc).
+  Open (measured): the front foot lands 3-4 cm beyond the leg's reach, so the body drops
+  in one tick at landing (back knee ~45 deg jump). The body has no mass/damping yet
+  (inertia proposed; the user: later, with gravity and forces). Rule (user): targets may
+  take any path; the body following them is real mechanics only, no patches.
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

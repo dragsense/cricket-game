@@ -1,15 +1,16 @@
 #pragma once
 // Body repositioning from the body's targets: the feet now, the hands now,
-// the hips, chest and head later. The body follows wherever a target is put,
-// in the air or on the ground. Real body order (BIOMECHANICS 3.1, 9.1): each
+// the hips, chest and head later. The body follows wherever a target is put;
+// a foot in the air only reaches (it cannot pull the body). Real body order (BIOMECHANICS 3.1, 9.1): each
 // part reaches with its own joints first; the next part in only takes what
 // that left, inside its own joint limits.
 //  Feet:
 //   1. The moving leg reaches its foot (two-bone IK, knee forward).
 //   2. Past the hip's range the pelvis tilts by the rest, over the standing
 //      hip: e.g. a foot far behind with a straight leg tips the body forward.
-//   3. Past the leg's length the pelvis moves toward the foot; the standing
-//      foot stays, so the body lowers (a lunge).
+//   3. Past the leg's length a foot on the ground draws the pelvis toward
+//      it; the standing foot stays, so the body lowers (a lunge). A foot in
+//      the air just reaches as far as its leg allows.
 //  Chest:
 //   1. The spine turns the chest toward its target: chest, spine_02, then
 //      spine_01, each inside its limit.
@@ -27,6 +28,9 @@
 //   - shin back past the plantarflexion range: on the heel, toes up;
 //   - shin within the range: flat;
 //   - shin forward past the dorsiflexion range: on the ball, heel up, toes bent.
+//  Push-off: as a foot unloads before it lifts, the calf points it; its
+//  range moves from dorsiflexion to pushOff plantarflexion, so the heel rises
+//  further and the knee bends before toe-off (no straight-leg snap).
 //  The ankle targets are the flat foot's ankles; the roll moves them.
 // The planted feet never move. No allocations after init().
 
@@ -48,7 +52,7 @@ struct BodyRepositionSettings {
     int passes = 3;                 // passes per tick
     float dorsiflexion = 0.17f;     // rad, ankle's loaded dorsiflexion range (shin forward) before the heel lifts
     float plantarflexion = 0.17f;   // rad, ankle's loaded plantarflexion range (shin back) before the toes rise
-    float heelBack = 0.05f;         // m, heel contact behind the ankle
+    float pushOff = 0.35f;          // rad, ankle plantarflexion at full push-off (toe-off 15-20 deg)
     int rollPasses = 2;             // body-then-foot-roll passes per tick (the roll changes the ankles)
 };
 
@@ -56,6 +60,9 @@ struct BodyRepositionJoints {
     int pelvis = -1;
     ik::TwoBoneChain legs[2];  // left, right: thigh, shin, foot
     int toes[2] = {-1, -1};
+    // Sole contacts from the ankle (rest, character space; the skeleton's
+    // shoe): heel = back edge, ball = under the toe joint, both on the sole.
+    math::Vec3 heel[2]{}, ball[2]{};
     int spine[3] = {-1, -1, -1};  // spine_01, spine_02, chest
     int clavicles[2] = {-1, -1};
     ik::TwoBoneChain arms[2];  // left, right: upper arm, forearm, hand
@@ -67,6 +74,7 @@ struct BodyTargets {
     math::Vec3 plantedAnkle{0.0f}; // its ankle
     math::Vec3 movingAnkle{0.0f};  // the other leg's ankle target
     bool down[2] = {true, true};   // left, right foot on the ground (only a foot on the ground holds the body)
+    float push[2] = {0.0f, 0.0f};  // left, right push-off share [0, 1]: the unloading ankle points the foot (heel up)
     bool chest = false;            // chest target in use
     math::Quat chestRot = math::identityQuat();  // chest orientation (character space; identity = upright, facing forward)
     bool hand[2] = {false, false}; // left, right hand targets in use
@@ -100,8 +108,8 @@ private:
     math::Vec3 legDir_[2]{};       // rest hip-to-ankle direction (pelvis frame)
     float legLength_[2]{};         // thigh + shin
     float armLength_[2]{};         // upper arm + forearm
-    math::Vec3 ball_[2]{};         // ball of the foot from the ankle (rest, character space; x = 0)
-    float groundY_ = 0.0f;         // ground height (rest toe joints, character space)
+    math::Vec3 heel_[2]{}, ball_[2]{};  // sole contacts from the ankle (BodyRepositionJoints)
+    float groundY_ = 0.0f;         // ground height (the rest sole, character space)
     float maxHeelLift_[2]{};       // rad, heel lift at which the toes reach their extension limit
 };
 

@@ -14,6 +14,7 @@ constexpr float kStartTie = 0.05f; // metres; feet this close in distance-to-go 
 constexpr float kPitchSettle = 0.75f;  // swing share by which the foot reaches its landing pitch
 constexpr float kToeRelax = 0.3f;      // swing share by which bent toes straighten after push-off
 constexpr float kFootFlatRate = 12.0f; // 1/s, a landed foot lowers to flat
+constexpr float kPushRelax = 0.5f;    // swing share by which the ankle is back from push-off
 constexpr float kAimLock = 0.7f;      // swing share after which the landing spot stops being re-aimed
 
 float smoothstep(float x) {
@@ -36,7 +37,7 @@ void FootStepper::reset(math::Vec3 left, math::Vec3 right) {
     stance_[0] = left;
     stance_[1] = right;
     stanceWidth_ = std::fabs(left.x - right.x);
-    pitch_[0] = pitch_[1] = toe_[0] = toe_[1] = 0.0f;
+    pitch_[0] = pitch_[1] = toe_[0] = toe_[1] = push_[0] = push_[1] = 0.0f;
     swing_ = -1;
     t_ = 0.0f;
     wait_ = 0.0f;
@@ -66,8 +67,14 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
         return p;
     };
 
+    const float pushTime = std::max(style.pushTime, 0.01f);
     if (swing_ < 0) {
         wait_ += dt;
+        // Double support: the foot that lifts next pushes off as it nears
+        // lift-off (stopped: no push).
+        const int next = 1 - last_;
+        push_[1 - next] = 0.0f;
+        push_[next] = moving ? smoothstep(1.0f - (g.period - g.swing - wait_) / pushTime) : 0.0f;
         if (wait_ < g.period - g.swing) return;  // double support
         float move[2];
         for (int i = 0; i < 2; ++i) move[i] = math::distance(target(i, g.swing), feet_[i]);
@@ -109,6 +116,11 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
     const float t = t_;
     pitch_[swing] = math::lerp(style.toeOffPitch, style.landPitch, smoothstep(t / kPitchSettle));
     toe_[swing] *= 1.0f - smoothstep(t / kToeRelax);
+
+    // Push-off: the swing foot's fades; the stance foot's rises as its own
+    // lift-off nears (the rest of this swing, then the double support).
+    push_[swing] *= 1.0f - smoothstep(t / kPushRelax);
+    push_[stance] = moving ? smoothstep(1.0f - ((1.0f - t) * dur_ + (g.period - g.swing)) / pushTime) : 0.0f;
 
     // Stance foot: a heel-strike landing (toes up) lowers to flat.
     pitch_[stance] *= 1.0f - std::min(1.0f, kFootFlatRate * dt);
@@ -183,7 +195,7 @@ bool FootStepper::stepTo(Foot f, math::Vec3 spot) {
 void FootStepper::place(Foot f, math::Vec3 spot) {
     const int i = static_cast<int>(f);
     feet_[i] = spot;
-    pitch_[i] = toe_[i] = 0.0f;
+    pitch_[i] = toe_[i] = push_[i] = 0.0f;
 }
 
 void FootStepper::tick(float dt, math::Vec2 dir, const StepSettings& s) {

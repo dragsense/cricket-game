@@ -48,6 +48,7 @@ struct WalkSettings {
     float toeOffPitch = 0.0f;    // rad, foot plantarflexion at toe-off
     float landPitch = 0.0f;      // rad, foot pitch at landing (negative = toes up)
     float swingPeakAt = 0.5f;    // swing time share of the arc apex (earlier = heel recovery)
+    float pushTime = 0.12f;      // s, push-off before a foot lifts (pre-swing, about 10 % of the stride)
     float liftOffSpeed = 0.0f;   // swing foot's forward speed at lift-off, in shares of its average swing speed
     float widthScale = 1.0f;     // share of standing width the feet land at
     float landAhead = 0.5f;      // share of a foot's ground travel that is ahead of the hips at landing

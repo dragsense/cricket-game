@@ -43,7 +43,8 @@
     // The swing foot leaves already moving forward (it rolls off the toes), so
     // its path starts low and arcs up: forward speed at lift-off in shares of
     // its average swing speed (0: straight up first; 1: about 9 deg up).
-    "liftOffSpeed": 1.0
+    "liftOffSpeed": 1.0,
+    "pushTime": 0.12        // s, push-off before a foot lifts (pre-swing ~10 % of the stride): heel up, knee bends
   },
   // Pace presets (Ctrl: jog, Shift: run). The gait shape blends
   // walk -> jog -> run by the actual speed. docs/BIOMECHANICS.md section 5.

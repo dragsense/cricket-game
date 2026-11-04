@@ -34,14 +34,11 @@ bool BodyReposition::init(const rig::Rig& rig, const ik::JointLimits& limits, co
         hipOffset_[i] = hip - pelvis;
         legDir_[i] = math::normalize(ankle - hip);
         legLength_[i] = math::distance(hip, knee) + math::distance(knee, ankle);
-        // Ball of the foot: the toe joint, straight ahead of the ankle.
+        heel_[i] = joints.heel[i];
+        ball_[i] = joints.ball[i];
+        groundY_ = ankle.y + joints.ball[i].y;  // the sole stands on the ground at rest
         const int toe = joints.toes[i];
-        if (toe >= 0) {
-            const math::Vec3 d = jointPos(models, toe) - ankle;
-            ball_[i] = math::Vec3(0.0f, d.y, math::length(math::Vec3(d.x, 0.0f, d.z)));
-            groundY_ = ankle.y + d.y;  // the toe joint stands on the ground at rest
-            maxHeelLift_[i] = std::max(-limits.limit(toe).twistMin, 0.0f);  // toe extension is negative
-        }
+        if (toe >= 0) maxHeelLift_[i] = std::max(-limits.limit(toe).twistMin, 0.0f);  // toe extension is negative
         const ik::TwoBoneChain& a = joints.arms[i];
         if (a.start >= 0)
             armLength_[i] = math::distance(jointPos(models, a.start), jointPos(models, a.mid)) +
@@ -87,10 +84,11 @@ void BodyReposition::solve(rig::Pose& pose, std::vector<math::Mat4>& models, con
     // turns about that heel or ball, in the air it just turns (no lift).
     auto roll = [&](int i, float lean) {
         float th = 0.0f;
-        if (lean > s.dorsiflexion) th = std::min(lean - s.dorsiflexion, maxHeelLift_[i]);
+        const float dorsi = s.dorsiflexion - math::clamp(t.push[i], 0.0f, 1.0f) * (s.dorsiflexion + s.pushOff);
+        if (lean > dorsi) th = std::min(lean - dorsi, maxHeelLift_[i]);
         else if (lean < -s.plantarflexion) th = lean + s.plantarflexion;
         pitch[i] = th;
-        const math::Vec3 contact = th >= 0.0f ? ball_[i] : math::Vec3(0.0f, ball_[i].y, -s.heelBack);
+        const math::Vec3 contact = th >= 0.0f ? ball_[i] : heel_[i];
         const math::Vec3 turned = math::fromAxisAngle(math::kRight, th) * contact;
         const float height = flat[i].y + contact.y - groundY_;  // flat contact's height above the ground (<= 0: on it)
         const float full = contact.y - turned.y;  // the push with the flat foot on the ground
@@ -119,11 +117,12 @@ void BodyReposition::solve(rig::Pose& pose, std::vector<math::Mat4>& models, con
             pelvisRot = clampRotationVector(math::normalize(rest * pelvisRot), s.pelvisMin, s.pelvisMax);
             pelvisPos = standingHip - pelvisRot * hipOffset_[p];
 
-            // Past the leg's length: the pelvis moves toward the foot (the standing
-            // leg keeps its foot, so the body lowers).
+            // Past the leg's length: a foot on the ground draws the pelvis toward
+            // it (the standing leg keeps its foot, so the body lowers). A foot in
+            // the air cannot pull the body: its leg reaches as far as it can.
             const math::Vec3 to = ankles[o] - (pelvisPos + pelvisRot * hipOffset_[o]);
             const float len = math::length(to), most = s.legReach * legLength_[o];
-            if (len > most) pelvisPos += to * ((len - most) / len);
+            if (t.down[o] && len > most) pelvisPos += to * ((len - most) / len);
             keepLeg(p);
         }
         pelvis.position = pelvisPos;

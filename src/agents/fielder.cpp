@@ -54,7 +54,7 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
         motion::BodyRepositionSettings& b = bodyRepositionSettings_;
         b.dorsiflexion = math::radians(joints.getFloat("bodyReposition.dorsiflexionDeg", math::degrees(b.dorsiflexion)));
         b.plantarflexion = math::radians(joints.getFloat("bodyReposition.plantarflexionDeg", math::degrees(b.plantarflexion)));
-        b.heelBack = joints.getFloat("bodyReposition.heelBack", b.heelBack);
+        b.pushOff = math::radians(joints.getFloat("bodyReposition.pushOffDeg", math::degrees(b.pushOff)));
         b.rollPasses = joints.getInt("bodyReposition.rollPasses", b.rollPasses);
     }
     // The fielder starts with the ball in the right hand, picking with it.
@@ -140,6 +140,7 @@ void Fielder::loadLocomotion(const core::Config& c) {
         w.landPitch = deg("landPitchDeg", w.landPitch);
         w.swingPeakAt = get("swingPeakAt", w.swingPeakAt);
         w.liftOffSpeed = get("liftOffSpeed", w.liftOffSpeed);
+        w.pushTime = get("pushTime", w.pushTime);
         w.widthScale = get("widthScale", w.widthScale);
         w.landAhead = get("landAhead", w.landAhead);
         w.pelvisTwist = deg("pelvisTwistDeg", w.pelvisTwist);
@@ -360,6 +361,17 @@ bool Fielder::setHeight(float height) {
         sj.legs[1] = joints_.legR;
         sj.toes[0] = joints_.toeL;
         sj.toes[1] = joints_.toeR;
+        // Sole contacts from the skeleton's shoe (foot box, toe joint), in
+        // metres: heel = the box's back edge, ball = under the toe joint.
+        for (int i = 0; i < 2; ++i) {
+            const int foot = def_.find(i == 0 ? "foot_l" : "foot_r"), toe = def_.find(i == 0 ? "toe_l" : "toe_r");
+            if (foot < 0) continue;
+            const rig::BoneVisual& v = def_.bones[static_cast<size_t>(foot)].visual;
+            const float h = rig_.height(), sole = (v.center.y - 0.5f * v.size.y) * h;
+            sj.heel[i] = math::Vec3(0.0f, sole, (v.center.z - 0.5f * v.size.z) * h);
+            const float ahead = toe >= 0 ? def_.bones[static_cast<size_t>(toe)].offset.z * h : 0.0f;
+            sj.ball[i] = math::Vec3(0.0f, sole, ahead);
+        }
         for (int i = 0; i < 3; ++i) sj.spine[i] = joints_.spine[i];
         sj.clavicles[0] = joints_.clavicleL;
         sj.clavicles[1] = joints_.clavicleR;
@@ -727,6 +739,7 @@ motion::GaitStyle Fielder::gaitStyle() const {
     s.landPitch = w.landPitch;
     s.peakAt = w.swingPeakAt;
     s.liftOffSpeed = w.liftOffSpeed;
+    s.pushTime = w.pushTime;
     s.widthScale = w.widthScale;
     s.landAhead = w.landAhead;
     return s;
@@ -815,6 +828,8 @@ void Fielder::repositionFromFeet() {
     t.movingAnkle = toModel.transformPoint(t.planted == 1 ? targets_.footL : targets_.footR);
     t.down[0] = !stepper_.inAir(motion::Foot::Left);
     t.down[1] = !stepper_.inAir(motion::Foot::Right);
+    t.push[0] = stepper_.pushOff(motion::Foot::Left);
+    t.push[1] = stepper_.pushOff(motion::Foot::Right);
     // Chest target: the walking posture holds the trunk slightly forward
     // (postureLeanDeg), easing in from standing up to walking speed. The lean
     // of speeding up and slowing down comes later from forces. Positive about
