@@ -157,6 +157,26 @@
     "rollPasses": 2          // body-then-roll passes per tick
   },
 
+  // Muscles (BIOMECHANICS 14): each joint's motor drives it toward the planned
+  // pose, no harder than the joint really is, as fast as muscles switch on.
+  "muscles": {
+    "activationTime": 0.03,  // s, excitation to force (measured 10-50 ms): motor f = 1 / (2 pi t)
+    "damping": 1.0,          // ratio: reaches the pose without overshoot
+    // Strongest torque per joint, N m (adult men; one value per joint for both
+    // directions: the mean where flexion and extension differ). Not listed:
+    // no muscle (toes: no data found).
+    "maxTorque": {
+      "spine_01": 270, "spine_02": 270, "chest": 270,  // trunk extension 268-283
+      "head": 35,         // neck 28-41 (the head joint carries the neck)
+      "upper_arm": 120,   // shoulder flexion 77, extension 164
+      "forearm": 55,      // elbow flexion 51-56
+      "hand": 18,         // wrist flexion 21-25, extension 11-13
+      "thigh": 197,       // hip extension 197
+      "shin": 160,        // knee extension ~205, flexion ~117 (2.3-3.4 / 1.3-1.9 N m/kg x 73 kg)
+      "foot": 80          // ankle plantarflexion 70-86 (isokinetic; isometric likely higher)
+    }
+  },
+
   "reposition": {
     "standReach": 0.998,      // standing: legs nearly straight (knee about 7 deg; real quiet standing 0-5 deg)
     "maxReach": 1.0,          // a fully straight leg

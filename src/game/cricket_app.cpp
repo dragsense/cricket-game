@@ -584,6 +584,7 @@ void CricketApp::updateFielder(float alpha) {
     const agents::Human& fielder = sim_.fielder();
     fielder.interpolatedPose(alpha, fielderPose_);
     if (!fielder.rig().localToModel(fielderPose_, fielderModels_)) return;
+    fielder.physicalModels(sim_.physicsWorld(), alpha, fielderModels_);  // drawn from its physics body
     humanVisual_.update(world_, fielder.rig(), fielderModels_, fielder.interpolatedRoot(alpha));
     if (sim_.ballInFlight()) {
         const math::Transform ball = sim_.ballTransform(alpha);  // rolls and spins
@@ -599,6 +600,7 @@ void CricketApp::updateFielder(float alpha) {
     const agents::Human& bowler = sim_.bowler();
     bowler.interpolatedPose(alpha, bowlerPose_);
     if (!bowler.rig().localToModel(bowlerPose_, bowlerModels_)) return;
+    bowler.physicalModels(sim_.physicsWorld(), alpha, bowlerModels_);
     bowlerVisual_.update(world_, bowler.rig(), bowlerModels_, bowler.interpolatedRoot(alpha));
     if (!limbTest_ && !sim_.ballInFlight() && bowler.holding() && !fielder.holding()) {
         ballPos_ = bowler.ballInHand(bowlerModels_, bowler.interpolatedRoot(alpha));

@@ -340,6 +340,9 @@ public:
 
     // Pose blended between the last two ticks. `out` keeps its storage.
     void interpolatedPose(float alpha, rig::Pose& out) const;
+    // The drawn skeleton from the physics body (character space of the
+    // interpolated root; `models` sized to the rig). False without a body.
+    bool physicalModels(const physics::PhysicsWorld& world, float alpha, std::vector<math::Mat4>& models) const;
 
 private:
     void plantFeet();

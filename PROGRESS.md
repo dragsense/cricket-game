@@ -167,6 +167,19 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (tests/test_physics_joints.cpp): capsule rests on its side; free hinge stops at its
   limit; a 50 N m motor holds a 2 kg arm (sags by load / stiffness, 0.19 rad as Jolt's
   spring predicts), a 1 N m one cannot; a swing-twist motor reaches its target.
+- [~] **Muscles** (2026-11-05, in progress): each joint's Jolt motor drives it toward
+  BodyReposition's planned pose (`HumanBody::setTargets`) with the joint's real strength
+  as max torque (human_joints.json "muscles", BIOMECHANICS 14); the planned pose no longer
+  follows the falling mass; the game draws each human from its physics body
+  (`Human::physicalModels`). Measured: joints sag badly (shoulder 0.56 rad, the body
+  slumps 0.99 -> 0.45 m) and, with no balance, it tips over (falls on its face, knees
+  folded). Cause: motor stiffness from activation time (wrong: in Jolt it scales with the
+  part's own inertia). Its test is marked may_fail. **Next session:** 1 research measured
+  joint stiffness (N m/rad) per joint and use Jolt's stiffness mode (short); 2 balance
+  (long: centre of mass over the feet, ankle/hip strategies, stepping; then the walk
+  moving the physics body). Option offered: a debug toggle between the planned-pose and
+  physics display so the walk is usable meanwhile. The walk in the game does not work
+  while the physics body is drawn (the root moves, the body does not travel yet).
 - [x] **Human from generic parts** (2026-11-05): `HumanBody` builds 19 Jolt bodies (each
   bone with mass: shape from the skeleton visual, de Leva share of 73 kg; neck, clavicles
   and fingers ride their parents) joined at each joint with the human_joints.json ranges

@@ -594,6 +594,11 @@ void Human::tick(double dt) {
         if (released_) releasePosition_ = ball;
         finishPick(static_cast<float>(dt));
     }
+    // The muscles drive the physics body toward this tick's planned pose.
+    if (physics_ && humanBody_.ready()) {
+        rig_.localToModel(current_, models_);
+        humanBody_.setTargets(*physics_, models_);
+    }
     // Shoulders carried by the chest (not the clavicle) while bowling, for
     // the bowling circles next tick; at rest otherwise.
     if (reachNow && phase_ == Phase::Bowl && joints_.spine[2] >= 0) {
@@ -827,10 +832,6 @@ void Human::repositionFromFeet() {
     t.movingAnkle = toModel.transformPoint(t.planted == 1 ? targets_.footL : targets_.footR);
     t.down[0] = !stepper_.inAir(motion::Foot::Left);
     t.down[1] = !stepper_.inAir(motion::Foot::Right);
-    // The body's height comes from its mass on the legs (physics), not from
-    // a standing height.
-    if (physics_ && humanBody_.ready())
-        t.bodyDrop = root_.position.y + restComHeight_ - humanBody_.height(*physics_);
     t.push[0] = stepper_.pushOff(motion::Foot::Left);
     t.push[1] = stepper_.pushOff(motion::Foot::Right);
     // Chest target: the walking posture holds the trunk slightly forward
@@ -1137,7 +1138,17 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
     const math::Vec3 com = modelCentreOfMass();
     restComHeight_ = com.y;
     static uint32_t nextGroup = 1;  // each human's parts skip only each other
-    if (!humanBody_.init(world, def_, rig_, limits_, root_, nextGroup++)) {
+    MuscleSettings muscles;
+    if (jointsConfig_) {
+        muscles.activationTime = jointsConfig_->getFloat("muscles.activationTime", muscles.activationTime);
+        muscles.damping = jointsConfig_->getFloat("muscles.damping", muscles.damping);
+        const nlohmann::json& root = jointsConfig_->root();
+        if (auto m = root.find("muscles"); m != root.end())
+            if (auto t = m->find("maxTorque"); t != m->end() && t->is_object())
+                for (auto it = t->begin(); it != t->end(); ++it)
+                    if (it->is_number()) muscles.maxTorque.emplace_back(it.key(), it->get<float>());
+    }
+    if (!humanBody_.init(world, def_, rig_, limits_, muscles, root_, nextGroup++)) {
         LOG_ERROR("fielder: no room for the body in the physics world");
         physics_ = nullptr;
         return false;
@@ -1873,6 +1884,12 @@ math::Vec3 Human::ballInHand(const std::vector<math::Mat4>& models, const math::
     // In front of the holding palm.
     const ik::TwoBoneChain& arm = reachLeft_ ? joints_.armL : joints_.armR;
     return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.end)] * math::Vec4(ballSpot(reachLeft_), 1.0f)));
+}
+
+bool Human::physicalModels(const physics::PhysicsWorld& world, float alpha, std::vector<math::Mat4>& models) const {
+    if (!physics_ || !humanBody_.ready() || models.size() != static_cast<size_t>(rig_.numJoints())) return false;
+    humanBody_.boneModels(world, alpha, rig_, current_, interpolatedRoot(alpha), models);
+    return true;
 }
 
 void Human::interpolatedPose(float alpha, rig::Pose& out) const {

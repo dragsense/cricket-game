@@ -1057,6 +1057,26 @@ MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6
 
 ---
 
+## 14. Muscles: joint strength, activation, stiffness (M6 physics)
+
+- **Strength (max torque, adult men):** hip extension ~197 N m; knee extension 2.3-3.4
+  N m/kg, flexion 1.3-1.9 N m/kg (isokinetic); trunk extension 268-283 N m; shoulder
+  flexion 77, extension 164 N m; elbow flexion 51-56 N m; wrist flexion 21-25, extension
+  11-13 N m; neck 28-41 N m; ankle plantarflexion 70-86 N m (isokinetic, untrained;
+  isometric likely higher). Sources: MVIC reference values (PubMed 17364436), 178-subject
+  strength study, Danneskiold-Samsoe 2009, trunk and neck strength studies, PMC8783437,
+  PMC5105238, PMC5200854 **[P]**. Gaps: toes (no data), one value per joint for both
+  directions (means where flexion and extension differ).
+- **Activation:** muscle excitation to force takes about 10-50 ms. It is how fast a
+  muscle switches on, **not** how stiff a joint is (mistake found 2026-11-05).
+- **Stiffness (open):** active joints have a measured stiffness (N m/rad), e.g. the ankle
+  in quiet standing ~859 N m/rad (Winter). Hip, knee, shoulder, elbow, wrist, trunk and
+  neck values still to research; the motors must use them (Jolt stiffness mode).
+- **Balance (open):** muscles hold shape only; keeping the centre of mass over the feet
+  (ankle and hip strategies, stepping) is its own step.
+
+---
+
 ## Gaps and follow-ups
 - These numbers were not found online and rely on standard textbook values: the exact
   Winter / Perry joint-angle curves, arm-swing shoulder ranges, and running hip and knee

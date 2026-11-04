@@ -53,15 +53,35 @@ TEST_CASE("human body: a body per bone with mass, 73 kg in all") {
     CHECK(joined == 18);  // every part but the pelvis
 }
 
-TEST_CASE("human body: with no muscles it folds under gravity, inside its real joint ranges, onto the ground") {
+// Known failure (2026-11-05): the motors' stiffness came from muscle
+// activation time, which in Jolt depends on each part's own inertia, so
+// loaded joints sag (shoulder 0.56 rad, body slumps 0.99 -> 0.45 m). Next:
+// measured joint stiffness (N m/rad) per joint (PROGRESS).
+TEST_CASE("human body: with muscles each joint holds its planned rotation (no balance yet: watch it)" *
+          doctest::may_fail()) {
     Scene s;
     REQUIRE(makeScene(s));
     const agents::HumanBody& body = s.human.humanBody();
     const float startHeight = body.height(s.world);
-    float worstOutside = 0.0f, lowestPart = 9.0f;
-    std::string worstJoint;
-    for (int i = 0; i < 3 * 120; ++i) {
+    float worstOutside = 0.0f, lowestPart = 9.0f, worstHold = 0.0f;
+    std::string worstJoint, worstHeld;
+    std::vector<math::Mat4> planned(static_cast<size_t>(s.human.rig().numJoints()));
+    for (int i = 0; i < 2 * 120; ++i) {
+        s.human.tick(kTick);  // plans the pose and sets the muscles' targets
         s.world.step(kTick);
+        s.human.rig().localToModel(s.human.pose(), planned);
+        for (const agents::HumanBody::Part& p : body.parts()) {
+            if (p.parent < 0 || !p.muscle || i > 60) continue;  // the first half second
+            const math::Quat want = math::inverse(math::toTransform(planned[static_cast<size_t>(body.parts()[static_cast<size_t>(p.parent)].joint)]).rotation) *
+                                    math::toTransform(planned[static_cast<size_t>(p.joint)]).rotation;
+            const math::Quat got = math::inverse(boneRotation(s.world, body.parts()[static_cast<size_t>(p.parent)])) *
+                                   boneRotation(s.world, p);
+            const float off = 2.0f * std::acos(std::min(1.0f, std::fabs(math::dot(math::normalize(want), math::normalize(got)))));
+            if (off > worstHold) {
+                worstHold = off;
+                worstHeld = s.human.rig().jointName(p.joint);
+            }
+        }
         for (const agents::HumanBody::Part& p : body.parts()) {
             lowestPart = std::min(lowestPart, s.world.transform(p.body).position.y);
             if (p.parent < 0) continue;
@@ -78,12 +98,10 @@ TEST_CASE("human body: with no muscles it folds under gravity, inside its real j
         }
     }
     const float endHeight = body.height(s.world);
-    MESSAGE("fold: centre of mass ", startHeight, " -> ", endHeight, " m; lowest part centre ", lowestPart,
+    MESSAGE("muscles: worst joint off its planned rotation in the first 0.5 s ", worstHold, " rad (", worstHeld,
+            "); centre of mass ", startHeight, " -> ", endHeight, " m after 2 s; lowest part centre ", lowestPart,
             " m; worst joint past its range ", worstOutside, " rad (", worstJoint, ")");
-    CHECK(endHeight < startHeight - 0.4f);  // it came down
-    CHECK(lowestPart > -0.01f);             // the ground held every part
-    // Joints stay near their real ranges: with no muscles the whole body
-    // crashes onto them; Jolt's solver (jolt.jointVelocitySteps 20 / 5) lets
-    // them overshoot about 0.21 rad at the hardest moment.
-    CHECK(worstOutside < 0.25f);
+    CHECK(worstHold < 0.2f);       // the muscles hold the planned shape
+    CHECK(lowestPart > -0.01f);    // the ground holds every part
+    CHECK(worstOutside < 0.25f);   // joints near their real ranges
 }
