@@ -3,6 +3,7 @@
 // model; DECISIONS 2026-11-04): one Jolt body at the centre of mass, pulled
 // by the world's gravity, held up by a push-only spring leg from each foot on
 // the ground (a kinematic anchor at the foot). A foot in the air holds nothing.
+// The body collides with the world's ground like every other body.
 // First step: vertical only (the body moves up and down; travel stays with the
 // walk). Load-time allocation only.
 

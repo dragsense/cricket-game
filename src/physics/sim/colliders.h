@@ -49,8 +49,9 @@ public:
     static constexpr int kMaxBoxes = 32;
     static constexpr int kMaxSpheres = 32;
 
-    // Reads `c`'s "colliders" ("boxes", "spheres"). Load time.
-    void load(const core::Config& c);
+    // Reads `c`'s "colliders" ("boxes", "spheres"); their heights are from
+    // the world's ground (groundHeight, physics_world.json). Load time.
+    void load(const core::Config& c, float groundHeight = 0.0f);
     void clear() { boxCount_ = sphereCount_ = 0; }
     bool add(const BoxCollider& box);
     bool add(const SphereCollider& sphere);

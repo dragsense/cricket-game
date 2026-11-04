@@ -4,7 +4,8 @@
   "world": {
     "gravity": [0.0, -9.81, 0.0],   // m/s^2 (BALL_PHYSICS 1)
     "airDensity": 1.225,            // kg/m^3, 15 °C at sea level (BALL_PHYSICS 1)
-    "wind": [0.0, 0.0, 0.0]         // m/s (BALL_PHYSICS 1)
+    "wind": [0.0, 0.0, 0.0],        // m/s (BALL_PHYSICS 1)
+    "groundHeight": 0.0             // m, top of the ground: the one ground every object stays above
   },
   "jolt": {
     "maxBodies": 256,
@@ -19,6 +20,6 @@
     "linearDamping": 0.0,           // air drag on rigid bodies is negligible
     "angularDamping": 0.05
   },
-  // Jolt's static ground, top at y = 0.
+  // Jolt's static ground, top at world.groundHeight.
   "ground": { "friction": 0.6, "restitution": 0.2 }
 }

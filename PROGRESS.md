@@ -154,6 +154,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   world gravity; a kinematic anchor and a push-only Jolt spring per leg, on only while
   that foot is down (20 kN/m, BIOMECHANICS 13). Tests: sinks 18.1 mm on two legs
   (m g / 2 k cos^2 a), falls at g with both feet up. Not yet in the fielder.
+- [x] **One ground** (the user's rule: every mover stays above one ground, no checks of
+  its own): `world.groundHeight` in physics_world.json is the only ground. Jolt's ground
+  slab sits at it; colliding Jolt bodies stop on it (the body mass now collides);
+  `PhysicsWorld::groundHeightAt` / `aboveGround` (a Jolt ray onto the static layer) for
+  movers that are not bodies: the camera uses it (its own y = 0 assumption removed); the
+  ball's colliders are placed from it. Limbs, the ball vs Jolt bodies and the camera vs
+  objects do not collide yet. Tests: query, lift, a body resting on a moved ground.
 - [ ] **Physics 4** the fielder's pelvis follows the body's height (BodyReposition fits
   the joints to it); settings in fielder_joints.json "bodyPhysics".
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F

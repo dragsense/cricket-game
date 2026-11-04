@@ -13,6 +13,9 @@
 namespace core {
 class Config;
 }
+namespace physics {
+class PhysicsWorld;
+}
 
 namespace camera {
 
@@ -52,6 +55,9 @@ public:
     // Mouse-look: mouse motion rotates without a button (pair with the
     // window's relative mouse mode).
     void setMouseLook(bool on) { mouseLook_ = on; }
+    // The physics world whose ground the eye stays above (the one ground;
+    // PhysicsWorld::aboveGround). Without one the eye has no ground limit.
+    void setGround(const physics::PhysicsWorld* world) { ground_ = world; }
 
 private:
     // Clamps the orbit to the configured limits after input.
@@ -60,6 +66,7 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     CameraSpeeds speeds_;
+    const physics::PhysicsWorld* ground_ = nullptr;
     math::Vec3 follow_{0.0f};
     bool mouseLook_ = false;
 };

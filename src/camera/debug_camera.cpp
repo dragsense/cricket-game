@@ -1,6 +1,7 @@
 #include "camera/debug_camera.h"
 
 #include "core/config.h"
+#include "physics/core/physics_world.h"
 
 #include <camutils/Manipulator.h>
 
@@ -29,7 +30,7 @@ struct DebugCamera::Impl {
     // Orbit limits (config/engine.json camera.orbit): the eye never goes
     // under the ground, through the target or too far out.
     math::Vec3 target{0.0f};
-    float minEyeHeight = 0.3f, minDistance = 1.5f, maxDistance = 300.0f;
+    float minEyeHeight = 0.3f, minDistance = 1.5f, maxDistance = 300.0f;  // minEyeHeight: clearance above the ground
 
     int width = 1, height = 1;
     // Virtual cursor fed to grabUpdate, built from relative mouse deltas.
@@ -149,11 +150,13 @@ void DebugCamera::constrain() {
     const math::Vec3 eye(e.x, e.y, e.z), target(t.x, t.y, t.z);
 
     // Keep the configured pivot, the distance in range and the eye above the
-    // ground (orbit space: the ground is y = 0 under the follow point).
+    // ground: the physics world's ground (PhysicsWorld::aboveGround), the same
+    // one every object stays above.
     math::Vec3 offset = eye - s.target;
     const float dist = math::clamp(math::length(offset), s.minDistance, s.maxDistance);
     offset = math::safeNormalize(offset, math::Vec3(0, 1, 1)) * dist;
-    const float minY = s.minEyeHeight - s.target.y;
+    const float lowest = ground_ ? ground_->aboveGround(s.target + offset, s.minEyeHeight).y : -1e9f;
+    const float minY = lowest - s.target.y;
     if (offset.y < minY) {
         // Same heading and distance, raised to the minimum height.
         const float y = std::min(minY, dist * 0.99f);

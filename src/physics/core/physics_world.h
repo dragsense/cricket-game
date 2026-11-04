@@ -26,6 +26,7 @@ struct WorldSettings {
     math::Vec3 gravity{0.0f, -9.81f, 0.0f};
     float airDensity = 1.225f;  // kg/m^3
     math::Vec3 wind{0.0f};      // m/s
+    float groundHeight = 0.0f;  // m, top of the ground: the one ground everything stays above
 };
 
 // config/physics_world.json "jolt" and "ground".
@@ -107,6 +108,13 @@ public:
                           float maxDistance, float frequency, float damping);
     void setSpringDistance(SpringId id, float minDistance, float maxDistance);
     void setSpringEnabled(SpringId id, bool enabled);
+
+    // The ground (Jolt's static scenery) under `point`: its height there, or
+    // the world's groundHeight if nothing is below.
+    float groundHeightAt(math::Vec3 point) const;
+    // `point` raised, if needed, so it stays `clearance` m above the ground.
+    // The one check every mover that is not a colliding body uses.
+    math::Vec3 aboveGround(math::Vec3 point, float clearance = 0.0f) const;
     bool awake(BodyId id) const;
 
 private:

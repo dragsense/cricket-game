@@ -58,7 +58,7 @@ bool collide(const SphereCollider& sphere, math::Vec3 centre, float radius, Cont
     return true;
 }
 
-void ColliderSet::load(const core::Config& c) {
+void ColliderSet::load(const core::Config& c, float groundHeight) {
     clear();
     const nlohmann::json& root = c.root();
     auto colliders = root.find("colliders");
@@ -66,7 +66,7 @@ void ColliderSet::load(const core::Config& c) {
     if (auto boxes = colliders->find("boxes"); boxes != colliders->end() && boxes->is_array()) {
         for (const nlohmann::json& b : *boxes) {
             BoxCollider box;
-            box.pose.position = vec3(b, "centre", box.pose.position);
+            box.pose.position = vec3(b, "centre", box.pose.position) + math::kUp * groundHeight;
             const math::Vec3 deg = vec3(b, "rotationDeg", math::Vec3(0.0f));
             box.pose.rotation = math::Quat(math::radians(deg));
             box.halfExtents = vec3(b, "halfExtents", box.halfExtents);
@@ -79,7 +79,7 @@ void ColliderSet::load(const core::Config& c) {
     if (auto spheres = colliders->find("spheres"); spheres != colliders->end() && spheres->is_array()) {
         for (const nlohmann::json& s : *spheres) {
             SphereCollider sphere;
-            sphere.centre = vec3(s, "centre", sphere.centre);
+            sphere.centre = vec3(s, "centre", sphere.centre) + math::kUp * groundHeight;
             sphere.radius = s.value("radius", sphere.radius);
             sphere.restitution = s.value("restitution", sphere.restitution);
             sphere.friction = s.value("friction", sphere.friction);

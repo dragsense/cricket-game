@@ -14,7 +14,8 @@
   // Static shapes the ball bounces off. Boxes: centre, halfExtents, rotationDeg
   // (x, y, z); spheres: centre, radius. Surface: restitution (normal bounce),
   // friction (sliding), rollingResistance (C_rr). Where shapes overlap the one
-  // listed first wins, so the pitch comes before the outfield.
+  // listed first wins, so the pitch comes before the outfield. Heights are from
+  // the world's ground (physics_world.json "world.groundHeight").
   "colliders": {
     "boxes": [
       // Pitch: 20.12 m + 1.22 m overrun each end, 3.05 m wide (scene.json), top at y = 0.

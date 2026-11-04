@@ -157,6 +157,7 @@ bool CricketApp::init() {
     sim_.configure(e);
 
     if (!sim_.initPhysics(cfg_.physicsWorld, cfg_.scene)) return false;
+    camera_.setGround(&sim_.physicsWorld());  // the eye stays above the one ground
     sim_.initBall(cfg_.ball, cfg_.scene);
     scene_ = buildTestScene(world_, *renderer_, cfg_.scene);
     ballPos_ = cfg_.scene.getVec3("ball.restPosition", math::Vec3(0.15f, 0.0f, 5.0f));

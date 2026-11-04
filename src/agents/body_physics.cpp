@@ -9,7 +9,8 @@ bool BodyPhysics::init(physics::PhysicsWorld& world, float mass, math::Vec3 cent
     physics::BodyDesc d;
     d.shape = physics::ShapeType::Sphere;
     d.radius = 0.05f;
-    d.collides = false;  // the legs hold it, not contacts
+    // The legs hold it; it still collides, so the world's ground stops it if
+    // it ever comes down (the one ground, no check of our own).
     d.verticalOnly = true;
     d.mass = mass;
     d.pose.position = centreOfMass;

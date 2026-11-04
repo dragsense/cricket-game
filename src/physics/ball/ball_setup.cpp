@@ -26,7 +26,7 @@ SolverSettings readSolverSettings(const core::Config& ball) {
 void configureBallSolver(SphereSolver& solver, const core::Config& ball, const core::Config& scene,
                          const WorldSettings& world) {
     solver.configure(readBallBody(ball, scene), world, readSolverSettings(ball));
-    solver.colliders().load(ball);
+    solver.colliders().load(ball, world.groundHeight);  // the one ground
 }
 
 } // namespace physics

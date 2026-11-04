@@ -98,3 +98,28 @@ TEST_CASE("physics world: a mass on a push-only spring settles where gravity and
     for (int i = 0; i < 12; ++i) w.step(kTick);
     CHECK(w.transform(b).position.y < y0 - 0.04f);
 }
+
+TEST_CASE("physics world: one ground; the query and colliding bodies both stay above it") {
+    core::Config c;
+    REQUIRE(c.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::WorldSettings world = physics::readWorldSettings(c);
+    world.groundHeight = 0.25f;  // moved: everything follows the one value
+    physics::PhysicsWorld w;
+    REQUIRE(w.init(world, physics::readPhysicsSettings(c)));
+
+    CHECK(w.groundHeightAt(math::Vec3(3.0f, 5.0f, -2.0f)) == doctest::Approx(0.25f).epsilon(1e-4));
+    CHECK(w.aboveGround(math::Vec3(1.0f, -3.0f, 1.0f), 0.3f).y == doctest::Approx(0.55f).epsilon(1e-4));
+    CHECK(w.aboveGround(math::Vec3(1.0f, 2.0f, 1.0f), 0.3f).y == doctest::Approx(2.0f));
+
+    // A body dropped from above comes to rest on that ground, not through it.
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Sphere;
+    d.radius = 0.05f;
+    d.mass = 73.0f;
+    d.restitution = 0.0f;
+    d.verticalOnly = true;
+    d.pose.position = math::Vec3(0.0f, 2.0f, 0.0f);
+    const physics::BodyId id = w.createBody(d);
+    for (int i = 0; i < 3 * 120; ++i) w.step(kTick);
+    CHECK(w.transform(id).position.y == doctest::Approx(0.30f).scale(0.0).epsilon(0.01));
+}

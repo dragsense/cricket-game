@@ -15,6 +15,8 @@
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
@@ -89,6 +91,7 @@ WorldSettings readWorldSettings(const core::Config& c) {
     w.gravity = c.getVec3("world.gravity", w.gravity);
     w.airDensity = c.getFloat("world.airDensity", w.airDensity);
     w.wind = c.getVec3("world.wind", w.wind);
+    w.groundHeight = c.getFloat("world.groundHeight", w.groundHeight);
     return w;
 }
 
@@ -183,9 +186,9 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     m.slots.resize(static_cast<size_t>(settings.maxBodies));
     m.springs.reserve(static_cast<size_t>(std::max(settings.maxSprings, 0)));
 
-    // Static ground slab, top face at y = 0.
+    // Static ground slab, top face at the world's groundHeight (the one ground).
     JPH::BodyCreationSettings ground(new JPH::BoxShape(JPH::Vec3(kGroundHalfSize, kGroundHalfDepth, kGroundHalfSize)),
-                                     JPH::RVec3(0, -kGroundHalfDepth, 0), JPH::Quat::sIdentity(),
+                                     JPH::RVec3(0, world.groundHeight - kGroundHalfDepth, 0), JPH::Quat::sIdentity(),
                                      JPH::EMotionType::Static, kLayerStatic);
     ground.mFriction = settings.groundFriction;
     ground.mRestitution = settings.groundRestitution;
@@ -363,6 +366,22 @@ void PhysicsWorld::setSpringDistance(SpringId id, float minDistance, float maxDi
 void PhysicsWorld::setSpringEnabled(SpringId id, bool enabled) {
     if (!impl_ || id >= impl_->springs.size()) return;
     impl_->springs[id]->SetEnabled(enabled);
+}
+
+float PhysicsWorld::groundHeightAt(math::Vec3 point) const {
+    if (!impl_) return world_.groundHeight;
+    // Jolt ray straight down onto the static scenery (the ground layer).
+    constexpr float kFrom = 100.0f;  // m above and below the point (float precision ~0.01 mm)
+    const JPH::RRayCast ray{JPH::RVec3(point.x, point.y + kFrom, point.z), JPH::Vec3(0.0f, -2.0f * kFrom, 0.0f)};
+    JPH::RayCastResult hit;
+    const JPH::SpecifiedObjectLayerFilter staticOnly(kLayerStatic);
+    if (!impl_->system.GetNarrowPhaseQueryNoLock().CastRay(ray, hit, {}, staticOnly)) return world_.groundHeight;
+    return static_cast<float>(ray.GetPointOnRay(hit.mFraction).GetY());
+}
+
+math::Vec3 PhysicsWorld::aboveGround(math::Vec3 point, float clearance) const {
+    point.y = std::max(point.y, groundHeightAt(point) + clearance);
+    return point;
 }
 
 bool PhysicsWorld::awake(BodyId id) const {
