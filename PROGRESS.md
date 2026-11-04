@@ -149,7 +149,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   nothing, locked rotation, push-only springs (Jolt `DistanceConstraint` soft limits:
   `createSpring`, `setSpringDistance`, `setSpringEnabled`; `jolt.maxSprings`). Test: a
   70 kg mass on a 2 Hz spring settles at g/(2 pi f)^2 below rest; disabled, it falls.
-- [ ] **Physics 2** body mass (one Jolt body at the centre of mass, skeleton masses).
+- [x] **Physics 2-3** `agents::BodyPhysics`: the body's mass (73 kg, `bodyMass` in the
+  skeleton config, de Leva 1996) as one Jolt body at the centre of mass (vertical only),
+  world gravity; a kinematic anchor and a push-only Jolt spring per leg, on only while
+  that foot is down (20 kN/m, BIOMECHANICS 13). Tests: sinks 18.1 mm on two legs
+  (m g / 2 k cos^2 a), falls at g with both feet up. Not yet in the fielder.
+- [ ] **Physics 4** the fielder's pelvis follows the body's height (BodyReposition fits
+  the joints to it); settings in fielder_joints.json "bodyPhysics".
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

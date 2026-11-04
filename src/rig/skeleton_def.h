@@ -42,6 +42,7 @@ struct BoneDef {
 
 struct SkeletonDef {
     float height = 1.8f;  // default standing height, metres
+    float bodyMass = 73.0f;  // kg (the bones' mass percentages are of this)
     float minHeight = 1.5f;
     float maxHeight = 2.1f;
     math::Vec3 spawnPosition{0.0f};

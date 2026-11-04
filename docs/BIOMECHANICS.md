@@ -1036,6 +1036,27 @@ MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6
 
 ---
 
+## 13. The body as a mass on spring legs (M6 physics)
+
+- **Body mass:** 73.0 kg, the mean of de Leva 1996's male subjects (the segment mass
+  percentages in `fielder_skeleton.json` are of this) **[P]**.
+- **Leg stiffness:** running about 11.2 kN/m below 5 m/s, 17.0 kN/m above, nearly constant
+  across speeds ([review of 14 studies, PMC10368467](https://pmc.ncbi.nlm.nih.gov/articles/PMC10368467));
+  stiffness scales with mass^0.67 across animals (Farley, Glasheen & McMahon 1993,
+  [PMC1689165](https://pmc.ncbi.nlm.nih.gov/articles/PMC1689165)). Walking: no measured
+  value found; the spring-mass walking model (Geyer, Seyfarth & Blickhan 2006) uses about
+  20 kN/m for 80 kg **[T]**.
+- **Damping:** the spring-mass model has none; real legs lose some energy (gap).
+- The spring-mass model fits running better than walking (walking's energies are out of
+  phase).
+
+### Implementation notes
+- `agents::BodyPhysics`: one Jolt body (73 kg) at the centre of mass, world gravity, a
+  push-only Jolt spring from each foot on the ground (rest = that leg's real length).
+  Test: on two legs it sinks m g / (2 k cos^2 a), 18.1 mm at 20 kN/m.
+
+---
+
 ## Gaps and follow-ups
 - These numbers were not found online and rely on standard textbook values: the exact
   Winter / Perry joint-angle curves, arm-swing shoulder ranges, and running hip and knee

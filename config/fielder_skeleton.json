@@ -16,6 +16,7 @@
 //           The visual is display only; a skinned glTF replaces it later.
 {
   "height": 1.80,
+  "bodyMass": 73.0,   // kg: de Leva 1996's male subjects (whose mass % the bones use)
   "heightRange": [1.50, 2.10],
   "spawn": { "position": [3.0, 0.0, 0.0], "yawDeg": 40.0 },
 

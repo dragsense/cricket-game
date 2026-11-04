@@ -61,6 +61,7 @@ struct BodyDesc {
     bool kinematic = false;     // moved only by moveKinematic (no gravity, nothing pushes it)
     bool collides = true;       // false: touches nothing (e.g. a mass held only by springs)
     bool lockRotation = false;  // dynamic: translates only (no tumbling)
+    bool verticalOnly = false;  // dynamic: moves up and down only (no rotation either)
     float mass = 1.0f;  // kg; dynamic only
     float friction = 0.5f;
     float restitution = 0.3f;

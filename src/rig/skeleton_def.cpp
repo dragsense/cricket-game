@@ -66,6 +66,7 @@ bool loadSkeletonDef(const core::Config& config, SkeletonDef& out) {
     out = SkeletonDef{};
     const nlohmann::json& root = config.root();
     out.height = config.getFloat("height", out.height);
+    out.bodyMass = config.getFloat("bodyMass", out.bodyMass);
     if (auto it = root.find("heightRange"); it != root.end() && it->is_array() && it->size() == 2) {
         out.minHeight = (*it)[0].get<float>();
         out.maxHeight = (*it)[1].get<float>();

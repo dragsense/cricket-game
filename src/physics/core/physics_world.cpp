@@ -253,7 +253,8 @@ BodyId PhysicsWorld::createBody(const BodyDesc& d) {
     if (motion == JPH::EMotionType::Dynamic) {
         bcs.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
         bcs.mMassPropertiesOverride.mMass = d.mass;
-        if (d.lockRotation)
+        if (d.verticalOnly) bcs.mAllowedDOFs = JPH::EAllowedDOFs::TranslationY;
+        else if (d.lockRotation)
             bcs.mAllowedDOFs =
                 JPH::EAllowedDOFs::TranslationX | JPH::EAllowedDOFs::TranslationY | JPH::EAllowedDOFs::TranslationZ;
     }
