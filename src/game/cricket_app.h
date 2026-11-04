@@ -30,7 +30,6 @@ struct AppConfigs {
     core::Config humanJoints;    // config/human_joints.json
     core::Config locomotion;       // config/locomotion.json
     core::Config physicsWorld;     // config/physics_world.json
-    core::Config ball;             // config/ball.json
     core::Config ballLaunch;       // config/ball_launch.json
     core::Config throwing;         // config/throw.json
     core::Config bowling;          // config/bowling.json

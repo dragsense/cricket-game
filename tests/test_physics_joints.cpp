@@ -1,0 +1,162 @@
+// Generic object physics on simple objects (no human): capsule shapes,
+// hinge and swing-twist joints, and joint motors with a torque limit.
+
+#include "physics/core/physics_world.h"
+
+#include "core/config.h"
+
+#include <doctest/doctest.h>
+
+#include <algorithm>
+#include <cmath>
+
+namespace {
+
+constexpr float kTick = 1.0f / 120.0f;
+constexpr float kPi = 3.14159265f;
+
+bool makeWorld(physics::PhysicsWorld& w) {
+    core::Config c;
+    return c.load(CRICKET_CONFIG_DIR "/physics_world.json") &&
+           w.init(physics::readWorldSettings(c), physics::readPhysicsSettings(c));
+}
+
+// A fixed point to hang things from: static and touching nothing.
+physics::BodyId anchorAt(physics::PhysicsWorld& w, math::Vec3 p) {
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Sphere;
+    d.radius = 0.02f;
+    d.dynamic = false;
+    d.collides = false;
+    d.pose.position = p;
+    return w.createBody(d);
+}
+
+// A 2 kg, 0.5 m arm (capsule along X) from `pivot` out to +X.
+physics::BodyId armFrom(physics::PhysicsWorld& w, math::Vec3 pivot) {
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Capsule;
+    d.radius = 0.04f;
+    d.halfHeight = 0.21f;  // 0.5 m tip to tip with the rounded ends
+    d.mass = 2.0f;
+    d.collides = false;  // only the joint holds it
+    d.pose.position = pivot + math::Vec3(0.25f, 0.0f, 0.0f);
+    d.pose.rotation = math::fromAxisAngle(math::Vec3(0, 0, 1), -0.5f * kPi);  // capsule +Y along +X
+    return w.createBody(d);
+}
+
+void run(physics::PhysicsWorld& w, float seconds) {
+    for (int i = 0; i < static_cast<int>(seconds * 120.0f); ++i) w.step(kTick);
+}
+
+} // namespace
+
+TEST_CASE("physics joints: a capsule lying on the ground rests on its side") {
+    physics::PhysicsWorld w;
+    REQUIRE(makeWorld(w));
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Capsule;
+    d.radius = 0.05f;
+    d.halfHeight = 0.2f;
+    d.mass = 3.0f;
+    d.restitution = 0.0f;
+    d.pose.position = math::Vec3(0.0f, 1.0f, 0.0f);
+    d.pose.rotation = math::fromAxisAngle(math::Vec3(0, 0, 1), 0.5f * kPi);  // lying
+    const physics::BodyId id = w.createBody(d);
+    REQUIRE(id != physics::kInvalidBody);
+    run(w, 3.0f);
+    CHECK(w.transform(id).position.y == doctest::Approx(0.05f).scale(0.0).epsilon(0.05));
+}
+
+TEST_CASE("physics joints: a free hinge swings under gravity and stays inside its limits") {
+    physics::PhysicsWorld w;
+    REQUIRE(makeWorld(w));
+    const math::Vec3 pivot(0.0f, 2.0f, 0.0f);
+    const physics::BodyId a = anchorAt(w, pivot), arm = armFrom(w, pivot);
+    physics::HingeDesc h;
+    h.pivot = pivot;
+    h.axis = math::Vec3(0, 0, 1);    // swings in the X-Y plane
+    h.normal = math::Vec3(1, 0, 0);  // angle 0: the arm level
+    h.minAngle = -0.5f;
+    h.maxAngle = 0.5f;
+    const physics::JointId j = w.createHinge(a, arm, h);
+    REQUIRE(j != physics::kInvalidJoint);
+    float lowest = 0.0f;
+    for (int i = 0; i < 2 * 120; ++i) {
+        w.step(kTick);
+        lowest = std::min(lowest, w.hingeAngle(j));
+    }
+    MESSAGE("free hinge: lowest angle ", lowest);
+    CHECK(lowest < -0.4f);   // gravity pulled it down
+    CHECK(lowest > -0.55f);  // the limit stopped it
+}
+
+TEST_CASE("physics joints: a strong motor holds the arm level; a weak one cannot") {
+    // Gravity's torque on the arm at the pivot: m g d = 2 * 9.81 * 0.25 = 4.9 N m.
+    for (const float maxTorque : {50.0f, 1.0f}) {
+        physics::PhysicsWorld w;
+        REQUIRE(makeWorld(w));
+        const math::Vec3 pivot(0.0f, 2.0f, 0.0f);
+        const physics::BodyId a = anchorAt(w, pivot), arm = armFrom(w, pivot);
+        physics::HingeDesc h;
+        h.pivot = pivot;
+        h.axis = math::Vec3(0, 0, 1);
+        h.normal = math::Vec3(1, 0, 0);
+        const physics::JointId j = w.createHinge(a, arm, h);
+        physics::MotorDesc m;
+        m.frequency = 4.0f;
+        m.damping = 1.0f;
+        m.maxTorque = maxTorque;
+        w.setJointMotor(j, m, true);
+        w.setHingeTarget(j, 0.0f);
+        run(w, 2.0f);
+        MESSAGE("motor ", maxTorque, " N m: angle ", w.hingeAngle(j));
+        if (maxTorque > 4.9f) {
+            // A spring-driven motor gives under load by load / stiffness;
+            // Jolt's stiffness is the arm's inertia about its centre times
+            // (2 pi f)^2: 2 * 0.5^2 / 12 * (8 pi)^2 = 26.3 N m/rad, so it
+            // holds 4.9 N m about 0.19 rad below level.
+            const float k = 2.0f * 0.25f / 12.0f * std::pow(2.0f * kPi * m.frequency, 2.0f);
+            CHECK(w.hingeAngle(j) == doctest::Approx(-4.905f / k).scale(0.0).epsilon(0.1));
+        } else
+            CHECK(w.hingeAngle(j) < -1.0f);  // too weak: the arm drops
+    }
+}
+
+TEST_CASE("physics joints: a swing-twist motor turns the body to its target rotation") {
+    physics::PhysicsWorld w;
+    REQUIRE(makeWorld(w));
+    const math::Vec3 pivot(0.0f, 2.0f, 0.0f);
+    const physics::BodyId a = anchorAt(w, pivot);
+    // A 2 kg arm hanging straight down from the pivot.
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Capsule;
+    d.radius = 0.04f;
+    d.halfHeight = 0.21f;
+    d.mass = 2.0f;
+    d.collides = false;
+    d.pose.position = pivot - math::Vec3(0.0f, 0.25f, 0.0f);
+    const physics::BodyId arm = w.createBody(d);
+    physics::SwingTwistDesc s;
+    s.pivot = pivot;
+    s.twistAxis = math::Vec3(0, -1, 0);  // along the arm
+    s.planeAxis = math::Vec3(1, 0, 0);
+    s.normalHalfCone = s.planeHalfCone = 1.0f;
+    s.minTwist = -0.5f;
+    s.maxTwist = 0.5f;
+    const physics::JointId j = w.createSwingTwist(a, arm, s);
+    REQUIRE(j != physics::kInvalidJoint);
+    physics::MotorDesc m;
+    m.frequency = 4.0f;
+    m.damping = 1.0f;
+    m.maxTorque = 50.0f;
+    w.setJointMotor(j, m, true);
+    // 0.5 rad of swing about the joint's plane axis.
+    const math::Quat target = math::fromAxisAngle(math::Vec3(0, 0, 1), 0.5f);
+    w.setSwingTwistTarget(j, target);
+    run(w, 2.0f);
+    const math::Quat now = w.swingTwistRotation(j);
+    const float off = 2.0f * std::acos(std::min(1.0f, std::fabs(math::dot(now, target))));
+    MESSAGE("swing-twist: off target by ", off, " rad");
+    CHECK(off < 0.1f);
+}

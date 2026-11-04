@@ -161,6 +161,16 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   movers that are not bodies: the camera uses it (its own y = 0 assumption removed); the
   ball's colliders are placed from it. Limbs, the ball vs Jolt bodies and the camera vs
   objects do not collide yet. Tests: query, lift, a body resting on a moved ground.
+- [x] **Generic joints** (2026-11-05): `PhysicsWorld` capsule shape, `createHinge`,
+  `createSwingTwist` (limits), `setJointMotor` (Jolt MotorSettings: frequency, damping,
+  torque limit), hinge / swing-twist targets; `jolt.maxJoints`. Tests on simple objects
+  (tests/test_physics_joints.cpp): capsule rests on its side; free hinge stops at its
+  limit; a 50 N m motor holds a 2 kg arm (sags by load / stiffness, 0.19 rad as Jolt's
+  spring predicts), a 1 N m one cannot; a swing-twist motor reaches its target.
+- [x] **Ball solver removed** (the user's call): `src/physics/sim`, `src/physics/ball`,
+  config/ball.json, their tests. A released ball stays where it is let go until the ball
+  is a generic Jolt body. Next: the human from generic parts (shapes per bone, joints with
+  the human_joints.json ranges), then muscles (motors) and balance.
 - [x] **Leg springs removed** (2026-11-05, the user's call: no jugaad): the spring legs,
   their damping, the standing/walking switch and the hold-length on stopping were a
   stand-in for muscles and are gone. `HumanBody` is only the body's mass (73 kg, world

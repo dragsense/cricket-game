@@ -14,12 +14,15 @@
 #include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
+#include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -101,6 +104,7 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     s.maxBodyPairs = c.getInt("jolt.maxBodyPairs", s.maxBodyPairs);
     s.maxContactConstraints = c.getInt("jolt.maxContactConstraints", s.maxContactConstraints);
     s.maxSprings = c.getInt("jolt.maxSprings", s.maxSprings);
+    s.maxJoints = c.getInt("jolt.maxJoints", s.maxJoints);
     s.tempAllocatorKb = c.getInt("jolt.tempAllocatorKb", s.tempAllocatorKb);
     s.threads = c.getInt("jolt.threads", s.threads);
     s.collisionSteps = c.getInt("jolt.collisionSteps", s.collisionSteps);
@@ -128,6 +132,9 @@ struct PhysicsWorld::Impl {
     JPH::PhysicsSystem system;
     std::vector<Slot> slots;  // sized once at init
     std::vector<JPH::Ref<JPH::DistanceConstraint>> springs;  // reserved once at init
+    // Joints, reserved once at init; one of hinges / swingTwists is set per joint.
+    std::vector<JPH::Ref<JPH::HingeConstraint>> hinges;
+    std::vector<JPH::Ref<JPH::SwingTwistConstraint>> swingTwists;
     JPH::BodyID ground;
     PhysicsSettings settings;
 
@@ -185,6 +192,8 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     m.system.SetPhysicsSettings(ps);
     m.slots.resize(static_cast<size_t>(settings.maxBodies));
     m.springs.reserve(static_cast<size_t>(std::max(settings.maxSprings, 0)));
+    m.hinges.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
+    m.swingTwists.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
 
     // Static ground slab, top face at the world's groundHeight (the one ground).
     JPH::BodyCreationSettings ground(new JPH::BoxShape(JPH::Vec3(kGroundHalfSize, kGroundHalfDepth, kGroundHalfSize)),
@@ -206,6 +215,12 @@ void PhysicsWorld::shutdown() {
     if (!impl_) return;
     for (JPH::Ref<JPH::DistanceConstraint>& c : impl_->springs) impl_->system.RemoveConstraint(c);
     impl_->springs.clear();
+    for (JPH::Ref<JPH::HingeConstraint>& c : impl_->hinges)
+        if (c) impl_->system.RemoveConstraint(c);
+    for (JPH::Ref<JPH::SwingTwistConstraint>& c : impl_->swingTwists)
+        if (c) impl_->system.RemoveConstraint(c);
+    impl_->hinges.clear();
+    impl_->swingTwists.clear();
     JPH::BodyInterface& bi = impl_->system.GetBodyInterface();
     for (Impl::Slot& s : impl_->slots) {
         if (s.body.IsInvalid()) continue;
@@ -240,6 +255,7 @@ BodyId PhysicsWorld::createBody(const BodyDesc& d) {
             shape = new JPH::CylinderShape(d.halfHeight, d.radius, std::min({d.convexRadius, d.halfHeight, d.radius}));
             break;
         case ShapeType::Sphere: shape = new JPH::SphereShape(d.radius); break;
+        case ShapeType::Capsule: shape = new JPH::CapsuleShape(std::max(d.halfHeight, 1e-4f), d.radius); break;
     }
 
     const JPH::EMotionType motion = d.kinematic ? JPH::EMotionType::Kinematic
@@ -366,6 +382,109 @@ void PhysicsWorld::setSpringDistance(SpringId id, float minDistance, float maxDi
 void PhysicsWorld::setSpringEnabled(SpringId id, bool enabled) {
     if (!impl_ || id >= impl_->springs.size()) return;
     impl_->springs[id]->SetEnabled(enabled);
+}
+
+namespace {
+
+// Locks bodies a and b and creates the joint from the settings; nullptr if a
+// body is missing.
+template <class Constraint, class Settings>
+JPH::Ref<Constraint> makeJoint(JPH::PhysicsSystem& system, JPH::BodyID a, JPH::BodyID b, const Settings& settings) {
+    const JPH::BodyID ids[2] = {a, b};
+    JPH::BodyLockMultiWrite lock(system.GetBodyLockInterface(), ids, 2);
+    JPH::Body* b1 = lock.GetBody(0);
+    JPH::Body* b2 = lock.GetBody(1);
+    if (!b1 || !b2) return nullptr;
+    return static_cast<Constraint*>(settings.Create(*b1, *b2));
+}
+
+JPH::MotorSettings toJolt(const MotorDesc& d) {
+    JPH::MotorSettings s(std::max(d.frequency, 0.0f), std::max(d.damping, 0.0f));
+    s.SetTorqueLimit(std::max(d.maxTorque, 0.0f));
+    return s;
+}
+
+} // namespace
+
+JointId PhysicsWorld::createHinge(BodyId a, BodyId b, const HingeDesc& d) {
+    if (!impl_ || !impl_->slot(a) || !impl_->slot(b)) return kInvalidJoint;
+    Impl& m = *impl_;
+    if (m.hinges.size() >= m.hinges.capacity()) {
+        LOG_ERROR("physics: joint limit ({}) reached", m.hinges.capacity());
+        return kInvalidJoint;
+    }
+    JPH::HingeConstraintSettings s;
+    s.mSpace = JPH::EConstraintSpace::WorldSpace;
+    s.mPoint1 = s.mPoint2 = JPH::RVec3(toJolt(d.pivot));
+    s.mHingeAxis1 = s.mHingeAxis2 = toJolt(math::normalize(d.axis));
+    s.mNormalAxis1 = s.mNormalAxis2 = toJolt(math::normalize(d.normal));
+    s.mLimitsMin = d.minAngle;
+    s.mLimitsMax = d.maxAngle;
+    JPH::Ref<JPH::HingeConstraint> c = makeJoint<JPH::HingeConstraint>(m.system, m.slots[a].body, m.slots[b].body, s);
+    if (!c) return kInvalidJoint;
+    m.system.AddConstraint(c);
+    m.hinges.push_back(c);
+    m.swingTwists.push_back(nullptr);
+    return static_cast<JointId>(m.hinges.size() - 1);
+}
+
+JointId PhysicsWorld::createSwingTwist(BodyId a, BodyId b, const SwingTwistDesc& d) {
+    if (!impl_ || !impl_->slot(a) || !impl_->slot(b)) return kInvalidJoint;
+    Impl& m = *impl_;
+    if (m.hinges.size() >= m.hinges.capacity()) {
+        LOG_ERROR("physics: joint limit ({}) reached", m.hinges.capacity());
+        return kInvalidJoint;
+    }
+    JPH::SwingTwistConstraintSettings s;
+    s.mSpace = JPH::EConstraintSpace::WorldSpace;
+    s.mPosition1 = s.mPosition2 = JPH::RVec3(toJolt(d.pivot));
+    s.mTwistAxis1 = s.mTwistAxis2 = toJolt(math::normalize(d.twistAxis));
+    s.mPlaneAxis1 = s.mPlaneAxis2 = toJolt(math::normalize(d.planeAxis));
+    s.mNormalHalfConeAngle = d.normalHalfCone;
+    s.mPlaneHalfConeAngle = d.planeHalfCone;
+    s.mTwistMinAngle = d.minTwist;
+    s.mTwistMaxAngle = d.maxTwist;
+    JPH::Ref<JPH::SwingTwistConstraint> c =
+        makeJoint<JPH::SwingTwistConstraint>(m.system, m.slots[a].body, m.slots[b].body, s);
+    if (!c) return kInvalidJoint;
+    m.system.AddConstraint(c);
+    m.hinges.push_back(nullptr);
+    m.swingTwists.push_back(c);
+    return static_cast<JointId>(m.hinges.size() - 1);
+}
+
+void PhysicsWorld::setJointMotor(JointId id, const MotorDesc& motor, bool on) {
+    if (!impl_ || id >= impl_->hinges.size()) return;
+    const JPH::EMotorState state = on ? JPH::EMotorState::Position : JPH::EMotorState::Off;
+    if (JPH::HingeConstraint* h = impl_->hinges[id]) {
+        h->GetMotorSettings() = toJolt(motor);
+        h->SetMotorState(state);
+    } else if (JPH::SwingTwistConstraint* s = impl_->swingTwists[id]) {
+        s->GetSwingMotorSettings() = toJolt(motor);
+        s->GetTwistMotorSettings() = toJolt(motor);
+        s->SetSwingMotorState(state);
+        s->SetTwistMotorState(state);
+    }
+}
+
+void PhysicsWorld::setHingeTarget(JointId id, float angle) {
+    if (!impl_ || id >= impl_->hinges.size() || !impl_->hinges[id]) return;
+    impl_->hinges[id]->SetTargetAngle(angle);
+}
+
+float PhysicsWorld::hingeAngle(JointId id) const {
+    if (!impl_ || id >= impl_->hinges.size() || !impl_->hinges[id]) return 0.0f;
+    return impl_->hinges[id]->GetCurrentAngle();
+}
+
+void PhysicsWorld::setSwingTwistTarget(JointId id, math::Quat rotation) {
+    if (!impl_ || id >= impl_->swingTwists.size() || !impl_->swingTwists[id]) return;
+    impl_->swingTwists[id]->SetTargetOrientationCS(toJolt(math::normalize(rotation)));
+}
+
+math::Quat PhysicsWorld::swingTwistRotation(JointId id) const {
+    if (!impl_ || id >= impl_->swingTwists.size() || !impl_->swingTwists[id]) return math::identityQuat();
+    return fromJolt(impl_->swingTwists[id]->GetRotationInConstraintSpace());
 }
 
 float PhysicsWorld::groundHeightAt(math::Vec3 point) const {

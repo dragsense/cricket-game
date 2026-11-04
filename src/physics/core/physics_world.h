@@ -20,6 +20,8 @@ using BodyId = uint32_t;
 constexpr BodyId kInvalidBody = 0xffffffffu;
 using SpringId = uint32_t;
 constexpr SpringId kInvalidSpring = 0xffffffffu;
+using JointId = uint32_t;
+constexpr JointId kInvalidJoint = 0xffffffffu;
 
 // config/physics_world.json "world": shared by Jolt and the ball solver.
 struct WorldSettings {
@@ -35,6 +37,7 @@ struct PhysicsSettings {
     int maxBodyPairs = 1024;
     int maxContactConstraints = 1024;
     int maxSprings = 32;
+    int maxJoints = 256;
     int tempAllocatorKb = 2048;
     int threads = 0;  // 0: single-threaded job system
     int collisionSteps = 1;
@@ -49,13 +52,13 @@ struct PhysicsSettings {
 WorldSettings readWorldSettings(const core::Config& c);
 PhysicsSettings readPhysicsSettings(const core::Config& c);
 
-enum class ShapeType { Box, Cylinder, Sphere };
+enum class ShapeType { Box, Cylinder, Sphere, Capsule };
 
 struct BodyDesc {
     ShapeType shape = ShapeType::Box;
     math::Vec3 halfExtents{0.5f};  // box
-    float radius = 0.5f;           // cylinder, sphere
-    float halfHeight = 0.5f;       // cylinder (along local +Y)
+    float radius = 0.5f;           // cylinder, sphere, capsule
+    float halfHeight = 0.5f;       // cylinder, capsule: half the straight part (along local +Y)
     float convexRadius = 0.002f;   // rounding of box and cylinder edges
     math::Transform pose;          // centre of mass, world space
     bool dynamic = true;        // false: static (unless kinematic)
@@ -66,6 +69,30 @@ struct BodyDesc {
     float mass = 1.0f;  // kg; dynamic only
     float friction = 0.5f;
     float restitution = 0.3f;
+};
+
+// A joint between two bodies (Jolt constraints), placed in world space when
+// created. Limits in radians.
+struct HingeDesc {
+    math::Vec3 pivot{0.0f};          // world
+    math::Vec3 axis{1.0f, 0.0f, 0.0f};    // world: the bodies turn about it
+    math::Vec3 normal{0.0f, 1.0f, 0.0f};  // world, perpendicular to axis: angle 0 is when the bodies keep this as created
+    float minAngle = -3.14159265f, maxAngle = 3.14159265f;
+};
+struct SwingTwistDesc {
+    math::Vec3 pivot{0.0f};          // world
+    math::Vec3 twistAxis{0.0f, 1.0f, 0.0f};  // world: twist about it, swing away from it
+    math::Vec3 planeAxis{1.0f, 0.0f, 0.0f};  // world, perpendicular to twistAxis
+    float normalHalfCone = 0.0f, planeHalfCone = 0.0f;  // swing limits
+    float minTwist = 0.0f, maxTwist = 0.0f;
+};
+// A joint motor (Jolt MotorSettings): drives the joint toward its target
+// like a spring of `frequency` Hz and `damping` ratio, never with more than
+// `maxTorque` N m.
+struct MotorDesc {
+    float frequency = 2.0f;
+    float damping = 1.0f;
+    float maxTorque = 1e30f;
 };
 
 class PhysicsWorld {
@@ -108,6 +135,20 @@ public:
                           float maxDistance, float frequency, float damping);
     void setSpringDistance(SpringId id, float minDistance, float maxDistance);
     void setSpringEnabled(SpringId id, bool enabled);
+
+    // Joints (load time; kInvalidJoint when full). Generic: any two bodies.
+    JointId createHinge(BodyId a, BodyId b, const HingeDesc& d);
+    JointId createSwingTwist(BodyId a, BodyId b, const SwingTwistDesc& d);
+    // Motor on (driving to the target set below) or off (the joint is free
+    // within its limits).
+    void setJointMotor(JointId id, const MotorDesc& motor, bool on);
+    // Hinge: target angle (rad, clamped to its limits); current angle.
+    void setHingeTarget(JointId id, float angle);
+    float hingeAngle(JointId id) const;
+    // Swing-twist: target rotation of body b relative to body a, in the
+    // joint's frame as created (identity: as created).
+    void setSwingTwistTarget(JointId id, math::Quat rotation);
+    math::Quat swingTwistRotation(JointId id) const;
 
     // The ground (Jolt's static scenery) under `point`: its height there, or
     // the world's groundHeight if nothing is below.

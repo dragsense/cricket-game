@@ -305,3 +305,15 @@ Dated log. Format: decision, reason, alternatives rejected.
   vertical only; forward forces and push-off later. Stumps and bails removed first.
 - **Reason:** the user's rules: gravity/forces/mass only from one place, library first,
   nothing invented; the body without mass snaps at landing; running needs the spring leg.
+
+## 2026-11-05: Generic joints first; our ball solver removed
+- **Decision:** generic object physics comes first in `physics::PhysicsWorld` (Jolt):
+  capsule shapes, hinge and swing-twist joints (limits), joint motors (frequency,
+  damping, torque limit), tested on simple objects. The human body is built from these
+  later (one shape per bone, skeleton masses, joint limits from human_joints.json, the
+  same ranges BodyReposition uses). Our own ball solver (`src/physics/sim`,
+  `src/physics/ball`, config/ball.json) is removed: the ball, bat and stumps become
+  generic Jolt bodies later. Replaces the ball part of the 2026-10-26 M3 decision.
+- **Reason:** the user's call: general things first, one physics for every object.
+- **Also:** until then a released ball does not fly (SimWorld keeps the ball interface).
+  The spring-leg stand-in for muscles was removed the same day (no jugaad).

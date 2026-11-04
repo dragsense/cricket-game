@@ -9,7 +9,6 @@
 
 #include "agents/human.h"
 #include "math/math.h"
-#include "physics/sim/sphere_solver.h"
 #include "physics/core/physics_world.h"
 
 namespace core {
@@ -20,6 +19,14 @@ namespace match {
 
 struct ProbeState {
     math::Transform transform;
+};
+
+// The ball's state. No ball physics for now (2026-11-05, the user's call):
+// the ball becomes a generic Jolt body later, like a bat or stumps.
+struct BallState {
+    math::Vec3 position{0.0f};
+    math::Vec3 velocity{0.0f};
+    math::Quat orientation = math::identityQuat();
 };
 
 class SimWorld {
@@ -34,15 +41,12 @@ public:
     physics::PhysicsWorld& physicsWorld() { return physics_; }
     const physics::PhysicsWorld& physicsWorld() const { return physics_; }
 
-    // Sets up the ball solver (config/ball.json, size and mass from scene.json)
-    // with gravity and drag, using the physics world's shared settings. Call
-    // after initPhysics, and again when any of those files change.
-    void initBall(const core::Config& ball, const core::Config& scene);
-    // Starts a physics flight from this state; stopBall() ends it.
+    // Releases the ball here with this velocity; stopBall() ends it. No ball
+    // physics yet: the released ball stays where it was let go.
     void launchBall(math::Vec3 position, math::Vec3 velocity);
     void stopBall() { ballInFlight_ = false; }
     bool ballInFlight() const { return ballInFlight_; }
-    const physics::BodyState& ball() const { return ball_; }
+    const BallState& ball() const { return ball_; }
     math::Vec3 ballPosition(float alpha) const { return math::lerp(ballPrevious_.position, ball_.position, alpha); }
     math::Transform ballTransform(float alpha) const {
         return {ballPosition(alpha), math::slerp(ballPrevious_.orientation, ball_.orientation, alpha), math::Vec3(1.0f)};
@@ -70,10 +74,7 @@ private:
     agents::Human fielder_;
     agents::Human bowler_;
     physics::PhysicsWorld physics_;
-    physics::GravityForce gravity_;
-    physics::DragForce drag_;
-    physics::SphereSolver ballSolver_;
-    physics::BodyState ball_, ballPrevious_;
+    BallState ball_, ballPrevious_;
     bool ballInFlight_ = false;
     double time_ = 0;
     bool probeEnabled_ = true;
