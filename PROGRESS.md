@@ -142,7 +142,14 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   Stumps and bails removed (code, scene, config; the user's call so they do not confuse the
   body physics). Rule (user): gravity, forces and mass always from one place
   (`physics::PhysicsWorld` + physics_world.json, Jolt), library first, nothing invented;
-  body, bat and later objects use the same. Next: a plan for the body as a Jolt body.
+  body, bat and later objects use the same. Body physics plan approved (DECISIONS
+  2026-11-04): 1 PhysicsWorld springs, 2 body mass, 3 leg springs, 4 pelvis follows,
+  5 vertical only first.
+- [x] **Physics 1** `PhysicsWorld`: kinematic bodies (`moveKinematic`), bodies that touch
+  nothing, locked rotation, push-only springs (Jolt `DistanceConstraint` soft limits:
+  `createSpring`, `setSpringDistance`, `setSpringEnabled`; `jolt.maxSprings`). Test: a
+  70 kg mass on a 2 Hz spring settles at g/(2 pi f)^2 below rest; disabled, it falls.
+- [ ] **Physics 2** body mass (one Jolt body at the centre of mass, skeleton masses).
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

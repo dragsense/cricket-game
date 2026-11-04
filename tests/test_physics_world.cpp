@@ -59,3 +59,42 @@ TEST_CASE("physics world: interpolation blends the last two ticks; reset telepor
     CHECK(w.interpolated(id, 0.0f).position == home.position);
     CHECK(w.linearVelocity(id) == math::Vec3(0.0f));
 }
+
+TEST_CASE("physics world: a mass on a push-only spring settles where gravity and the spring balance") {
+    core::Config c;
+    REQUIRE(c.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld w;
+    REQUIRE(w.init(physics::readWorldSettings(c), physics::readPhysicsSettings(c)));
+
+    // A kinematic anchor on the ground and a mass 1 m above it that touches
+    // nothing; the spring only pushes (slack beyond 1 m, like a leg).
+    physics::BodyDesc anchor;
+    anchor.shape = physics::ShapeType::Sphere;
+    anchor.radius = 0.01f;
+    anchor.kinematic = true;
+    anchor.collides = false;
+    const physics::BodyId a = w.createBody(anchor);
+    physics::BodyDesc body = anchor;
+    body.kinematic = false;
+    body.lockRotation = true;
+    body.mass = 70.0f;
+    body.pose.position = math::Vec3(0, 1, 0);
+    const physics::BodyId b = w.createBody(body);
+    REQUIRE(a != physics::kInvalidBody);
+    REQUIRE(b != physics::kInvalidBody);
+    const float hz = 2.0f;
+    const physics::SpringId s = w.createSpring(a, math::Vec3(0), b, math::Vec3(0), 1.0f, 100.0f, hz, 1.0f);
+    REQUIRE(s != physics::kInvalidSpring);
+
+    for (int i = 0; i < 5 * 120; ++i) w.step(kTick);  // 5 s, critically damped
+    // F = k x with k = m (2 pi f)^2: the spring shortens by g / (2 pi f)^2.
+    const float omega = 2.0f * 3.14159265f * hz;
+    CHECK(w.transform(b).position.y == doctest::Approx(1.0f - 9.81f / (omega * omega)).epsilon(0.01));
+    CHECK(w.transform(b).position.x == doctest::Approx(0.0f));
+
+    // Disabled, the spring holds nothing: the mass falls freely.
+    w.setSpringEnabled(s, false);
+    const float y0 = w.transform(b).position.y;
+    for (int i = 0; i < 12; ++i) w.step(kTick);
+    CHECK(w.transform(b).position.y < y0 - 0.04f);
+}

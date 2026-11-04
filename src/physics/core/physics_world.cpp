@@ -16,6 +16,8 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Body/BodyLockMulti.h>
+#include <Jolt/Physics/Constraints/DistanceConstraint.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -28,10 +30,13 @@ namespace physics {
 
 namespace {
 
-// Object layers: static scenery and moving bodies; one broad-phase layer each.
+// Object layers: static scenery, moving bodies, and bodies that touch nothing
+// (held only by springs); static and moving have a broad-phase layer each.
 constexpr JPH::ObjectLayer kLayerStatic = 0;
 constexpr JPH::ObjectLayer kLayerMoving = 1;
-constexpr JPH::uint kNumLayers = 2;
+constexpr JPH::ObjectLayer kLayerNone = 2;
+constexpr JPH::uint kNumLayers = 3;
+constexpr JPH::uint kNumBroadPhaseLayers = 2;
 
 constexpr float kGroundHalfSize = 400.0f;  // covers the whole ground
 constexpr float kGroundHalfDepth = 1.0f;
@@ -92,6 +97,7 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     s.maxBodies = c.getInt("jolt.maxBodies", s.maxBodies);
     s.maxBodyPairs = c.getInt("jolt.maxBodyPairs", s.maxBodyPairs);
     s.maxContactConstraints = c.getInt("jolt.maxContactConstraints", s.maxContactConstraints);
+    s.maxSprings = c.getInt("jolt.maxSprings", s.maxSprings);
     s.tempAllocatorKb = c.getInt("jolt.tempAllocatorKb", s.tempAllocatorKb);
     s.threads = c.getInt("jolt.threads", s.threads);
     s.collisionSteps = c.getInt("jolt.collisionSteps", s.collisionSteps);
@@ -110,7 +116,7 @@ struct PhysicsWorld::Impl {
         math::Transform previous, current;
     };
 
-    JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers{kNumLayers, kNumLayers};
+    JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers{kNumLayers, kNumBroadPhaseLayers};
     JPH::ObjectLayerPairFilterTable layerPairs{kNumLayers};
     // Built from the two tables above at construction, so only after they are filled.
     std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> layerVsBroadPhase;
@@ -118,16 +124,18 @@ struct PhysicsWorld::Impl {
     std::unique_ptr<JPH::JobSystem> jobs;
     JPH::PhysicsSystem system;
     std::vector<Slot> slots;  // sized once at init
+    std::vector<JPH::Ref<JPH::DistanceConstraint>> springs;  // reserved once at init
     JPH::BodyID ground;
     PhysicsSettings settings;
 
     Impl() {
         broadPhaseLayers.MapObjectToBroadPhaseLayer(kLayerStatic, JPH::BroadPhaseLayer(0));
         broadPhaseLayers.MapObjectToBroadPhaseLayer(kLayerMoving, JPH::BroadPhaseLayer(1));
+        broadPhaseLayers.MapObjectToBroadPhaseLayer(kLayerNone, JPH::BroadPhaseLayer(1));
         layerPairs.EnableCollision(kLayerMoving, kLayerStatic);
         layerPairs.EnableCollision(kLayerMoving, kLayerMoving);
-        layerVsBroadPhase = std::make_unique<JPH::ObjectVsBroadPhaseLayerFilterTable>(broadPhaseLayers, kNumLayers,
-                                                                                       layerPairs, kNumLayers);
+        layerVsBroadPhase = std::make_unique<JPH::ObjectVsBroadPhaseLayerFilterTable>(
+            broadPhaseLayers, kNumBroadPhaseLayers, layerPairs, kNumLayers);
     }
 
     const Slot* slot(BodyId id) const {
@@ -173,6 +181,7 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     ps.mSpeculativeContactDistance = settings.speculativeContactDistance;
     m.system.SetPhysicsSettings(ps);
     m.slots.resize(static_cast<size_t>(settings.maxBodies));
+    m.springs.reserve(static_cast<size_t>(std::max(settings.maxSprings, 0)));
 
     // Static ground slab, top face at y = 0.
     JPH::BodyCreationSettings ground(new JPH::BoxShape(JPH::Vec3(kGroundHalfSize, kGroundHalfDepth, kGroundHalfSize)),
@@ -192,6 +201,8 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
 
 void PhysicsWorld::shutdown() {
     if (!impl_) return;
+    for (JPH::Ref<JPH::DistanceConstraint>& c : impl_->springs) impl_->system.RemoveConstraint(c);
+    impl_->springs.clear();
     JPH::BodyInterface& bi = impl_->system.GetBodyInterface();
     for (Impl::Slot& s : impl_->slots) {
         if (s.body.IsInvalid()) continue;
@@ -228,19 +239,28 @@ BodyId PhysicsWorld::createBody(const BodyDesc& d) {
         case ShapeType::Sphere: shape = new JPH::SphereShape(d.radius); break;
     }
 
+    const JPH::EMotionType motion = d.kinematic ? JPH::EMotionType::Kinematic
+                                    : d.dynamic ? JPH::EMotionType::Dynamic
+                                                : JPH::EMotionType::Static;
+    const JPH::ObjectLayer layer =
+        !d.collides ? kLayerNone : motion == JPH::EMotionType::Static ? kLayerStatic : kLayerMoving;
     JPH::BodyCreationSettings bcs(shape, JPH::RVec3(toJolt(d.pose.position)), toJolt(math::normalize(d.pose.rotation)),
-                                  d.dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
-                                  d.dynamic ? kLayerMoving : kLayerStatic);
+                                  motion, layer);
     bcs.mFriction = d.friction;
     bcs.mRestitution = d.restitution;
     bcs.mLinearDamping = m.settings.linearDamping;
     bcs.mAngularDamping = m.settings.angularDamping;
-    if (d.dynamic) {
+    if (motion == JPH::EMotionType::Dynamic) {
         bcs.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
         bcs.mMassPropertiesOverride.mMass = d.mass;
+        if (d.lockRotation)
+            bcs.mAllowedDOFs =
+                JPH::EAllowedDOFs::TranslationX | JPH::EAllowedDOFs::TranslationY | JPH::EAllowedDOFs::TranslationZ;
     }
+    // A body held by springs or moved by hand never sleeps (it would stop following).
+    if (motion != JPH::EMotionType::Static) bcs.mAllowSleeping = d.collides && !d.kinematic;
     JPH::BodyID body = m.system.GetBodyInterface().CreateAndAddBody(
-        bcs, d.dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+        bcs, motion != JPH::EMotionType::Static ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
     if (body.IsInvalid()) {
         LOG_ERROR("physics: Jolt could not create a body");
         return kInvalidBody;
@@ -299,6 +319,49 @@ void PhysicsWorld::resetBody(BodyId id, const math::Transform& pose) {
 void PhysicsWorld::addImpulse(BodyId id, math::Vec3 impulse, math::Vec3 point) {
     if (!impl_ || !impl_->slot(id)) return;
     impl_->system.GetBodyInterface().AddImpulse(impl_->slots[id].body, toJolt(impulse), JPH::RVec3(toJolt(point)));
+}
+
+void PhysicsWorld::moveKinematic(BodyId id, math::Vec3 position, float dt) {
+    if (!impl_ || !impl_->slot(id)) return;
+    JPH::BodyInterface& bi = impl_->system.GetBodyInterface();
+    const JPH::BodyID b = impl_->slots[id].body;
+    bi.MoveKinematic(b, JPH::RVec3(toJolt(position)), bi.GetRotation(b), dt);
+}
+
+SpringId PhysicsWorld::createSpring(BodyId a, math::Vec3 localA, BodyId b, math::Vec3 localB, float minDistance,
+                                    float maxDistance, float frequency, float damping) {
+    if (!impl_ || !impl_->slot(a) || !impl_->slot(b)) return kInvalidSpring;
+    Impl& m = *impl_;
+    if (m.springs.size() >= m.springs.capacity()) {
+        LOG_ERROR("physics: spring limit ({}) reached", m.springs.capacity());
+        return kInvalidSpring;
+    }
+    JPH::DistanceConstraintSettings s;
+    s.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
+    s.mPoint1 = JPH::RVec3(toJolt(localA));
+    s.mPoint2 = JPH::RVec3(toJolt(localB));
+    s.mMinDistance = minDistance;
+    s.mMaxDistance = std::max(minDistance, maxDistance);
+    s.mLimitsSpringSettings = JPH::SpringSettings(JPH::ESpringMode::FrequencyAndDamping, frequency, damping);
+    const JPH::BodyID ids[2] = {m.slots[a].body, m.slots[b].body};
+    JPH::BodyLockMultiWrite lock(m.system.GetBodyLockInterface(), ids, 2);
+    JPH::Body* b1 = lock.GetBody(0);
+    JPH::Body* b2 = lock.GetBody(1);
+    if (!b1 || !b2) return kInvalidSpring;
+    JPH::Ref<JPH::DistanceConstraint> c = static_cast<JPH::DistanceConstraint*>(s.Create(*b1, *b2));
+    m.system.AddConstraint(c);
+    m.springs.push_back(c);
+    return static_cast<SpringId>(m.springs.size() - 1);
+}
+
+void PhysicsWorld::setSpringDistance(SpringId id, float minDistance, float maxDistance) {
+    if (!impl_ || id >= impl_->springs.size()) return;
+    impl_->springs[id]->SetDistance(minDistance, std::max(minDistance, maxDistance));
+}
+
+void PhysicsWorld::setSpringEnabled(SpringId id, bool enabled) {
+    if (!impl_ || id >= impl_->springs.size()) return;
+    impl_->springs[id]->SetEnabled(enabled);
 }
 
 bool PhysicsWorld::awake(BodyId id) const {

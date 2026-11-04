@@ -18,6 +18,8 @@ namespace physics {
 
 using BodyId = uint32_t;
 constexpr BodyId kInvalidBody = 0xffffffffu;
+using SpringId = uint32_t;
+constexpr SpringId kInvalidSpring = 0xffffffffu;
 
 // config/physics_world.json "world": shared by Jolt and the ball solver.
 struct WorldSettings {
@@ -31,6 +33,7 @@ struct PhysicsSettings {
     int maxBodies = 256;
     int maxBodyPairs = 1024;
     int maxContactConstraints = 1024;
+    int maxSprings = 32;
     int tempAllocatorKb = 2048;
     int threads = 0;  // 0: single-threaded job system
     int collisionSteps = 1;
@@ -54,7 +57,10 @@ struct BodyDesc {
     float halfHeight = 0.5f;       // cylinder (along local +Y)
     float convexRadius = 0.002f;   // rounding of box and cylinder edges
     math::Transform pose;          // centre of mass, world space
-    bool dynamic = true;
+    bool dynamic = true;        // false: static (unless kinematic)
+    bool kinematic = false;     // moved only by moveKinematic (no gravity, nothing pushes it)
+    bool collides = true;       // false: touches nothing (e.g. a mass held only by springs)
+    bool lockRotation = false;  // dynamic: translates only (no tumbling)
     float mass = 1.0f;  // kg; dynamic only
     float friction = 0.5f;
     float restitution = 0.3f;
@@ -88,6 +94,18 @@ public:
     // Teleports the body (velocity zero), for resets; no interpolation smear.
     void resetBody(BodyId id, const math::Transform& pose);
     void addImpulse(BodyId id, math::Vec3 impulse, math::Vec3 point);
+    // Kinematic body: reaches `position` at the end of the next step (dt s).
+    void moveKinematic(BodyId id, math::Vec3 position, float dt);
+
+    // Springs: Jolt distance constraints with soft limits, between a point on
+    // body a and a point on body b (local, from each body's centre of mass).
+    // Inside [minDistance, maxDistance] the spring is slack; outside it, it
+    // pushes or pulls back at `frequency` Hz with `damping` ratio (Jolt
+    // SpringSettings). Load time only (allocates); kInvalidSpring when full.
+    SpringId createSpring(BodyId a, math::Vec3 localA, BodyId b, math::Vec3 localB, float minDistance,
+                          float maxDistance, float frequency, float damping);
+    void setSpringDistance(SpringId id, float minDistance, float maxDistance);
+    void setSpringEnabled(SpringId id, bool enabled);
     bool awake(BodyId id) const;
 
 private:

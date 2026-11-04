@@ -295,3 +295,13 @@ Dated log. Format: decision, reason, alternatives rejected.
   bend, pelvis sway, dip and turn, run lowest at mid-stance.
 - **Kept:** `body_reposition_backup.*` (formula version, still used by pick, throw, bowl,
   jump) and `body_reposition_lm_backup.*.txt` (the optimiser, not compiled).
+
+## 2026-11-04: Body physics through Jolt (one place for gravity, mass, forces)
+- **Decision:** the body gets mass, gravity and leg forces from `physics::PhysicsWorld`
+  (Jolt), the same place every other object uses (bat and others later). The body's mass
+  is one Jolt dynamic body at the centre of mass (skeleton masses, rotation locked); each
+  foot on the ground pushes it through a Jolt distance-constraint spring (push only, the
+  spring-mass model); `BodyReposition` fits the joints to where Jolt puts the body. First
+  vertical only; forward forces and push-off later. Stumps and bails removed first.
+- **Reason:** the user's rules: gravity/forces/mass only from one place, library first,
+  nothing invented; the body without mass snaps at landing; running needs the spring leg.
