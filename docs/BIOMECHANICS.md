@@ -987,6 +987,55 @@ Fast bowling is well studied; spin less so, and wrist spin hardly at all **[P]**
 
 ---
 
+## 12. Foot roll: the three rockers (M6, every gait)
+
+One foot mechanism for walking, running, jumping, bowling and fielding. The foot turns
+about whichever part of it carries the load; the leg moving over the foot drives the
+roll (no per-gait timing). Sources: rocker model (Perry; [PMC2922483](https://pmc.ncbi.nlm.nih.gov/articles/PMC2922483);
+[UoMus gait lecture](https://www.uomus.edu.iq/uploads/lectures/41/5d0af0a5a4524d60a2310788248e7291.pdf));
+MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6369);
+[Acta Orthop.](https://actaorthop.org/actao/article/download/29015/33895/82474);
+[QUT 1st MTP ROM](https://podiatry-anatomy-app.qut.edu.au/content/joints/1st-mtp-joint-rom.html)) **[P/T]**.
+
+### 12.1 The rockers (pivot follows the load)
+| Rocker | Pivot | When (walk, % stride) | What turns |
+|---|---|---|---|
+| 1. Heel | heel | 0–10 (contact to foot flat) | foot lowers toes-down about the heel; ankle about 5° PF, controlled |
+| 2. Ankle | ankle | 10–30 (foot flat) | shin rolls forward over the fixed foot; ankle to about 10° DF |
+| 3. Forefoot | metatarsal heads (ball) | 30–60 (heel rise to toe-off) | heel rises once the ankle stops dorsiflexing; toes bend (MTP DF) |
+| (4. Toe) | toe tip | last part of pre-swing | final push before the foot leaves |
+
+- **Trigger for heel rise:** not a clock. The heel lifts when the shin has leaned past
+  the ankle's loaded dorsiflexion range (about 10° walk) while the body keeps moving
+  forward; the calf then holds the ankle and the pivot moves to the ball.
+- **MTP (toe) dorsiflexion:** about 38–60° at push-off barefoot walking (windlass effect
+  stiffens the foot); passive range 60–90°.
+- **Ankle range:** DF about 8–16°, PF about 48–60° (non-weight-bearing).
+- **Effect on the body:** rolling over heel then ball moves the ankle up and forward
+  along the roll, so the hip path is smoother (less double-support dip than a flat,
+  straight-legged foot).
+
+### 12.2 The same mechanism in each movement
+- **Walk:** all three rockers; heel strike about 10° toes-up; toe-off 15–20° PF.
+- **Run:** rearfoot/midfoot strike shortens or skips rocker 1; forefoot strike (sprint)
+  starts at rocker 3. Larger shin lean (ankle DF up to about 20° mid-stance **[T]**) and a
+  stronger push (toe-off PF 25–35°). Same code; landing point on the foot comes from
+  where it touches first.
+- **Jump:** crouch keeps feet flat (rocker 2, deep DF); push-off goes rocker 3 → toe
+  (heels up, toes bent); landing is the reverse: toes first, then heels (section 6).
+- **Bowling / fielding:** back foot rolls to the ball and toe as the body passes over
+  it; lunges and stops land heel first (rocker 1).
+
+### Implementation notes
+- Each planted foot reads its load and the shin angle over it; the pivot (heel, ankle,
+  ball, toe) is picked from those, not from gait phase. Gait config only tunes numbers
+  (landing pitch, DF limit, toe bend).
+- Replaces the stance-foot flatten timer and the ankle-limit heel-lift patch.
+- Gap: no measured MTP data for running or jumping; running mid-stance DF is textbook
+  **[T]**.
+
+---
+
 ## Gaps and follow-ups
 - These numbers were not found online and rely on standard textbook values: the exact
   Winter / Perry joint-angle curves, arm-swing shoulder ranges, and running hip and knee
