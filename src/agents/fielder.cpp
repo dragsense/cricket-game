@@ -153,10 +153,7 @@ void Fielder::loadLocomotion(const core::Config& c) {
     load("jog", jogSettings_);
     runSettings_ = jogSettings_;  // the jog block is the run's base (no jog pace of its own)
     load("run", runSettings_);
-    fastSpeed_ = c.getFloat("walk.fastSpeed", fastSpeed_);
     postureLean_ = math::radians(c.getFloat("walk.postureLeanDeg", math::degrees(postureLean_)));
-    paceStep_ = c.getFloat("walk.paceStep", paceStep_);
-    pace_ = fastSpeed_;
     stepSettings_.stepLength = c.getFloat("step.stepLength", stepSettings_.stepLength);
     stepSettings_.backStepLength = c.getFloat("step.backStepLength", stepSettings_.backStepLength);
     stepSettings_.sideStepLength = c.getFloat("step.sideStepLength", stepSettings_.sideStepLength);
@@ -220,10 +217,6 @@ void Fielder::blendShape() {
         return forward ? g.speed : std::fabs(local.x) > std::fabs(local.y) ? g.sideSpeed : g.backSpeed;
     };
     const float v = walker_.speed();
-    if (gait_ == motion::Gait::FastWalk) {  // a fast walk keeps the walk's shape (step length and timing follow the speed)
-        shape_ = walkSettings_;
-        return;
-    }
     shape_ = runSettings_;
     for (int i = 0; i < 2; ++i) {
         if (v > ref(*gaits[i])) continue;
@@ -609,7 +602,6 @@ void Fielder::tick(double dt) {
 void Fielder::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
     control_ = gait_ == motion::Gait::Run ? runSettings_ : gait_ == motion::Gait::Jog ? jogSettings_ : walkSettings_;
-    if (gait_ == motion::Gait::FastWalk) control_.speed = pace_;  // the walk at the wheel's pace
     // A run-up delivery keeps running whatever the gait keys say.
     if (autoDeliver_) control_ = runSettings_;
     if (jumper_.active() &&

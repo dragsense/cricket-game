@@ -134,8 +134,11 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   the body, smoothly because of its mass. Nothing steers the hips. Steps: (1) mass only:
   the body keeps its momentum, legs constrain it (no snaps); (2) mass + gravity + leg
   forces: push-off and loading from real load instead of the stepper's clock (needs
-  balance control). Next now: running, researched from scratch (old run code is not the
-  reference).
+  balance control). Running (researched 2026-11-04: stance 35-40 %, flight, spring leg with
+  knee ~40 deg and the body lowest mid-stance, foot under the hips, elbows ~90 deg) needs
+  that physics; without it a run is a fast walk. The fast walk (Shift + wheel pace) is
+  removed: the player only walks. Next: the body's physics (mass, gravity, forces), then
+  running on it (old run code is not the reference).
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

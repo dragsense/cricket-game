@@ -3,8 +3,6 @@
 {
   "walk": {
     "speed": 0.9,           // m/s at full input (calm walk: ~0.45 m steps at ~120 steps/min)
-    "fastSpeed": 2.2,       // m/s, fastest walk (Shift; the mouse wheel sets the pace from speed up to this)
-    "paceStep": 0.1,        // m/s per mouse-wheel notch
     "backSpeed": 0.9,       // m/s walking backward (S)
     "sideSpeed": 0.8,       // m/s sidestepping (A/D)
     "acceleration": 5.0,    // m/s^2; full speed within the first step (full-size steps at once)

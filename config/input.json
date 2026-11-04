@@ -11,7 +11,7 @@
     "StepBack": ["S"],
     "StepLeft": ["A"],
     "StepRight": ["D"],
-    // Pace: walk by default; hold Shift to run, Ctrl to jog.
+    // Pace: walk only for now; Run / Jog are unused until running returns.
     "Run": ["LeftShift", "RightShift"],
     "Jog": ["LeftCtrl", "RightCtrl"],
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the

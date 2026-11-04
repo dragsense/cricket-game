@@ -60,7 +60,7 @@ struct WalkSettings {
 
 // Movement pace chosen by the player; the body's gait shape follows the
 // actual speed (blended), so changing pace never snaps.
-enum class Gait { Walk, FastWalk, Jog, Run };
+enum class Gait { Walk, Jog, Run };
 
 // Field-by-field blend of two gait settings, t in [0, 1].
 WalkSettings blendGait(const WalkSettings& a, const WalkSettings& b, float t);

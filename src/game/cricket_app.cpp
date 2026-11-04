@@ -384,15 +384,8 @@ bool CricketApp::pumpEvents() {
     controlled.setStepInput(limbTest_ ? move : math::Vec2(0.0f));
     controlled.setJumpInput(!limbTest_ && actions_.down(input_, core::Action::Jump));
 
-    // Pace: walk by default, hold Shift to walk fast; while Shift is held the
-    // mouse wheel sets the fast walk's pace (walk .. fastSpeed) and the camera
-    // does not zoom. (Running comes later; bowling aim keeps its own Shift + wheel.)
-    const bool fastKey = actions_.down(input_, core::Action::Run);
-    controlled.setGait(fastKey ? motion::Gait::FastWalk : motion::Gait::Walk);
-    if (fastKey && !bowlAim_ && !input_.uiWantsMouse && input_.wheel != 0.0f) {
-        controlled.adjustPace(input_.wheel);
-        input_.wheel = 0.0f;
-    }
+    // Walk only for now (running comes back with the body's physics).
+    controlled.setGait(motion::Gait::Walk);
     if (runUp_) {
         // U: straight at the batter, the speed building from a jog to a run
         // (the walker's acceleration), until J's jump takes off.
