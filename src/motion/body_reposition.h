@@ -101,6 +101,7 @@ private:
     float legLength_[2]{};         // thigh + shin
     float armLength_[2]{};         // upper arm + forearm
     math::Vec3 ball_[2]{};         // ball of the foot from the ankle (rest, character space; x = 0)
+    float groundY_ = 0.0f;         // ground height (rest toe joints, character space)
     float maxHeelLift_[2]{};       // rad, heel lift at which the toes reach their extension limit
 };
 

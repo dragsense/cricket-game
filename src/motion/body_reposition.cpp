@@ -39,6 +39,7 @@ bool BodyReposition::init(const rig::Rig& rig, const ik::JointLimits& limits, co
         if (toe >= 0) {
             const math::Vec3 d = jointPos(models, toe) - ankle;
             ball_[i] = math::Vec3(0.0f, d.y, math::length(math::Vec3(d.x, 0.0f, d.z)));
+            groundY_ = ankle.y + d.y;  // the toe joint stands on the ground at rest
             maxHeelLift_[i] = std::max(-limits.limit(toe).twistMin, 0.0f);  // toe extension is negative
         }
         const ik::TwoBoneChain& a = joints.arms[i];
@@ -80,15 +81,24 @@ void BodyReposition::solve(rig::Pose& pose, std::vector<math::Mat4>& models, con
     };
 
     // Foot roll: the shin's lean (rad, positive = knee ahead of the ankle)
-    // past the ankle's loaded range turns the foot about its heel or ball,
-    // which stays where the flat foot's would be; the ankle swings round it.
+    // past the ankle's loaded range turns the foot (heel up or toes up). The
+    // foot turns about its ankle, and only where its heel or ball would go
+    // into the ground does the ground push the ankle up: on the ground it
+    // turns about that heel or ball, in the air it just turns (no lift).
     auto roll = [&](int i, float lean) {
         float th = 0.0f;
         if (lean > s.dorsiflexion) th = std::min(lean - s.dorsiflexion, maxHeelLift_[i]);
         else if (lean < -s.plantarflexion) th = lean + s.plantarflexion;
         pitch[i] = th;
-        const math::Vec3 pivot = flat[i] + (th >= 0.0f ? ball_[i] : math::Vec3(0.0f, ball_[i].y, -s.heelBack));
-        ankles[i] = pivot + math::fromAxisAngle(math::kRight, th) * (flat[i] - pivot);
+        const math::Vec3 contact = th >= 0.0f ? ball_[i] : math::Vec3(0.0f, ball_[i].y, -s.heelBack);
+        const math::Vec3 turned = math::fromAxisAngle(math::kRight, th) * contact;
+        const float height = flat[i].y + contact.y - groundY_;  // flat contact's height above the ground (<= 0: on it)
+        const float full = contact.y - turned.y;  // the push with the flat foot on the ground
+        const float push = std::max(full - std::max(height, 0.0f), 0.0f);
+        // On the ground the contact point stays put (it turns about it); the
+        // shift fades with the push as the foot rises off the ground.
+        const float share = full > 1e-5f ? push / full : 0.0f;
+        ankles[i] = flat[i] + math::kUp * push + math::Vec3(0.0f, 0.0f, (contact.z - turned.z) * share);
     };
 
     for (int rollPass = 0; rollPass < std::max(s.rollPasses, 1); ++rollPass) {
