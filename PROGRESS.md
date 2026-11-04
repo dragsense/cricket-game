@@ -108,6 +108,14 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   in BodyReposition (spine first, then pelvis); walking holds a 5 deg posture lean
   (`postureLeanDeg`). Measured: the walk dips ~4-5 cm in double support quickly (straight
   legs, no heel-toe roll); next: heel-to-toe foot roll in the step path, then running.
+  **2026-11-04 foot roll (awaiting the user's visual check):** one foot mechanism in
+  `BodyReposition` for every movement (BIOMECHANICS 12, the user's call: real body
+  mechanics, no per-gait fixes). The shin's lean past the ankle's loaded range
+  (`dorsiflexionDeg` / `plantarflexionDeg` 10) turns the foot about its heel (toes up) or
+  ball (heel up, toes bent back), the contact point staying put; the ankle moves round it
+  and the body is solved again on the rolled ankles (`rollPasses` 2). Replaces "feet
+  flat". Not yet measured (dip, heel-off timing). Later, with the user's OK: remove the old
+  heel lift in `Fielder::solveIk` and the stepper's foot pitch / toe bend.
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

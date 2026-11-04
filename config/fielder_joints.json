@@ -148,7 +148,13 @@
   "bodyReposition": {
     "legReach": 1.0,         // a leg reaches at most its real length (thigh + shin)
     "armLegRatio": 1.0,      // a hand swings opposite the other leg by this share of its thigh angle (walking: about equal)
-    "passes": 3              // tilt-then-move passes per tick
+    "passes": 3,             // tilt-then-move passes per tick
+    // Foot roll (BIOMECHANICS 12): the ankle's loaded range; past it the shin
+    // turns the foot about its heel (toes up) or ball (heel up, toes bent).
+    "dorsiflexionDeg": 10,   // shin forward before the heel lifts (walking about 10)
+    "plantarflexionDeg": 10, // shin back before the toes rise off the ground
+    "heelBack": 0.05,        // m, heel contact behind the ankle
+    "rollPasses": 2          // body-then-roll passes per tick
   },
 
   "reposition": {

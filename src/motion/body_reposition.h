@@ -21,6 +21,13 @@
 //   3. Then the pelvis tilts at the hips (hip flexion: a bend to the ground).
 //   4. Then the body moves toward the hand; the planted feet stay, so the
 //      legs bend (a squat or lunge).
+//  Foot roll (every foot, every movement; BIOMECHANICS 12): the ankle turns
+//  within its loaded range; past it the shin turns the foot about the part of
+//  it on the ground, which stays put while the ankle swings round it:
+//   - shin back past the plantarflexion range: on the heel, toes up;
+//   - shin within the range: flat;
+//   - shin forward past the dorsiflexion range: on the ball, heel up, toes bent.
+//  The ankle targets are the flat foot's ankles; the roll moves them.
 // The planted feet never move. No allocations after init().
 
 #include "ik/joint_limits.h"
@@ -39,6 +46,10 @@ struct BodyRepositionSettings {
     math::Vec3 elbowPole{0.3f, 0.0f, -1.0f};      // left elbow points this way (mirrored for the right; +X is left)
     math::Vec3 pelvisMin{0.0f}, pelvisMax{0.0f};  // pelvis rotation limits (rotation vector, rad)
     int passes = 3;                 // passes per tick
+    float dorsiflexion = 0.17f;     // rad, ankle's loaded dorsiflexion range (shin forward) before the heel lifts
+    float plantarflexion = 0.17f;   // rad, ankle's loaded plantarflexion range (shin back) before the toes rise
+    float heelBack = 0.05f;         // m, heel contact behind the ankle
+    int rollPasses = 2;             // body-then-foot-roll passes per tick (the roll changes the ankles)
 };
 
 struct BodyRepositionJoints {
@@ -89,6 +100,8 @@ private:
     math::Vec3 legDir_[2]{};       // rest hip-to-ankle direction (pelvis frame)
     float legLength_[2]{};         // thigh + shin
     float armLength_[2]{};         // upper arm + forearm
+    math::Vec3 ball_[2]{};         // ball of the foot from the ankle (rest, character space; x = 0)
+    float maxHeelLift_[2]{};       // rad, heel lift at which the toes reach their extension limit
 };
 
 } // namespace motion

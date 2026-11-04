@@ -50,6 +50,13 @@ bool Fielder::init(const rig::SkeletonDef& def, float height, const core::Config
     bodyRepositionSettings_.passes = joints.getInt("bodyReposition.passes", bodyRepositionSettings_.passes);
     armLegRatio_ = joints.getFloat("bodyReposition.armLegRatio", armLegRatio_);
     bodyRepositionSettings_.legReach = joints.getFloat("bodyReposition.legReach", bodyRepositionSettings_.legReach);
+    {
+        motion::BodyRepositionSettings& b = bodyRepositionSettings_;
+        b.dorsiflexion = math::radians(joints.getFloat("bodyReposition.dorsiflexionDeg", math::degrees(b.dorsiflexion)));
+        b.plantarflexion = math::radians(joints.getFloat("bodyReposition.plantarflexionDeg", math::degrees(b.plantarflexion)));
+        b.heelBack = joints.getFloat("bodyReposition.heelBack", b.heelBack);
+        b.rollPasses = joints.getInt("bodyReposition.rollPasses", b.rollPasses);
+    }
     // The fielder starts with the ball in the right hand, picking with it.
     phase_ = Phase::Idle;
     holding_ = true;
