@@ -167,6 +167,11 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (tests/test_physics_joints.cpp): capsule rests on its side; free hinge stops at its
   limit; a 50 N m motor holds a 2 kg arm (sags by load / stiffness, 0.19 rad as Jolt's
   spring predicts), a 1 N m one cannot; a swing-twist motor reaches its target.
+- [x] **SixDOF joint** (the user's call: real, uneven ranges): `createSixDof` (Jolt
+  SixDOF, pyramid swing, per-axis min/max, motors, `setSixDofTarget`). Real joints bend
+  further one way (hip, ankle); Jolt's swing-twist only has even cones. Tests: the same
+  joint stops an arm at -0.30 one way and 1.20 the other; its motor reaches 0.73 of a 0.8
+  target under the arm's weight. Fingers (0 mass in de Leva) will ride the hand.
 - [x] **Ball solver removed** (the user's call): `src/physics/sim`, `src/physics/ball`,
   config/ball.json, their tests. A released ball stays where it is let go until the ball
   is a generic Jolt body. Next: the human from generic parts (shapes per bone, joints with

@@ -22,6 +22,7 @@
 #include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/SixDOFConstraint.h>
 #include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -135,6 +136,7 @@ struct PhysicsWorld::Impl {
     // Joints, reserved once at init; one of hinges / swingTwists is set per joint.
     std::vector<JPH::Ref<JPH::HingeConstraint>> hinges;
     std::vector<JPH::Ref<JPH::SwingTwistConstraint>> swingTwists;
+    std::vector<JPH::Ref<JPH::SixDOFConstraint>> sixDofs;
     JPH::BodyID ground;
     PhysicsSettings settings;
 
@@ -194,6 +196,7 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     m.springs.reserve(static_cast<size_t>(std::max(settings.maxSprings, 0)));
     m.hinges.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
     m.swingTwists.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
+    m.sixDofs.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
 
     // Static ground slab, top face at the world's groundHeight (the one ground).
     JPH::BodyCreationSettings ground(new JPH::BoxShape(JPH::Vec3(kGroundHalfSize, kGroundHalfDepth, kGroundHalfSize)),
@@ -219,8 +222,11 @@ void PhysicsWorld::shutdown() {
         if (c) impl_->system.RemoveConstraint(c);
     for (JPH::Ref<JPH::SwingTwistConstraint>& c : impl_->swingTwists)
         if (c) impl_->system.RemoveConstraint(c);
+    for (JPH::Ref<JPH::SixDOFConstraint>& c : impl_->sixDofs)
+        if (c) impl_->system.RemoveConstraint(c);
     impl_->hinges.clear();
     impl_->swingTwists.clear();
+    impl_->sixDofs.clear();
     JPH::BodyInterface& bi = impl_->system.GetBodyInterface();
     for (Impl::Slot& s : impl_->slots) {
         if (s.body.IsInvalid()) continue;
@@ -425,6 +431,7 @@ JointId PhysicsWorld::createHinge(BodyId a, BodyId b, const HingeDesc& d) {
     m.system.AddConstraint(c);
     m.hinges.push_back(c);
     m.swingTwists.push_back(nullptr);
+    m.sixDofs.push_back(nullptr);
     return static_cast<JointId>(m.hinges.size() - 1);
 }
 
@@ -450,7 +457,47 @@ JointId PhysicsWorld::createSwingTwist(BodyId a, BodyId b, const SwingTwistDesc&
     m.system.AddConstraint(c);
     m.hinges.push_back(nullptr);
     m.swingTwists.push_back(c);
+    m.sixDofs.push_back(nullptr);
     return static_cast<JointId>(m.hinges.size() - 1);
+}
+
+JointId PhysicsWorld::createSixDof(BodyId a, BodyId b, const SixDofDesc& d) {
+    if (!impl_ || !impl_->slot(a) || !impl_->slot(b)) return kInvalidJoint;
+    Impl& m = *impl_;
+    if (m.hinges.size() >= m.hinges.capacity()) {
+        LOG_ERROR("physics: joint limit ({}) reached", m.hinges.capacity());
+        return kInvalidJoint;
+    }
+    JPH::SixDOFConstraintSettings s;
+    s.mSpace = JPH::EConstraintSpace::WorldSpace;
+    s.mPosition1 = s.mPosition2 = JPH::RVec3(toJolt(d.pivot));
+    s.mAxisX1 = s.mAxisX2 = toJolt(math::normalize(d.axisX));
+    s.mAxisY1 = s.mAxisY2 = toJolt(math::normalize(d.axisY));
+    s.mSwingType = JPH::ESwingType::Pyramid;  // uneven swing ranges
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    s.MakeFixedAxis(A::TranslationX);
+    s.MakeFixedAxis(A::TranslationY);
+    s.MakeFixedAxis(A::TranslationZ);
+    s.SetLimitedAxis(A::RotationX, d.minAngles.x, d.maxAngles.x);
+    s.SetLimitedAxis(A::RotationY, d.minAngles.y, d.maxAngles.y);
+    s.SetLimitedAxis(A::RotationZ, d.minAngles.z, d.maxAngles.z);
+    JPH::Ref<JPH::SixDOFConstraint> c = makeJoint<JPH::SixDOFConstraint>(m.system, m.slots[a].body, m.slots[b].body, s);
+    if (!c) return kInvalidJoint;
+    m.system.AddConstraint(c);
+    m.hinges.push_back(nullptr);
+    m.swingTwists.push_back(nullptr);
+    m.sixDofs.push_back(c);
+    return static_cast<JointId>(m.hinges.size() - 1);
+}
+
+void PhysicsWorld::setSixDofTarget(JointId id, math::Quat rotation) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
+    impl_->sixDofs[id]->SetTargetOrientationCS(toJolt(math::normalize(rotation)));
+}
+
+math::Quat PhysicsWorld::sixDofRotation(JointId id) const {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return math::identityQuat();
+    return fromJolt(impl_->sixDofs[id]->GetRotationInConstraintSpace());
 }
 
 void PhysicsWorld::setJointMotor(JointId id, const MotorDesc& motor, bool on) {
@@ -464,6 +511,12 @@ void PhysicsWorld::setJointMotor(JointId id, const MotorDesc& motor, bool on) {
         s->GetTwistMotorSettings() = toJolt(motor);
         s->SetSwingMotorState(state);
         s->SetTwistMotorState(state);
+    } else if (JPH::SixDOFConstraint* x = impl_->sixDofs[id]) {
+        using A = JPH::SixDOFConstraintSettings::EAxis;
+        for (A axis : {A::RotationX, A::RotationY, A::RotationZ}) {
+            x->GetMotorSettings(axis) = toJolt(motor);
+            x->SetMotorState(axis, state);
+        }
     }
 }
 

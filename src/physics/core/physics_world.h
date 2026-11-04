@@ -86,6 +86,16 @@ struct SwingTwistDesc {
     float normalHalfCone = 0.0f, planeHalfCone = 0.0f;  // swing limits
     float minTwist = 0.0f, maxTwist = 0.0f;
 };
+// A ball joint with real, uneven ranges (Jolt SixDOF, pyramid swing): the
+// bodies stay together at the pivot and turn about the joint's X, Y and Z
+// axes (world, as created; Z = X cross Y), each between its own min and max
+// (radians), e.g. a hip that flexes far forward but extends little.
+struct SixDofDesc {
+    math::Vec3 pivot{0.0f};
+    math::Vec3 axisX{1.0f, 0.0f, 0.0f};
+    math::Vec3 axisY{0.0f, 1.0f, 0.0f};
+    math::Vec3 minAngles{0.0f}, maxAngles{0.0f};  // about X, Y, Z
+};
 // A joint motor (Jolt MotorSettings): drives the joint toward its target
 // like a spring of `frequency` Hz and `damping` ratio, never with more than
 // `maxTorque` N m.
@@ -139,6 +149,7 @@ public:
     // Joints (load time; kInvalidJoint when full). Generic: any two bodies.
     JointId createHinge(BodyId a, BodyId b, const HingeDesc& d);
     JointId createSwingTwist(BodyId a, BodyId b, const SwingTwistDesc& d);
+    JointId createSixDof(BodyId a, BodyId b, const SixDofDesc& d);
     // Motor on (driving to the target set below) or off (the joint is free
     // within its limits).
     void setJointMotor(JointId id, const MotorDesc& motor, bool on);
@@ -149,6 +160,10 @@ public:
     // joint's frame as created (identity: as created).
     void setSwingTwistTarget(JointId id, math::Quat rotation);
     math::Quat swingTwistRotation(JointId id) const;
+    // SixDOF: target rotation of body b relative to body a in the joint's
+    // frame as created (clamped by the limits); current rotation.
+    void setSixDofTarget(JointId id, math::Quat rotation);
+    math::Quat sixDofRotation(JointId id) const;
 
     // The ground (Jolt's static scenery) under `point`: its height there, or
     // the world's groundHeight if nothing is below.

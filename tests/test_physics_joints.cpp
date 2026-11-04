@@ -160,3 +160,65 @@ TEST_CASE("physics joints: a swing-twist motor turns the body to its target rota
     MESSAGE("swing-twist: off target by ", off, " rad");
     CHECK(off < 0.1f);
 }
+
+namespace {
+
+// Rotation about the joint's Z axis (rad) for a mostly-Z rotation.
+float aboutZ(math::Quat q) { return 2.0f * std::atan2(q.z, q.w); }
+
+// A level 2 kg arm on a SixDOF joint at the pivot, reaching to side (+1: +X,
+// -1: -X); turning about Z is limited to [-0.3, 1.2] rad, the other axes to
+// +-0.05 rad.
+physics::JointId unevenArm(physics::PhysicsWorld& w, math::Vec3 pivot, float side) {
+    const physics::BodyId a = anchorAt(w, pivot);
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Capsule;
+    d.radius = 0.04f;
+    d.halfHeight = 0.21f;
+    d.mass = 2.0f;
+    d.collides = false;
+    d.pose.position = pivot + math::Vec3(0.25f * side, 0.0f, 0.0f);
+    d.pose.rotation = math::fromAxisAngle(math::Vec3(0, 0, 1), -0.5f * kPi);
+    const physics::BodyId arm = w.createBody(d);
+    physics::SixDofDesc s;
+    s.pivot = pivot;
+    s.minAngles = math::Vec3(-0.05f, -0.05f, -0.3f);
+    s.maxAngles = math::Vec3(0.05f, 0.05f, 1.2f);
+    return w.createSixDof(a, arm, s);
+}
+
+} // namespace
+
+TEST_CASE("physics joints: a SixDOF joint keeps uneven real ranges (little one way, far the other)") {
+    // Arm to +X: gravity turns it about -Z, where the joint allows only 0.3.
+    // Arm to -X: gravity turns it about +Z, where the joint allows 1.2.
+    for (const float side : {1.0f, -1.0f}) {
+        physics::PhysicsWorld w;
+        REQUIRE(makeWorld(w));
+        const physics::JointId j = unevenArm(w, math::Vec3(0.0f, 2.0f, 0.0f), side);
+        REQUIRE(j != physics::kInvalidJoint);
+        run(w, 2.0f);
+        const float z = aboutZ(w.sixDofRotation(j));
+        MESSAGE("SixDOF arm to ", side > 0 ? "+X" : "-X", ": rests at ", z, " rad about Z");
+        if (side > 0)
+            CHECK(z == doctest::Approx(-0.3f).scale(0.0).epsilon(0.1));
+        else
+            CHECK(z == doctest::Approx(1.2f).scale(0.0).epsilon(0.1));
+    }
+}
+
+TEST_CASE("physics joints: a SixDOF motor drives the joint to its target inside the range") {
+    physics::PhysicsWorld w;
+    REQUIRE(makeWorld(w));
+    const physics::JointId j = unevenArm(w, math::Vec3(0.0f, 2.0f, 0.0f), 1.0f);
+    physics::MotorDesc m;
+    m.frequency = 6.0f;
+    m.damping = 1.0f;
+    m.maxTorque = 100.0f;
+    w.setJointMotor(j, m, true);
+    w.setSixDofTarget(j, math::fromAxisAngle(math::Vec3(0, 0, 1), 0.8f));  // raise it 0.8 rad
+    run(w, 2.0f);
+    const float z = aboutZ(w.sixDofRotation(j));
+    MESSAGE("SixDOF motor: at ", z, " rad (target 0.8; gives a little under the arm's weight)");
+    CHECK(z == doctest::Approx(0.8f).scale(0.0).epsilon(0.1));
+}
