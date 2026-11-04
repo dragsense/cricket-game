@@ -161,6 +161,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   movers that are not bodies: the camera uses it (its own y = 0 assumption removed); the
   ball's colliders are placed from it. Limbs, the ball vs Jolt bodies and the camera vs
   objects do not collide yet. Tests: query, lift, a body resting on a moved ground.
+- [x] **Leg springs removed** (2026-11-05, the user's call: no jugaad): the spring legs,
+  their damping, the standing/walking switch and the hold-length on stopping were a
+  stand-in for muscles and are gone. `HumanBody` is only the body's mass (73 kg, world
+  gravity, vertical only, collides): nothing holds it up, so it falls until Jolt's ground
+  stops it and the pelvis follows it (to watch the fall). Real support comes with muscles:
+  Jolt Ragdoll (one body per segment, skeleton masses), joint motors driving toward the
+  BodyReposition pose, balance (edge cases listed 2026-11-05; plan via start-milestone).
 - [x] **Rename** (the user's call): one shared human body for every person (player,
   fielder, batter, bowler, crowd): `agents::Fielder` -> `agents::Human` (human.h/.cpp),
   `BodyPhysics` -> `HumanBody` (human-specific use of PhysicsWorld; generic physics stays

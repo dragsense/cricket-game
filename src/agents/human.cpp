@@ -594,14 +594,6 @@ void Human::tick(double dt) {
         if (released_) releasePosition_ = ball;
         finishPick(static_cast<float>(dt));
     }
-    // The body's mass: the feet on the ground hold it for the next physics
-    // step (the world steps after the fielders).
-    if (physics_ && humanBody_.ready()) {
-        const math::Vec3 ankles[2] = {targets_.footL, targets_.footR};
-        const bool down[2] = {!stepper_.inAir(motion::Foot::Left), !stepper_.inAir(motion::Foot::Right)};
-        humanBody_.setFeet(*physics_, root_.position + math::kUp * restComHeight_, ankles, down,
-                             static_cast<float>(dt));
-    }
     // Shoulders carried by the chest (not the clavicle) while bowling, for
     // the bowling circles next tick; at rest otherwise.
     if (reachNow && phase_ == Phase::Bowl && joints_.spine[2] >= 0) {
@@ -1140,19 +1132,11 @@ math::Vec3 Human::modelCentreOfMass() {
 bool Human::attachPhysics(physics::PhysicsWorld& world) {
     physics_ = &world;
     humanBody_ = HumanBody{};
-    if (jointsConfig_) {
-        HumanBodySettings& s = humanBodySettings_;
-        s.legStiffness = jointsConfig_->getFloat("humanBody.legStiffness", s.legStiffness);
-        s.legDamping = jointsConfig_->getFloat("humanBody.legDamping", s.legDamping);
-    }
-    // At rest: the centre of mass over the root, each leg's length from it to
-    // its ankle (the spring's rest length).
+    // The centre of mass over the root at rest: the mass starts there.
     rig_.localToModel(rig_.restPose(), models_);
     const math::Vec3 com = modelCentreOfMass();
     restComHeight_ = com.y;
-    const float rest[2] = {math::distance(com, modelPos(models_, joints_.legL.end)),
-                           math::distance(com, modelPos(models_, joints_.legR.end))};
-    if (!humanBody_.init(world, def_.bodyMass, root_.transformPoint(com), rest, humanBodySettings_)) {
+    if (!humanBody_.init(world, def_.bodyMass, root_.transformPoint(com))) {
         LOG_ERROR("fielder: no room for the body in the physics world");
         physics_ = nullptr;
         return false;

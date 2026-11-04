@@ -99,10 +99,11 @@ public:
     // (config/human_joints.json) and walk/run settings (config/locomotion.json),
     // and stands it at the spawn point.
     bool init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion);
-    // The body's mass in the shared physics world (HumanBody): its height
-    // carries the pelvis while walking and in the limb test; the feet stand
-    // on the world's real surface (Jolt ground query). After init(); again
-    // after the world is rebuilt. False if the world is full.
+    // The body's mass in the shared physics world (HumanBody, gravity only:
+    // nothing holds it up until muscles exist): its height carries the pelvis
+    // while walking and in the limb test; the feet stand on the world's real
+    // surface (Jolt ground query). After init(); again after the world is
+    // rebuilt. False if the world is full.
     bool attachPhysics(physics::PhysicsWorld& world);
     // Re-reads config/locomotion.json without moving the fielder.
     void loadLocomotion(const core::Config& locomotion);
@@ -463,7 +464,6 @@ private:
     static constexpr float kHeelRate = 15.0f;  // 1/s, how fast the heel lift follows (no flicker)
     float tickSeconds_ = 1.0f / 120.0f;        // this tick's step
     HumanBody humanBody_;                  // the body's mass (Jolt), vertical only for now
-    HumanBodySettings humanBodySettings_;
     physics::PhysicsWorld* physics_ = nullptr;
     float restComHeight_ = 0.0f;               // m, the centre of mass above the root at rest
     motion::BodyReposition bodyReposition_;              // limb test: body and legs from real constraints
