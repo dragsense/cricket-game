@@ -74,6 +74,7 @@ struct BodyTargets {
     math::Vec3 plantedAnkle{0.0f}; // its ankle
     math::Vec3 movingAnkle{0.0f};  // the other leg's ankle target
     bool down[2] = {true, true};   // left, right foot on the ground (only a foot on the ground holds the body)
+    float bodyDrop = 0.0f;         // m the body's mass is below its standing height (physics): the pelvis starts there
     float push[2] = {0.0f, 0.0f};  // left, right push-off share [0, 1]: the unloading ankle points the foot (heel up)
     bool chest = false;            // chest target in use
     math::Quat chestRot = math::identityQuat();  // chest orientation (character space; identity = upright, facing forward)

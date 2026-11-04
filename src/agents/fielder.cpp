@@ -517,6 +517,13 @@ void Fielder::tick(double dt) {
     }
     targets_.footL = root_.transformPoint(stepper_.foot(motion::Foot::Left));
     targets_.footR = root_.transformPoint(stepper_.foot(motion::Foot::Right));
+    // Feet stand on the world's real surface under them (Jolt ground query:
+    // the field, later a step or a slope), not on an assumed flat ground.
+    if (physics_) {
+        const float base = physics_->groundHeightAt(root_.position);
+        targets_.footL.y += physics_->groundHeightAt(targets_.footL) - base;
+        targets_.footR.y += physics_->groundHeightAt(targets_.footR) - base;
+    }
     // After a run-up landing the front foot is held up, coming down over its
     // stride (before the body settles, so the body stands on the landed foot).
     if (phase_ != Phase::Bowl || (strideFoot_ >= 0 && !stepper_.stepping())) frontLift_ = 0.0f;
@@ -586,6 +593,14 @@ void Fielder::tick(double dt) {
             root_.transformPoint(math::Vec3(models_[static_cast<size_t>(hand)] * math::Vec4(ballSpot(reachLeft_), 1.0f)));
         if (released_) releasePosition_ = ball;
         finishPick(static_cast<float>(dt));
+    }
+    // The body's mass: the feet on the ground hold it for the next physics
+    // step (the world steps after the fielders).
+    if (physics_ && bodyPhysics_.ready()) {
+        const math::Vec3 ankles[2] = {targets_.footL, targets_.footR};
+        const bool down[2] = {!stepper_.inAir(motion::Foot::Left), !stepper_.inAir(motion::Foot::Right)};
+        bodyPhysics_.setFeet(*physics_, root_.position + math::kUp * restComHeight_, ankles, down,
+                             static_cast<float>(dt));
     }
     // Shoulders carried by the chest (not the clavicle) while bowling, for
     // the bowling circles next tick; at rest otherwise.
@@ -820,6 +835,10 @@ void Fielder::repositionFromFeet() {
     t.movingAnkle = toModel.transformPoint(t.planted == 1 ? targets_.footL : targets_.footR);
     t.down[0] = !stepper_.inAir(motion::Foot::Left);
     t.down[1] = !stepper_.inAir(motion::Foot::Right);
+    // The body's height comes from its mass on the legs (physics), not from
+    // a standing height.
+    if (physics_ && bodyPhysics_.ready())
+        t.bodyDrop = root_.position.y + restComHeight_ - bodyPhysics_.height(*physics_);
     t.push[0] = stepper_.pushOff(motion::Foot::Left);
     t.push[1] = stepper_.pushOff(motion::Foot::Right);
     // Chest target: the walking posture holds the trunk slightly forward
@@ -1116,6 +1135,29 @@ math::Vec3 Fielder::modelCentreOfMass() {
         total += m;
     }
     return total > 0.0f ? sum / total : math::Vec3(0.0f);
+}
+
+bool Fielder::attachPhysics(physics::PhysicsWorld& world) {
+    physics_ = &world;
+    bodyPhysics_ = BodyPhysics{};
+    if (jointsConfig_) {
+        BodyPhysicsSettings& s = bodyPhysicsSettings_;
+        s.legStiffness = jointsConfig_->getFloat("bodyPhysics.legStiffness", s.legStiffness);
+        s.legDamping = jointsConfig_->getFloat("bodyPhysics.legDamping", s.legDamping);
+    }
+    // At rest: the centre of mass over the root, each leg's length from it to
+    // its ankle (the spring's rest length).
+    rig_.localToModel(rig_.restPose(), models_);
+    const math::Vec3 com = modelCentreOfMass();
+    restComHeight_ = com.y;
+    const float rest[2] = {math::distance(com, modelPos(models_, joints_.legL.end)),
+                           math::distance(com, modelPos(models_, joints_.legR.end))};
+    if (!bodyPhysics_.init(world, def_.bodyMass, root_.transformPoint(com), rest, bodyPhysicsSettings_)) {
+        LOG_ERROR("fielder: no room for the body in the physics world");
+        physics_ = nullptr;
+        return false;
+    }
+    return true;
 }
 
 math::Vec3 Fielder::centreOfMass() {

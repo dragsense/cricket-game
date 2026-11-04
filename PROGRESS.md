@@ -161,8 +161,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   movers that are not bodies: the camera uses it (its own y = 0 assumption removed); the
   ball's colliders are placed from it. Limbs, the ball vs Jolt bodies and the camera vs
   objects do not collide yet. Tests: query, lift, a body resting on a moved ground.
-- [ ] **Physics 4** the fielder's pelvis follows the body's height (BodyReposition fits
-  the joints to it); settings in fielder_joints.json "bodyPhysics".
+- [x] **Physics 4-5** (vertical only): `Fielder::attachPhysics` puts the body's mass in
+  the world (SimWorld, also after a world rebuild); feet stand on the real surface under
+  them (Jolt ground query); the body's height from its mass on the legs sets the pelvis
+  (`BodyTargets::bodyDrop`); fielder_joints.json "bodyPhysics" (20 kN/m, damping 0).
+  Measured (walk 0.9 m/s): pelvis per-tick jump 0.45 mm (was 7-26 mm), worst knee jump
+  15 deg (was 45 deg), pelvis bob 2.9 cm (real ~4-5 cm). Standing: pelvis 1.8 cm lower,
+  knee 26 deg (real quiet standing 0-5 deg): the walking leg stiffness on a straight leg.
   Limb test on (`engine.json`): bowler hidden, no walking, jumping, balls or throws; F
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).

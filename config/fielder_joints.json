@@ -157,6 +157,12 @@
     "rollPasses": 2          // body-then-roll passes per tick
   },
 
+  // The body's mass on spring legs (BIOMECHANICS 13; agents::BodyPhysics).
+  "bodyPhysics": {
+    "legStiffness": 20000,   // N/m per leg (spring-mass walking model, Geyer et al. 2006)
+    "legDamping": 0.0        // damping ratio (the spring-mass model has none)
+  },
+
   "reposition": {
     "standReach": 0.998,      // standing: legs nearly straight (knee about 7 deg; real quiet standing 0-5 deg)
     "maxReach": 1.0,          // a fully straight leg

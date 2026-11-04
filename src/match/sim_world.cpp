@@ -14,7 +14,7 @@ void SimWorld::configure(const core::Config& config) {
 }
 
 bool SimWorld::initFielder(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion) {
-    return fielder_.init(def, def.height, joints, locomotion);
+    return fielder_.init(def, def.height, joints, locomotion) && fielder_.attachPhysics(physics_);
 }
 
 bool SimWorld::initBowler(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion,
@@ -22,12 +22,16 @@ bool SimWorld::initBowler(const rig::SkeletonDef& def, const core::Config& joint
     rig::SkeletonDef placed = def;
     placed.spawnPosition = position;
     placed.spawnYaw = yaw;
-    return bowler_.init(placed, placed.height, joints, locomotion);
+    return bowler_.init(placed, placed.height, joints, locomotion) && bowler_.attachPhysics(physics_);
 }
 
 bool SimWorld::initPhysics(const core::Config& physicsWorld, const core::Config& scene) {
     (void)scene;
-    return physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld));
+    if (!physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld))) return false;
+    // A rebuilt world: the fielders' bodies go back into it.
+    if (fielder_.rig().numJoints() > 0 && !fielder_.attachPhysics(physics_)) return false;
+    if (bowler_.rig().numJoints() > 0 && !bowler_.attachPhysics(physics_)) return false;
+    return true;
 }
 
 void SimWorld::initBall(const core::Config& ball, const core::Config& scene) {

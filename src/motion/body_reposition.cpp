@@ -100,8 +100,9 @@ void BodyReposition::solve(rig::Pose& pose, std::vector<math::Mat4>& models, con
     };
 
     for (int rollPass = 0; rollPass < std::max(s.rollPasses, 1); ++rollPass) {
-        // The body stands at its spot over the root; the legs reach the feet.
-        pelvisPos = restPelvis_;
+        // The body stands where its mass is (standing height less bodyDrop);
+        // the legs reach the feet.
+        pelvisPos = restPelvis_ - math::kUp * t.bodyDrop;
         pelvisRot = math::identityQuat();
         keepLeg(p);
 
