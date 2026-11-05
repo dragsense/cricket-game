@@ -597,7 +597,7 @@ void Human::tick(double dt) {
     // The muscles drive the physics body toward this tick's planned pose.
     if (physics_ && humanBody_.ready()) {
         rig_.localToModel(current_, models_);
-        humanBody_.setTargets(*physics_, models_);
+        humanBody_.follow(*physics_, models_, root_, static_cast<float>(dt));  // held at the planned pose (for now)
     }
     // Shoulders carried by the chest (not the clavicle) while bowling, for
     // the bowling circles next tick; at rest otherwise.

@@ -87,12 +87,17 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         physics::BodyDesc d = shapeFor(bone.visual, h, local);
         d.mass = bone.massPercent * 0.01f * def.bodyMass;
         d.collisionGroup = group;
+        d.kinematic = true;  // for now (the user, 2026-11-05): held at the planned pose (follow), so it does not drop
         d.pose = root * math::toTransform(models[static_cast<size_t>(j)]) * local;
         Part p;
         p.joint = j;
         p.mass = d.mass;
         p.parent = parentPart;
         p.shape = local;
+        p.shapeType = d.shape;
+        p.radius = d.radius;
+        p.halfHeight = d.halfHeight;
+        p.halfExtents = d.halfExtents;
         p.body = world.createBody(d);
         if (p.body == physics::kInvalidBody) return false;
         partOf[static_cast<size_t>(j)] = static_cast<int>(parts_.size());
@@ -164,6 +169,12 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     }
     LOG_INFO("human body: {} parts, {:.1f} kg", parts_.size(), totalMass_);
     return true;
+}
+
+void HumanBody::follow(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
+                       float dt) const {
+    for (const Part& p : parts_)
+        world.moveKinematic(p.body, root * math::toTransform(models[static_cast<size_t>(p.joint)]) * p.shape, dt);
 }
 
 void HumanBody::setTargets(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const {

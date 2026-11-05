@@ -1069,9 +1069,30 @@ MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6
   directions (means where flexion and extension differ).
 - **Activation:** muscle excitation to force takes about 10-50 ms. It is how fast a
   muscle switches on, **not** how stiff a joint is (mistake found 2026-11-05).
-- **Stiffness (open):** active joints have a measured stiffness (N m/rad), e.g. the ankle
-  in quiet standing ~859 N m/rad (Winter). Hip, knee, shoulder, elbow, wrist, trunk and
-  neck values still to research; the motors must use them (Jolt stiffness mode).
+- **Stiffness (researched 2026-11-06):** joint stiffness is **not a fixed number per
+  joint**: it rises with muscle activation and load, and falls with the size of the
+  movement (Brown & McGill trunk; in vivo knee studies; hip ~5 N m/rad per N of limb
+  force). Measured values:
+  - **Ankle, quiet standing (intrinsic):** 91 ± 23 % of the toppling stiffness mgh
+    (Loram & Lakie 2002); 64 ± 8 % for ~1 deg pushes (Casadio 2005); 101 → 19 % as the
+    rotation grows from 0.03 to 7 deg (Loram 2007); 93 → 44 % (Vlutters 2015). Some
+    groups put it at ~15 % mgh. For our body, mgh ≈ 73 kg × 9.81 × ~0.9 m ≈ 650 N m/rad.
+    Winter's ~859 N m/rad includes the nervous system's control, not only the muscle.
+  - **Key finding:** intrinsic ankle stiffness is **below** what stops the body tipping
+    (< 100 % mgh). Loram & Lakie: "not quite enough... neural modulation is needed".
+    **A real person cannot stand still on muscle stiffness alone; even quiet standing
+    needs the balance controller.**
+  - **Hip and knee, swing phase of walking:** hip 34-66, knee 0-3.5 N m/rad (2022 IEEE,
+    9 subjects, 0.5 m/s): low when relaxed.
+  - **Shoulder,** near neutral at < 5 % activation: 30.9 N m/rad, damping 3.0 N m s/rad.
+  - **Elbow, passive:** 0.4-1.8 N m/rad (19 subjects; scales with upper-arm volume).
+  - **Gaps:** wrist (only a 3×3 matrix study, values not found), neck, trunk (Watt 2022
+    lumbar meta-analysis not read yet), knee and hip in stance under load.
+  - Jolt 5.3 supports this directly: `ESpringMode::StiffnessAndDamping` (k in N m/rad,
+    T = -k θ - c ω). Sources: e-space.mmu.ac.uk/13645, PMC2277155, PMC2277144,
+    iris.unige.it/handle/11567/245370, arxiv.org/pdf/1908.07800, PMC2562882,
+    par.nsf.gov/servlets/purl/10311862, PMC1029052, core.ac.uk/download/523258782.pdf
+    **[P]**.
 - **Balance (open):** muscles hold shape only; keeping the centre of mass over the feet
   (ankle and hip strategies, stepping) is its own step.
 

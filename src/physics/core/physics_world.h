@@ -138,6 +138,8 @@ public:
     void addImpulse(BodyId id, math::Vec3 impulse, math::Vec3 point);
     // Kinematic body: reaches `position` at the end of the next step (dt s).
     void moveKinematic(BodyId id, math::Vec3 position, float dt);
+    // Kinematic body: reach this pose (position and rotation) in `dt`.
+    void moveKinematic(BodyId id, const math::Transform& pose, float dt);
 
     // Springs: Jolt distance constraints with soft limits, between a point on
     // body a and a point on body b (local, from each body's centre of mass).

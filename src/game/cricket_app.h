@@ -50,6 +50,7 @@ protected:
 
 private:
     void drawDebugGeometry(float alpha);
+    void drawHumanBody(const agents::HumanBody& body, float alpha);  // its physics shapes and joints
     void updateFielder(float alpha);
     // Re-reads the named config files (e.g. "scene.json") and re-applies them
     // to the running game. A file that fails to parse keeps its previous values.

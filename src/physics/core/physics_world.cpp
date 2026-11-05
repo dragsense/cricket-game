@@ -361,6 +361,12 @@ void PhysicsWorld::moveKinematic(BodyId id, math::Vec3 position, float dt) {
     bi.MoveKinematic(b, JPH::RVec3(toJolt(position)), bi.GetRotation(b), dt);
 }
 
+void PhysicsWorld::moveKinematic(BodyId id, const math::Transform& pose, float dt) {
+    if (!impl_ || !impl_->slot(id)) return;
+    impl_->system.GetBodyInterface().MoveKinematic(impl_->slots[id].body, JPH::RVec3(toJolt(pose.position)),
+                                                   toJolt(math::normalize(pose.rotation)), dt);
+}
+
 SpringId PhysicsWorld::createSpring(BodyId a, math::Vec3 localA, BodyId b, math::Vec3 localB, float minDistance,
                                     float maxDistance, float frequency, float damping) {
     if (!impl_ || !impl_->slot(a) || !impl_->slot(b)) return kInvalidSpring;

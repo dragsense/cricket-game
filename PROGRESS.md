@@ -167,6 +167,21 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (tests/test_physics_joints.cpp): capsule rests on its side; free hinge stops at its
   limit; a 50 N m motor holds a 2 kg arm (sags by load / stiffness, 0.19 rad as Jolt's
   spring predicts), a 1 N m one cannot; a swing-twist motor reaches its target.
+- [~] **Physics body held, drawn; stiffness researched** (2026-11-06): the 19 parts are
+  kinematic for now (the user: the player must not drop) and follow the planned pose each
+  tick (`HumanBody::follow`, `PhysicsWorld::moveKinematic` with rotation); the motors are
+  idle meanwhile. Debug draw shows each part's Jolt shape (orange), hinges (yellow, axis),
+  SixDOF joints (cyan, X/Y/Z axes) and muscles (red ring) (`CricketApp::drawHumanBody`).
+  Research (BIOMECHANICS 14): joint stiffness depends on activation and load; intrinsic
+  ankle stiffness is below the toppling stiffness mgh (~650 N m/rad), so even quiet
+  standing needs the balance controller. Agreed direction (talks 2026-11-05/06): one
+  balance system for every activity, from the capture point (Hof: xi = x + v / w0;
+  inside the feet: ankle/hip strategies, Peterka 2002; outside: step to xi + margin;
+  beyond reach: controlled fall); the walk's foot placement should come from xi (the
+  gait timer stays as the rhythm). **Next session:** research knee and hip stiffness in
+  standing under load (gap; the knee needs more than ~265 N m/rad by estimate), switch
+  the motors to Jolt's StiffnessAndDamping mode, then the standing balance (phase 1).
+  Open questions for the user: balance as its own milestone or part of M6.
 - [~] **Muscles** (2026-11-05, in progress): each joint's Jolt motor drives it toward
   BodyReposition's planned pose (`HumanBody::setTargets`) with the joint's real strength
   as max torque (human_joints.json "muscles", BIOMECHANICS 14); the planned pose no longer

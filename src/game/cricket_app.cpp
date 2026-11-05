@@ -900,10 +900,60 @@ void CricketApp::drawDebugGeometry(float alpha) {
         }
     }
 
+    // The humans' physics bodies (HumanBody): each part's Jolt shape (white)
+    // and each joint at its pivot: hinge (yellow, a line along its axis),
+    // SixDOF (cyan, its X red, Y green, Z blue axes); a joint with a muscle
+    // (motor) has a red ring.
+    drawHumanBody(sim_.fielder().humanBody(), alpha);
+    if (!limbTest_) drawHumanBody(sim_.bowler().humanBody(), alpha);
+
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);
         dd.axes(probe, 0.6f);
         dd.sphere(probe.position, 0.4f, render::colors::kCyan);
+    }
+}
+
+void CricketApp::drawHumanBody(const agents::HumanBody& body, float alpha) {
+    if (!body.ready()) return;
+    render::DebugDraw& dd = renderer_->debugDraw();
+    const physics::PhysicsWorld& world = sim_.physicsWorld();
+    const render::Color shapeColor = render::rgba(255, 140, 0);  // orange (the kit is white)
+    for (const agents::HumanBody::Part& p : body.parts()) {
+        const math::Transform t = world.interpolated(p.body, alpha);
+        if (p.shapeType == physics::ShapeType::Capsule) {
+            const math::Vec3 up = t.transformDirection(math::kUp), side = t.transformDirection(math::kRight),
+                             front = t.transformDirection(math::kForward);
+            const math::Vec3 a = t.position - up * p.halfHeight, b = t.position + up * p.halfHeight;
+            dd.circle(a, up, p.radius, shapeColor, 12);
+            dd.circle(b, up, p.radius, shapeColor, 12);
+            for (const math::Vec3 s : {side, -side, front, -front}) dd.line(a + s * p.radius, b + s * p.radius, shapeColor);
+            dd.sphere(a, p.radius, shapeColor, 8);
+            dd.sphere(b, p.radius, shapeColor, 8);
+        } else if (p.shapeType == physics::ShapeType::Box) {
+            const math::Vec3& h = p.halfExtents;
+            math::Vec3 c[8];
+            for (int i = 0; i < 8; ++i)
+                c[i] = t.transformPoint(math::Vec3(i & 1 ? h.x : -h.x, i & 2 ? h.y : -h.y, i & 4 ? h.z : -h.z));
+            for (int i = 0; i < 8; ++i)
+                for (int bit : {1, 2, 4})
+                    if (!(i & bit)) dd.line(c[i], c[i | bit], shapeColor);
+        } else {
+            dd.sphere(t.position, p.radius, shapeColor, 8);
+        }
+        if (p.parent < 0) continue;
+        const math::Transform bone = t * math::inverse(p.shape);  // the joint sits at the bone's origin
+        if (p.hinge) {
+            const math::Vec3 axis = bone.transformDirection(p.frameX);
+            dd.sphere(bone.position, 0.02f, render::colors::kYellow, 8);
+            dd.line(bone.position - axis * 0.08f, bone.position + axis * 0.08f, render::colors::kYellow);
+        } else {
+            dd.sphere(bone.position, 0.02f, render::colors::kCyan, 8);
+            dd.line(bone.position, bone.position + bone.transformDirection(p.frameX) * 0.08f, render::colors::kRed);
+            dd.line(bone.position, bone.position + bone.transformDirection(p.frameY) * 0.08f, render::colors::kGreen);
+            dd.line(bone.position, bone.position + bone.transformDirection(p.frameZ) * 0.08f, render::colors::kBlue);
+        }
+        if (p.muscle) dd.circle(bone.position, bone.transformDirection(p.frameX), 0.035f, render::colors::kRed, 12);
     }
 }
 

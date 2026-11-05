@@ -52,6 +52,9 @@ public:
         int parent = -1;                   // index of the part it is joined to (-1: none)
         physics::JointId link = physics::kInvalidJoint;  // its joint to the parent part
         math::Transform shape;             // the body (its shape) in the bone's frame
+        physics::ShapeType shapeType = physics::ShapeType::Sphere;  // its Jolt shape and size (for drawing)
+        float radius = 0.0f, halfHeight = 0.0f;  // sphere, capsule (half the straight part, local +Y)
+        math::Vec3 halfExtents{0.0f};            // box
         bool hinge = false;                // hinge (else SixDOF)
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame
         bool muscle = false;               // its motor is on
@@ -61,6 +64,11 @@ public:
 
     // The planned pose (`models`, character space, the rig's joints) as each
     // muscle's target: the bone's rotation relative to its parent part's bone.
+    // Kinematic parts (for now): each part moves to its bone in the planned
+    // pose (`models`, character space of `root`) this step.
+    void follow(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
+                float dt) const;
+
     void setTargets(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const;
 
     // The drawn skeleton from the bodies (character space of `root`; `alpha`
