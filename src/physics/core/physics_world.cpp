@@ -582,13 +582,45 @@ void PhysicsWorld::setSixDofVelocity(JointId id, math::Vec3 angularVelocity) {
     x->SetTargetAngularVelocityCS(toJolt(angularVelocity));
 }
 
-void PhysicsWorld::setSixDofFreeAxes(JointId id, bool x, bool y, bool z) {
-    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
+namespace {
+
+JPH::MotorSettings springMotor(float stiffness, float damping, float maxTorque) {
+    JPH::MotorSettings s;
+    s.mSpringSettings.mMode = JPH::ESpringMode::StiffnessAndDamping;
+    s.mSpringSettings.mStiffness = std::max(stiffness, 0.0f);
+    s.mSpringSettings.mDamping = std::max(damping, 0.0f);
+    s.SetTorqueLimit(std::max(maxTorque, 0.0f));
+    return s;
+}
+
+} // namespace
+
+void PhysicsWorld::setSixDofAxisSpring(JointId id, int axis, float offset, float stiffness, float damping,
+                                       float maxTorque) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id] || axis < 0 || axis > 2) return;
     JPH::SixDOFConstraint* c = impl_->sixDofs[id];
     using A = JPH::SixDOFConstraintSettings::EAxis;
-    if (x) c->SetMotorState(A::RotationX, JPH::EMotorState::Off);
-    if (y) c->SetMotorState(A::RotationY, JPH::EMotorState::Off);
-    if (z) c->SetMotorState(A::RotationZ, JPH::EMotorState::Off);
+    const A a = static_cast<A>(static_cast<int>(A::RotationX) + axis);
+    c->GetMotorSettings(a) = springMotor(stiffness, damping, maxTorque);
+    c->SetMotorState(a, JPH::EMotorState::Position);
+    // Target: this axis turned by `offset` from now (Jolt keeps only the
+    // position-motor axes of the target).
+    const JPH::Vec3 along = axis == 0 ? JPH::Vec3::sAxisX() : axis == 1 ? JPH::Vec3::sAxisY() : JPH::Vec3::sAxisZ();
+    c->SetTargetOrientationCS(c->GetRotationInConstraintSpace() * JPH::Quat::sRotation(along, offset));
+}
+
+void PhysicsWorld::setSixDofAxisFree(JointId id, int axis) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id] || axis < 0 || axis > 2) return;
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    impl_->sixDofs[id]->SetMotorState(static_cast<A>(static_cast<int>(A::RotationX) + axis), JPH::EMotorState::Off);
+}
+
+void PhysicsWorld::setHingeSpring(JointId id, float offset, float stiffness, float damping, float maxTorque) {
+    if (!impl_ || id >= impl_->hinges.size() || !impl_->hinges[id]) return;
+    JPH::HingeConstraint* h = impl_->hinges[id];
+    h->GetMotorSettings() = springMotor(stiffness, damping, maxTorque);
+    h->SetMotorState(JPH::EMotorState::Position);
+    h->SetTargetAngle(h->GetCurrentAngle() + offset);
 }
 
 float PhysicsWorld::jointMotorTorque(JointId id, float dt) const {

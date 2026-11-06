@@ -229,6 +229,12 @@ math::Vec3 HumanBody::centreOfMass(const physics::PhysicsWorld& world) const {
     return totalMass_ > 0.0f ? sum / totalMass_ : sum;
 }
 
+void HumanBody::reset(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root) {
+    for (const Part& p : parts_)
+        world.resetBody(p.body, root * math::toTransform(models[static_cast<size_t>(p.joint)]) * p.shape);
+    std::fill(holding_.begin(), holding_.end(), uint8_t{0});
+}
+
 math::Vec3 HumanBody::centreOfMassVelocity(const physics::PhysicsWorld& world) const {
     math::Vec3 sum(0.0f);
     for (const Part& p : parts_) sum += world.linearVelocity(p.body) * p.mass;

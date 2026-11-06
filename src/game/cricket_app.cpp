@@ -178,6 +178,8 @@ bool CricketApp::init() {
     bowlerModels_.assign(static_cast<size_t>(bowler.rig().numJoints()), math::Mat4(1.0f));
     limbTest_ = e.getBool("debug.limbTest", false);
     if (limbTest_) bowlerVisual_.setVisible(*renderer_, world_, false);
+    // Limb test: the fielder's body moves by physics (muscles and balance).
+    if (limbTest_) sim_.fielder().setPhysicsOn(true);
     // One ball: the bowler starts with it; the fielder's hand is empty (T
     // sends the ball to the fielder to pick).
     sim_.fielder().setReachTarget(ballPos_);
@@ -229,6 +231,7 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         } else if (name == "physics_world.json") {
             cfg_.physicsWorld = std::move(fresh);
             if (!sim_.initPhysics(cfg_.physicsWorld, cfg_.scene)) LOG_ERROR("reload: physics world could not be rebuilt");
+            if (limbTest_) sim_.fielder().setPhysicsOn(true);
         } else if (name == "ball_launch.json") {
             cfg_.ballLaunch = std::move(fresh);
         } else if (name == "throw.json") {
@@ -461,7 +464,9 @@ bool CricketApp::pumpEvents() {
 void CricketApp::updatePose(float seconds) {
     agents::Human& fielder = sim_.fielder();
     if (actions_.pressed(input_, core::Action::ClearReach)) {
+        // R: the targets go and the body is back at its standing pose.
         fielder.clearPose();
+        fielder.resetPhysicsBody();
         poseActive_ = false;
     }
     if (actions_.pressed(input_, core::Action::PoseLimb)) {
@@ -482,7 +487,7 @@ void CricketApp::updatePose(float seconds) {
     const bool left = poseLimb_ % 2 == 1;
     if (!poseActive_) {
         poseTarget_ = hand ? fielder.wrist(left, fielderModels_, fielder.root())
-                           : (left ? fielder.targets().footL : fielder.targets().footR);
+                           : fielder.ankle(left, fielderModels_, fielder.root());
         poseActive_ = true;
     }
     const camera::CameraPose view = camera_.pose();

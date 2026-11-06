@@ -182,10 +182,16 @@ public:
     // Hinge: about its axis (rad/s). SixDOF: in the joint's frame on body b.
     void setHingeVelocity(JointId id, float angularVelocity);
     void setSixDofVelocity(JointId id, math::Vec3 angularVelocity);
-    // SixDOF: the motor off on the chosen rotation axes of the joint's frame
-    // (they turn freely within their limits, e.g. under torques from
-    // addTorque); the other axes keep their motor.
-    void setSixDofFreeAxes(JointId id, bool x, bool y, bool z);
+    // A spring on one rotation axis of the joint's frame (SixDOF; Jolt's
+    // stiffness-and-damping motor, solved with the contacts): it pulls the
+    // axis toward `offset` rad from where it is now with `stiffness` N m/rad
+    // and `damping` N m s/rad, never harder than `maxTorque`. The other axes
+    // keep their motor. Hinge: its one axis.
+    void setSixDofAxisSpring(JointId id, int axis, float offset, float stiffness, float damping, float maxTorque);
+    void setHingeSpring(JointId id, float offset, float stiffness, float damping, float maxTorque);
+    // SixDOF: the motor off on one rotation axis of the joint's frame (it
+    // turns freely within its limits); the other axes keep their motor.
+    void setSixDofAxisFree(JointId id, int axis);
     // The torque (N m) the joint's motor applied in the last step of `dt` s.
     float jointMotorTorque(JointId id, float dt) const;
 

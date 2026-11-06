@@ -243,11 +243,10 @@ float offSupport(const MuscleRig& r) {
 
 } // namespace
 
-// Known failure (2026-11-06, step 3a): forward and back the ankles hold the
-// centre of mass within 5 mm of them; side to side nothing balances yet: the
-// body rocks on its foot edges (ankle inversion giving way, the other foot
-// rolling), each swing larger, and falls after about 3 s. Side to side is the
-// hips' load/unload job (Winter 1995): next step, the user's decision.
+// Known failure (2026-11-06, step 3a): it stands, side to side too (hips),
+// and a push no longer knocks it down, but it rests about 6 cm ahead of the
+// ankles: Jolt's ankle springs act about 60 % as stiff as Peterka's KP (at
+// twice the stiffness it comes back to 2 mm). Open: why.
 TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held" * doctest::may_fail()) {
     MuscleRig r;
     REQUIRE(r.make(true));
@@ -269,11 +268,10 @@ TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held
     CHECK(worstOff < 0.05f);                 // over the feet
 }
 
-// Known failure (2026-11-06, step 3a): forward and back the ankles hold the
-// centre of mass within 5 mm of them; side to side nothing balances yet: the
-// body rocks on its foot edges (ankle inversion giving way, the other foot
-// rolling), each swing larger, and falls after about 3 s. Side to side is the
-// hips' load/unload job (Winter 1995): next step, the user's decision.
+// Known failure (2026-11-06, step 3a): it stands, side to side too (hips),
+// and a push no longer knocks it down, but it rests about 6 cm ahead of the
+// ankles: Jolt's ankle springs act about 60 % as stiff as Peterka's KP (at
+// twice the stiffness it comes back to 2 mm). Open: why.
 TEST_CASE("balance: pushed forward, the ankles bring it back over the feet" * doctest::may_fail()) {
     MuscleRig r;
     REQUIRE(r.make(true));
@@ -297,12 +295,7 @@ TEST_CASE("balance: pushed forward, the ankles bring it back over the feet" * do
     CHECK(speed < 0.05f);
 }
 
-// Known failure (2026-11-06, step 3a): forward and back the ankles hold the
-// centre of mass within 5 mm of them; side to side nothing balances yet: the
-// body rocks on its foot edges (ankle inversion giving way, the other foot
-// rolling), each swing larger, and falls after about 3 s. Side to side is the
-// hips' load/unload job (Winter 1995): next step, the user's decision.
-TEST_CASE("balance: a forward hand reach moves the hips back, the body stays up" * doctest::may_fail()) {
+TEST_CASE("balance: a forward hand reach moves the hips back, the body stays up") {
     MuscleRig r;
     REQUIRE(r.make(true));
     const agents::HumanBody& body = r.s.human.humanBody();
@@ -322,4 +315,25 @@ TEST_CASE("balance: a forward hand reach moves the hips back, the body stays up"
     CHECK(body.height(r.s.world) > 0.95f * startHeight);
     CHECK(hipsBack > 0.0f);
     CHECK(offSupport(r) < 0.05f);
+}
+
+// The game's own loop (Human::tick with physics on, then the world's step):
+// the limb test's fielder with no target stands.
+TEST_CASE("human: physics on in the game loop, it stands 5 s") {
+    Scene s;
+    REQUIRE(makeScene(s));
+    s.human.setPhysicsOn(true);
+    const agents::HumanBody& body = s.human.humanBody();
+    const float start = body.height(s.world);
+    float lowest = start;
+    bool standing = true;
+    for (int i = 0; i < 5 * 120; ++i) {
+        s.human.tick(kTick);
+        s.world.step(kTick);
+        lowest = std::min(lowest, body.height(s.world));
+        standing = standing && s.human.balancer().standing();
+    }
+    MESSAGE("game loop, physics on: centre of mass ", start, " m, lowest ", lowest, " m in 5 s");
+    CHECK(standing);
+    CHECK(lowest > 0.95f * start);
 }

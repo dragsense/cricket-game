@@ -557,7 +557,7 @@ void Human::tick(double dt) {
     }
     // Single steps: standing still (not walking, picking or jumping), a step
     // input takes steps until the fielder walks or acts.
-    const bool standing = (phase_ == Phase::Idle || (phase_ == Phase::Pose && !poseHand_)) && walker_.speed() < 0.2f &&
+    const bool standing = (phase_ == Phase::Idle || phase_ == Phase::Pose) && walker_.speed() < 0.2f &&
                           math::length2(moveInput_) < 1e-6f && !jumper_.active();
     if (!standing) stepWalk_ = false;
     else if (math::length2(stepInput_) > 1e-6f) stepWalk_ = true;
@@ -622,17 +622,14 @@ void Human::tick(double dt) {
         (front == motion::Foot::Left ? targets_.footL : targets_.footR).y +=
             frontLift_ * (striding ? 1.0f - stepper_.swingProgress() : 1.0f);
     }
-    // Limb test with a placed foot: one solve from the body's real constraints
-    // (motion::BodyReposition) does the body and legs instead.
-    // Single steps and walking too: the swinging foot reaches, the other
-    // carries the body. (Jogging, running, jumping, picking and bowling stay
-    // on the backup repositioning for now.)
-    const bool walking = phase_ == Phase::Idle && !jumper_.active() && !followThrough_;
+    // Single steps and walking: one solve from the body's real constraints
+    // (motion::BodyReposition): the swinging foot reaches, the other carries
+    // the body. (Jogging, running, jumping, picking and bowling stay on the
+    // backup repositioning for now.) The limb test's pose is the physics
+    // body's alone: here it stands like idle.
+    const bool walking = (phase_ == Phase::Idle || phase_ == Phase::Pose) && !jumper_.active() && !followThrough_;
     if (walking && stepper_.stepping()) stepPlanted_ = 1 - stepper_.swingFoot();
-    // The limb test's hand target too (motion::BodyReposition; picking,
-    // throwing and bowling stay on the reach* functions for now).
-    const bool posedHand = phase_ == Phase::Pose && poseHand_;
-    const bool stance = stepWalk_ || walking || posedHand || (phase_ == Phase::Pose && posedFoot_ >= 0);
+    const bool stance = stepWalk_ || walking;
     if (!stance) repositionBody(static_cast<float>(dt));
     // In the air the feet leave the ground (after the body settles over them).
     // (Not in a bound: there each leg has its own path, set above.)
@@ -645,7 +642,6 @@ void Human::tick(double dt) {
     updatePick(static_cast<float>(dt));
     updateThrow(static_cast<float>(dt));
     updateBowl(static_cast<float>(dt));
-    if (phase_ == Phase::Pose && poseHand_) goal_ = math::inverse(root_).transformPoint(poseGoal_);
     // While the step-first lunge is in the air the body follows the feet the
     // usual way (repositionBody); the reach starts once the foot lands.
     const bool reachNow = phase_ == Phase::Return || phase_ == Phase::Throw || phase_ == Phase::Bowl ||
@@ -683,10 +679,14 @@ void Human::tick(double dt) {
         if (released_) releasePosition_ = ball;
         finishPick(static_cast<float>(dt));
     }
-    // The muscles drive the physics body toward this tick's planned pose.
+    // Physics on: the muscles and the balancer move the body. Off: it is
+    // held at this tick's planned pose.
     if (physics_ && humanBody_.ready()) {
         rig_.localToModel(current_, models_);
-        humanBody_.follow(*physics_, models_, root_, static_cast<float>(dt));  // held at the planned pose (for now)
+        if (physicsOn_)
+            physicsTick(static_cast<float>(dt));
+        else
+            humanBody_.follow(*physics_, models_, root_, static_cast<float>(dt));
     }
     // Shoulders carried by the chest (not the clavicle) while bowling, for
     // the bowling circles next tick; at rest otherwise.
@@ -910,13 +910,12 @@ void Human::repositionBody(float dt) {
 }
 
 void Human::repositionFromFeet() {
-    // The body follows its targets (motion::BodyReposition): the placed (or
-    // stepping) foot moves, the other stands; the limb test's hand target.
+    // The body follows its targets (motion::BodyReposition): the stepping
+    // foot moves, the other stands.
     // Targets are the player's intent: each gets as near as the body allows.
     const math::Transform toModel = math::inverse(root_);
-    const bool posed = phase_ == Phase::Pose && !poseHand_ && posedFoot_ >= 0;
     motion::BodyTargets t;
-    t.planted = posed && !stepWalk_ ? 1 - posedFoot_ : stepPlanted_;
+    t.planted = stepPlanted_;
     t.plantedAnkle = toModel.transformPoint(t.planted == 0 ? targets_.footL : targets_.footR);
     t.movingAnkle = toModel.transformPoint(t.planted == 1 ? targets_.footL : targets_.footR);
     t.down[0] = !stepper_.inAir(motion::Foot::Left);
@@ -935,8 +934,7 @@ void Human::repositionFromFeet() {
     // Hand targets: each hand swings on an arc round its shoulder opposite
     // the other leg, by that leg's thigh angle (forward as the other foot
     // steps forward; hanging with the feet together): armLegRatio of it.
-    // Positive about +X takes a hanging hand back. The limb test's hand
-    // target replaces its hand's.
+    // Positive about +X takes a hanging hand back.
     rig_.localToModel(current_, models_);
     auto thigh = [&](int hip, math::Vec3 ankle) {  // forward angle of the hip-to-ankle line (rad)
         const math::Vec3 h = modelPos(models_, hip);
@@ -951,7 +949,6 @@ void Human::repositionFromFeet() {
     t.hand[0] = t.hand[1] = true;
     t.handGoal[0] = swing(joints_.armL.start, restShoulderL_, restWristL_, legAngle[1]);
     t.handGoal[1] = swing(joints_.armR.start, restShoulderR_, restWristR_, legAngle[0]);
-    if (phase_ == Phase::Pose && poseHand_) t.handGoal[reachLeft_ ? 0 : 1] = goal_;
     bodyRepositionSettings_.kneePole = ik_.kneePole;
     bodyRepositionSettings_.elbowPole = reach_.elbowPole;
     bodyRepositionSettings_.pelvisMin = reach_.pelvisMin;
@@ -1242,7 +1239,84 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         physics_ = nullptr;
         return false;
     }
+
+    // The physics loop's parts: decider, balancer, muscle timing (config).
+    deciderJoints_.pelvis = joints_.pelvis;
+    for (int i = 0; i < 3; ++i) deciderJoints_.spine[i] = joints_.spine[i];
+    deciderJoints_.neck = rig_.findJoint("neck");
+    deciderJoints_.head = joints_.head;
+    deciderJoints_.clavicles[0] = joints_.clavicleL;
+    deciderJoints_.clavicles[1] = joints_.clavicleR;
+    deciderJoints_.legs[0] = joints_.legL;
+    deciderJoints_.legs[1] = joints_.legR;
+    deciderJoints_.arms[0] = joints_.armL;
+    deciderJoints_.arms[1] = joints_.armR;
+    if (!decider_.init(rig_, deciderJoints_)) {
+        LOG_ERROR("human: the body decider could not start");
+        return false;
+    }
+    const int foot[2] = {joints_.legL.end, joints_.legR.end};
+    const int toe[2] = {joints_.toeL, joints_.toeR};
+    BalanceSettings balance;
+    if (jointsConfig_) {
+        balance = readBalanceSettings(*jointsConfig_);
+        muscleTiming_.fittsA = jointsConfig_->getFloat("reach.fittsA", muscleTiming_.fittsA);
+        muscleTiming_.fittsB = jointsConfig_->getFloat("reach.fittsB", muscleTiming_.fittsB);
+        muscleTiming_.fittsWidth = jointsConfig_->getFloat("reach.fittsWidth", muscleTiming_.fittsWidth);
+        deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
+        const nlohmann::json& root = jointsConfig_->root();
+        if (auto d = root.find("decider"); d != root.end()) {
+            auto bands = d->find("lumbarHipBandsDeg");
+            auto ratios = d->find("lumbarHipRatio");
+            for (int i = 0; i < 3; ++i) {
+                if (bands != d->end() && bands->is_array() && bands->size() > static_cast<size_t>(i))
+                    deciderSettings_.lumbarHipBand[i] = math::radians((*bands)[static_cast<size_t>(i)].get<float>());
+                if (ratios != d->end() && ratios->is_array() && ratios->size() > static_cast<size_t>(i))
+                    deciderSettings_.lumbarHipRatio[i] = (*ratios)[static_cast<size_t>(i)].get<float>();
+            }
+        }
+    }
+    if (!balancer_.init(humanBody_, foot, toe, balance)) return false;
+    blocked_.assign(static_cast<size_t>(rig_.numJoints()), 0);
+    physicsModels_.resize(static_cast<size_t>(rig_.numJoints()));
+    physicsPose_ = rig_.restPose();
+    physicsOn_ = false;
     return true;
+}
+
+void Human::setPhysicsOn(bool on) {
+    if (!physics_ || !humanBody_.ready() || on == physicsOn_) return;
+    humanBody_.setPhysics(*physics_, on);
+    std::fill(blocked_.begin(), blocked_.end(), uint8_t{0});
+    physicsOn_ = on;
+}
+
+void Human::physicsTick(float dt) {
+    // The body's targets (character space): only the limb the limb test moves
+    // now (the user's rule); every other joint holds its angle and the rest
+    // moves only by balance. A moved foot is lifted off the ground to reach.
+    motion::BodyGoals goals;
+    if (phase_ == Phase::Pose && poseHand_ && poseHandLast_) {
+        motion::BodyGoals::Point& hand = goals.hand[reachLeft_ ? 0 : 1];
+        hand.active = true;
+        hand.position = math::inverse(root_).transformPoint(poseGoal_);
+    }
+    if (phase_ == Phase::Pose && posedFoot_ >= 0 && !poseHandLast_) {
+        const int f = posedFoot_;
+        goals.foot[f].active = true;
+        goals.foot[f].position = math::inverse(root_).transformPoint(poseFootGoal_);
+        goals.down[f] = false;
+    }
+    // The physics body now -> the decider's queue -> balance -> muscles.
+    // Jolt steps after every human has ticked (match::SimWorld).
+    humanBody_.boneModels(*physics_, 1.0f, rig_, rig_.restPose(), root_, physicsModels_);  // riders as built
+    rig_.modelToLocal(physicsModels_, physicsPose_);
+    humanBody_.blockedJoints(*physics_, queue_, physicsModels_, limits_, dt, blocked_);
+    decider_.decide(physicsPose_, goals, blocked_, deciderSettings_, queue_);
+    balancer_.plan(*physics_, humanBody_, goals.down);
+    humanBody_.compensateGravity(*physics_, balancer_.owned());
+    humanBody_.drive(*physics_, queue_, goals, deciderJoints_, physicsModels_, muscleTiming_);
+    balancer_.apply(*physics_, humanBody_);
 }
 
 math::Vec3 Human::centreOfMass() {
@@ -1710,18 +1784,27 @@ void Human::cancelCoil() {
 }
 
 void Human::setPoseHand(bool left, math::Vec3 world) {
-    if (phase_ != Phase::Idle && phase_ != Phase::Pose) return;
+    if (!physicsOn_ || (phase_ != Phase::Idle && phase_ != Phase::Pose)) return;
     phase_ = Phase::Pose;
     poseHand_ = true;
+    poseHandLast_ = true;
     reachLeft_ = left;
     poseGoal_ = world;
 }
 
 void Human::setPoseFoot(motion::Foot foot, math::Vec3 world) {
-    if (phase_ != Phase::Idle && phase_ != Phase::Pose) return;
+    if (!physicsOn_ || (phase_ != Phase::Idle && phase_ != Phase::Pose)) return;
     phase_ = Phase::Pose;
     posedFoot_ = static_cast<int>(foot);
-    stepper_.place(foot, math::inverse(root_).transformPoint(world));
+    poseHandLast_ = false;
+    poseFootGoal_ = world;
+}
+
+void Human::resetPhysicsBody() {
+    if (!physicsOn_) return;
+    rig_.localToModel(current_, models_);
+    humanBody_.reset(*physics_, models_, root_);
+    std::fill(blocked_.begin(), blocked_.end(), uint8_t{0});
 }
 
 void Human::clearPose() {
@@ -1977,7 +2060,9 @@ math::Vec3 Human::ballInHand(const std::vector<math::Mat4>& models, const math::
 
 bool Human::physicalModels(const physics::PhysicsWorld& world, float alpha, std::vector<math::Mat4>& models) const {
     if (!physics_ || !humanBody_.ready() || models.size() != static_cast<size_t>(rig_.numJoints())) return false;
-    humanBody_.boneModels(world, alpha, rig_, current_, interpolatedRoot(alpha), models);
+    // A bone without a body rides its parent as built (rest) while physics is
+    // on, as planned while the body follows the planned pose.
+    humanBody_.boneModels(world, alpha, rig_, physicsOn_ ? rig_.restPose() : current_, interpolatedRoot(alpha), models);
     return true;
 }
 

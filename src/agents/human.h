@@ -8,12 +8,14 @@
 // steady the head, reach for the hand target if there is one (standing
 // only; docs/BIOMECHANICS.md section 9), then clamp every joint to its limits.
 
+#include "agents/balancer.h"
 #include "agents/human_body.h"
 #include "ik/joint_limits.h"
 #include "ik/limb_ik.h"
 #include "math/math.h"
 #include "motion/foot_stepper.h"
 #include "motion/jump_controller.h"
+#include "motion/body_decider.h"
 #include "motion/body_reposition.h"
 #include "motion/throw_arc.h"
 #include "motion/walk_controller.h"
@@ -145,6 +147,14 @@ public:
     // ground query). After init(); again after the world is rebuilt. False if
     // the world is full.
     bool attachPhysics(physics::PhysicsWorld& world);
+    // Physics on: the body moves only by its muscles and the balancer
+    // (DESIGN "Physics body and balance"): each tick the decider reads the
+    // physics body and the limb test's targets, the balancer stands it on
+    // the feet, the muscles turn the joints, Jolt moves it. Off: the body is
+    // kinematic, placed at the planned pose. Needs attachPhysics().
+    void setPhysicsOn(bool on);
+    bool physicsOn() const { return physicsOn_; }
+    const Balancer& balancer() const { return balancer_; }
     const HumanBody& humanBody() const { return humanBody_; }
     HumanBody& humanBody() { return humanBody_; }
     const ik::JointLimits& jointLimits() const { return limits_; }
@@ -349,17 +359,24 @@ public:
     // by `tilt`; fixed while the body moves (the action point and the
     // release point are on it; the ball leaves on its tangent). Character space.
     motion::ThrowArc bowlArc(float tilt) const;
-    // Limb test (body-mechanics study): a wrist goal for one hand and the feet
-    // set directly (world space); the body follows through the reach stages
-    // and the foot repositioning, and walking waits. clearPose() puts both
-    // feet back at their rest spots and drops the hand goal.
+    // Limb test (physics only, the user's call): a wrist goal for one hand or
+    // an ankle goal for one foot (world space) for the physics body; only the
+    // limb moved last has a target, the rest holds and balances. Nothing
+    // while physics is off. clearPose() drops the goals.
     void setPoseHand(bool left, math::Vec3 world);
     void setPoseFoot(motion::Foot foot, math::Vec3 world);
     void clearPose();
+    // Physics on: every part back at the planned standing pose (the physics-off
+    // pose), at rest; the muscles hold from there.
+    void resetPhysicsBody();
     bool posing() const { return phase_ == Phase::Pose; }
     // Wrist of one hand in world space, from a model-space pose.
     math::Vec3 wrist(bool left, const std::vector<math::Mat4>& models, const math::Transform& root) const {
         return root.transformPoint(math::Vec3(models[static_cast<size_t>((left ? joints_.armL : joints_.armR).end)][3]));
+    }
+    // Ankle of one foot in world space, from a model-space pose.
+    math::Vec3 ankle(bool left, const std::vector<math::Mat4>& models, const math::Transform& root) const {
+        return root.transformPoint(math::Vec3(models[static_cast<size_t>((left ? joints_.legL : joints_.legR).end)][3]));
     }
     void setBowlSettings(const motion::BowlSettings& s) { bowl_ = s; }
     float bowlRadius() const { return motion::bowlRadius(armLength_, bowl_.elbowBend); }
@@ -502,6 +519,8 @@ private:
     RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
     int posedFoot_ = -1;  // limb test: the foot last placed (motion::Foot), -1 none
+    bool poseHandLast_ = false;  // limb test: the hand was moved after the foot (physics: only it has a target)
+    math::Vec3 poseFootGoal_{0.0f};  // limb test ankle goal, world space
     math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
     bool stepWalk_ = false;         // single steps in use (standing)
     int stepPlanted_ = 1;           // single steps: the foot carrying the body (motion::Foot)
@@ -512,6 +531,18 @@ private:
     HumanBody humanBody_;                  // the body's mass (Jolt), vertical only for now
     physics::PhysicsWorld* physics_ = nullptr;
     float restComHeight_ = 0.0f;               // m, the centre of mass above the root at rest
+    // Physics on (setPhysicsOn): decider -> balancer -> muscles each tick.
+    void physicsTick(float dt);
+    bool physicsOn_ = false;
+    motion::BodyDecider decider_;
+    motion::BodyDeciderJoints deciderJoints_;
+    motion::BodyDeciderSettings deciderSettings_;
+    motion::BodyQueue queue_;
+    Balancer balancer_;
+    MuscleTiming muscleTiming_;
+    std::vector<uint8_t> blocked_;            // per rig joint, from the last step
+    std::vector<math::Mat4> physicsModels_;   // the physics body now (character space)
+    rig::Pose physicsPose_;
     motion::BodyReposition bodyReposition_;              // limb test: body and legs from real constraints
     motion::BodyRepositionSettings bodyRepositionSettings_;
     float armLegRatio_ = 1.0f;  // a hand's swing angle per the other leg's thigh angle

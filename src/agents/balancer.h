@@ -6,11 +6,15 @@
 // feedback T = -(KP sway + KD sway rate) (Peterka 2002), the sway being the
 // body's angle about the stance ankles (the inverted pendulum's pivot); with KD/KP
 // about 1/omega0 it acts on the capture point (Hof 2008). No outside forces:
-// each torque acts on the shin and, opposite, on its foot. The ankles carry
-// the sway ahead and back; side to side the hips load and unload the legs
-// (Winter 1995). The balancer owns only the ankle's plantar/dorsiflexion; its
-// other axes stay its muscle's (holding their angle). The joint's
-// strength caps it; a torque the foot cannot carry tips the foot (Jolt).
+// each balance axis is a spring of those gains on its joint (Jolt's
+// stiffness-and-damping motor, solved with the contacts), its rest where the
+// sway is zero.
+// The ankles carry the sway ahead and back; side to side the hips load and
+// unload the legs (Winter 1995): on two feet the legs and pelvis turn as a
+// parallelogram, the hips' ab/adduction driving it and the ankles' inversion
+// free; on one foot its ankle's inversion carries it. The balancer owns only
+// those axes; the others stay their muscles' (holding their angle). A joint's
+// strength caps its torque; a torque a foot cannot carry tips it (Jolt).
 // Not yet: the hip strategy, stepping, release to free fall.
 // No allocations after init().
 
@@ -31,6 +35,8 @@ namespace agents {
 struct BalanceSettings {
     float ankleStiffness = 1066.0f;  // KP, N m/rad (Peterka 2002: 18.6 N m/deg)
     float ankleDamping = 350.0f;     // KD, N m s/rad (6.1 N m s/deg)
+    float sideStiffness = 1066.0f;   // side to side (hips on two feet), N m/rad
+    float sideDamping = 350.0f;      // N m s/rad
 };
 // Reads "balance" from human_joints.json (N m/deg there).
 BalanceSettings readBalanceSettings(const core::Config& joints);
@@ -56,17 +62,22 @@ public:
     math::Vec3 supportCentre() const { return centre_; }   // world, mean of the ground contacts
     math::Vec3 pivot() const { return pivot_; }            // world, between the stance ankles
     math::Vec3 capturePoint() const { return capture_; }   // world, at the ground's height
-    math::Vec3 ankleTorque() const { return torque_; }     // N m, on the body above the ankles (all stance feet)
+    math::Vec3 ankleTorque() const { return torque_; }     // N m, ahead/back, on the body above the ankles (all stance feet)
+    math::Vec3 sideTorque() const { return sideTorque_; }  // N m, side to side (hips on two feet, else the ankle)
 
 private:
     static constexpr int kPointsPerPart = 8;
     BalanceSettings settings_;
     int footPart_[2] = {-1, -1}, toePart_[2] = {-1, -1};
-    int swayAxis_[2] = {-1, -1};  // per ankle: its joint-frame axis of plantar/dorsiflexion, the balancer's (-1: hinge)
+    int thighPart_[2] = {-1, -1};
+    // Joint-frame axes the balancer drives (-1: a hinge): ankle
+    // plantar/dorsiflexion and inversion, hip ab/adduction.
+    int ankleAheadAxis_[2] = {-1, -1}, ankleSideAxis_[2] = {-1, -1}, hipSideAxis_[2] = {-1, -1};
     std::vector<uint8_t> owned_;
     bool stance_[2] = {false, false};
     int stanceCount_ = 0;
-    math::Vec3 centre_{0.0f}, pivot_{0.0f}, capture_{0.0f}, torque_{0.0f};
+    math::Vec3 centre_{0.0f}, pivot_{0.0f}, capture_{0.0f}, torque_{0.0f}, sideTorque_{0.0f};
+    math::Vec3 swayAhead_{0.0f}, swaySide_{0.0f};  // the sway (angle vector) ahead/back and side to side
 };
 
 } // namespace agents

@@ -85,6 +85,9 @@ public:
     // (kinematic, placed by follow), keeping each part's velocity. Idle
     // muscles take their held angles afresh.
     void setPhysics(physics::PhysicsWorld& world, bool on);
+    // Every part placed at its bone in `models` (character space of `root`),
+    // at rest; idle muscles take their held angles afresh.
+    void reset(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root);
 
     // Each muscle holds the weight of every part beyond it, away from the
     // pelvis (a torque on the part and the opposite on its parent), no harder

@@ -228,22 +228,31 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   past their ranges. `BodyDecider::limbOrders` now orders each joint's own turn (its
   parent's turn in the solve taken out; the shoulder's is unchanged). **Next:** step 3
   (the balancer; wire into the game with physics on).
-  **Step 3a in progress (2026-11-06; the user's slicing: 3a stand, 3b step, 3c release,
-  3d game wiring):** `agents::Balancer` (src/agents/balancer.*): stance = feet meant to be
-  down that touch the ground (`PhysicsWorld::groundContacts`, Jolt narrow phase: the
-  touching face's corners); the stance ankles' plantar/dorsiflexion is the balancer's
-  (`PhysicsWorld::setSixDofFreeAxes`), torque T = -(KP sway + KD sway rate) about the
-  stance ankles, Peterka 2002 (KP 18.6 N m/deg, KD 6.1 N m s/deg; human_joints.json
-  "balance"), ahead/back only (side to side is the hips', Winter 1995); a torque pair on
-  shin and foot. Muscles: an idle muscle now holds the angle it had when its last order
-  ended (the user's call), its gap closed in fittsA by the velocity motor at full
-  strength (Jolt's position spring was too soft again). Measured (tests, nothing held):
-  ahead/back the centre of mass stays within 5 mm of the ankles, joints within 0.01 rad;
-  a forward reach moves the hips back. Failing (marked may_fail): side to side nothing
-  balances yet: the body rocks on its foot edges (ankle inversion giving way, the other
-  foot rolling), growing, falls after ~3 s. **Next:** the side-to-side control (hip
-  load/unload, Winter 1995) and the hip strategy: the user's decision (hips are
-  velocity muscles; both need hip torques).
+  **Step 3a built, physics on in the limb test (2026-11-06; the user's slicing: 3a stand,
+  3b step, 3c release, 3d game wiring):** `agents::Balancer` (src/agents/balancer.*):
+  stance = feet meant to be down that touch the ground (`PhysicsWorld::groundContacts`,
+  Jolt narrow phase); sway = the body's angle about the stance ankles; Peterka 2002's
+  measured feedback (KP 18.6 N m/deg, KD 6.1 N m s/deg; human_joints.json "balance") as
+  Jolt springs (`setSixDofAxisSpring`, stiffness-and-damping motor, solved with the
+  contacts; `addTorque` made the feet chatter): ahead/back on the stance ankles'
+  plantar/dorsiflexion; side to side on two feet the hips' ab/adduction (Winter 1995's
+  load/unload, the legs and pelvis a parallelogram, ankle inversion free), on one foot
+  its ankle's inversion (side gains: Peterka's sagittal values, [E]). Muscles: an idle
+  muscle holds the angle it had when its last order ended (the user's call), the gap
+  closed in fittsA by the velocity motor. Toes got a muscle (8 N m: toe flexors 1.54 +
+  0.95 N/kg at ~4.5 cm; they flapped free). Tests (nothing held): stands 5 s, side to side
+  too; a 0.15 m/s push no longer knocks it down; a forward reach moves the hips back; the
+  game's own loop with physics on stands 5 s. Open: it rests ~6 cm ahead of the ankles
+  (standing and push tests may_fail): Jolt's ankle springs act ~60 % as stiff as KP
+  (at 2x it comes back to 2 mm); find why.
+  **Game (2026-11-06, the user's call):** the limb test is physics only: the fielder's
+  body is dynamic (`Human::setPhysicsOn`: decider -> balancer -> muscles each tick); only
+  the limb moved last has a target, the rest holds and balances; the old kinematic limb
+  test is gone (nothing while physics is off); R puts the body back at its standing pose
+  (`Human::resetPhysicsBody`). Bones without a body (clavicles, neck, fingers) ride their
+  parent as built (rest) while physics is on (they were drawn from the planned pose and
+  the shoulder came apart on screen; the physical joints hold within 0.7 mm).
+  **Next:** the spring stiffness question; then 3b stepping (one-foot stance falls).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

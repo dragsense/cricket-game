@@ -374,4 +374,11 @@ Dated log. Format: decision, reason, alternatives rejected.
     collapsed the legs (frequency mode scales by the part's own inertia).
 - **Rejected:** Peterka gains on both horizontal axes at the ankles; free ankle axes;
   Jolt's position motor for holding.
+- **Later the same day:** side to side on two feet the hips' ab/adduction balances (the
+  legs and pelvis turn as a parallelogram, ankle inversion free); on one foot the ankle's
+  inversion. The balance acts as Jolt stiffness-and-damping springs on those joint axes
+  (Peterka's KP/KD), not as added torques (the feet chattered). Toes have a muscle
+  (8 N m). The limb test is physics only (the user's call); only the limb moved last has
+  a target; R resets the body to its standing pose. Bones without a body ride their
+  parent as built while physics is on.
 
