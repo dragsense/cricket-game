@@ -115,27 +115,46 @@ void BodyDecider::handOrders(int h, const BodyGoals::Point& goal, const std::vec
 
     // Out of the arm's reach: the trunk joins from the start, each part once
     // every part before it is blocked; a part that cannot bring the shoulder
-    // closer is passed over.
+    // closer is passed over. Which part leads depends on where the target is
+    // (BIOMECHANICS 9.1, 9.3):
+    //  - below the hips: a deep bend is mostly at the hips, and the legs lower
+    //    the body (Esola et al. 1996; fielders bend the legs, section 8): pelvis
+    //    tilt, hips move, spine_01, spine_02, chest, clavicle;
+    //  - behind the shoulders: a turn is mostly thoracic: chest, spine_02,
+    //    spine_01, clavicle, pelvis, hips move;
+    //  - ahead or to the side: the shoulder girdle first, then the trunk leans,
+    //    then the whole body (Levin et al. 2001): clavicle, chest, spine_02,
+    //    spine_01, pelvis, hips move.
     const float reach = armLength_[h];
     if (math::distance(shoulder, target) <= reach) return;
+    const math::Vec3 hips = pos(joints_.pelvis) + rot(joints_.pelvis) * hipCentre_;
+    const math::Vec3 forward = rot(joints_.pelvis) * math::kForward;
+    enum Stage { Clavicle, Chest, Spine2, Spine1, Tilt, Move };
+    static constexpr Stage kLow[6] = {Tilt, Move, Spine1, Spine2, Chest, Clavicle};
+    static constexpr Stage kBehind[6] = {Chest, Spine2, Spine1, Clavicle, Tilt, Move};
+    static constexpr Stage kAhead[6] = {Clavicle, Chest, Spine2, Spine1, Tilt, Move};
+    const Stage* order = target.y < hips.y ? kLow : math::dot(target - shoulder, forward) < 0.0f ? kBehind : kAhead;
+
     bool before = true;  // every part before this one is blocked
-    const int trunk[4] = {joints_.clavicles[h], joints_.spine[2], joints_.spine[1], joints_.spine[0]};
-    for (int j : trunk) {
+    for (int k = 0; k < 6; ++k) {
+        if (order[k] == Move) {
+            // The hips move toward the hand (the planted feet stay: the legs bend).
+            add(out, joints_.pelvis, PartMove::Move, math::normalize(target - shoulder), goal.velocity, which, before);
+            // The legs carry the hips: they cannot go further once both knees are blocked.
+            before = before && isBlocked(blocked, joints_.legs[0].mid) && isBlocked(blocked, joints_.legs[1].mid);
+            continue;
+        }
+        const int j = order[k] == Clavicle ? joints_.clavicles[h]
+                    : order[k] == Chest    ? joints_.spine[2]
+                    : order[k] == Spine2   ? joints_.spine[1]
+                    : order[k] == Spine1   ? joints_.spine[0]
+                                           : joints_.pelvis;  // Tilt: the pelvis tilts at the hips
         if (j < 0) continue;
-        const Swing sw = swingToward(pos(j), shoulder, target, reach);
+        const Swing sw = swingToward(order[k] == Tilt ? hips : pos(j), shoulder, target, reach);
         if (sw.angle <= kMinAngle) continue;
         add(out, j, PartMove::Turn, sw.axis, goal.velocity, which, before);
         before = before && isBlocked(blocked, j);
     }
-    // Then the pelvis tilts at the hips.
-    const math::Vec3 hips = pos(joints_.pelvis) + rot(joints_.pelvis) * hipCentre_;
-    const Swing sw = swingToward(hips, shoulder, target, reach);
-    if (sw.angle > kMinAngle) {
-        add(out, joints_.pelvis, PartMove::Turn, sw.axis, goal.velocity, which, before);
-        before = before && isBlocked(blocked, joints_.pelvis);
-    }
-    // Then the hips move toward the hand (the planted feet stay: the legs bend).
-    add(out, joints_.pelvis, PartMove::Move, math::normalize(target - shoulder), goal.velocity, which, before);
 }
 
 void BodyDecider::footOrders(int i, const BodyGoals& goals, const std::vector<uint8_t>& blocked,

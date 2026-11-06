@@ -1,6 +1,7 @@
 // Tests for the body's decider: a hand target out of the arm's reach queues
-// the parts in real body order (arm, then clavicle, chest, spine, pelvis
-// tilt, hips move), each joining only once every part before it is blocked.
+// the parts in real body order, led by where the target is (ahead: clavicle
+// first; at the feet: the hips first), each joining only once every part
+// before it is blocked.
 #include "core/config.h"
 #include "motion/body_decider.h"
 #include "rig/rig.h"
@@ -58,11 +59,11 @@ bool active(const motion::BodyQueue& q, int index) { return q.orders[static_cast
 
 } // namespace
 
-TEST_CASE("body decider: a far hand target queues arm, trunk, pelvis, hips in body order") {
+TEST_CASE("body decider: a far hand target ahead queues arm, clavicle, trunk, pelvis, hips in body order") {
     Fixture f;
     motion::BodyGoals goals;
     goals.hand[0].active = true;
-    goals.hand[0].position = f.pos(f.joints.arms[0].start) + Vec3(0.0f, -0.5f, 1.5f);  // far ahead and lower
+    goals.hand[0].position = f.pos(f.joints.arms[0].start) + Vec3(0.0f, 0.0f, 1.5f);  // far ahead at shoulder height
     const motion::BodyDeciderSettings s;
     motion::BodyQueue q;
     f.decider.decide(f.rig.restPose(), goals, f.blocked, s, q);
@@ -104,4 +105,33 @@ TEST_CASE("body decider: a far hand target queues arm, trunk, pelvis, hips in bo
     CHECK(find(q, f.joints.clavicles[0]) < 0);
     CHECK(find(q, f.joints.pelvis) < 0);
     CHECK(find(q, f.joints.pelvis, motion::PartMove::Move) < 0);
+}
+
+TEST_CASE("body decider: a ball at the feet leads with the hips, the clavicle last") {
+    Fixture f;
+    motion::BodyGoals goals;
+    goals.hand[0].active = true;
+    goals.hand[0].position = Vec3(f.pos(f.joints.legs[0].end).x, 0.05f, 0.35f);  // on the ground ahead of the left foot
+    const motion::BodyDeciderSettings s;
+    motion::BodyQueue q;
+    f.decider.decide(f.rig.restPose(), goals, f.blocked, s, q);
+
+    const int tilt = find(q, f.joints.pelvis), lower = find(q, f.joints.pelvis, motion::PartMove::Move);
+    const int spine1 = find(q, f.joints.spine[0]), chest = find(q, f.joints.spine[2]);
+    REQUIRE(tilt >= 0);
+    REQUIRE(lower >= 0);
+    REQUIRE(spine1 >= 0);
+    CHECK(tilt < lower);
+    CHECK(lower < spine1);
+    if (chest >= 0) CHECK(spine1 < chest);
+    CHECK(active(q, tilt));         // the hips lead
+    CHECK_FALSE(active(q, lower));  // the legs wait for the hips
+    CHECK_FALSE(active(q, spine1));
+    CHECK(q.orders[static_cast<size_t>(lower)].direction.y < -0.5f);  // the hips go down
+
+    // The hips blocked: the legs lower the body; the spine still waits for the knees.
+    f.blocked[static_cast<size_t>(f.joints.pelvis)] = 1;
+    f.decider.decide(f.rig.restPose(), goals, f.blocked, s, q);
+    CHECK(active(q, find(q, f.joints.pelvis, motion::PartMove::Move)));
+    CHECK_FALSE(active(q, find(q, f.joints.spine[0])));
 }

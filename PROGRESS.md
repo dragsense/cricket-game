@@ -188,10 +188,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   pose. **Step 1 built (2026-11-06):** `motion::BodyDecider` (src/motion/body_decider.*):
   7 targets (`BodyGoals`: hands, feet, hips, chest, head, each with its own velocity),
   per-joint `blocked` flags in, a fixed-size `BodyQueue` out (joint, turn or move,
-  direction, the target's velocity, active); hand: arm, then (out of reach) clavicle →
-  chest → spine_02 → spine_01 → pelvis tilt → hips move; chest, head, foot, push-off,
-  hips. Not wired into the game yet. Test: tests/test_body_decider.cpp (far hand target:
-  order, cascade on blocked, near target arm only). `math::rotationVector` added
+  direction, the target's velocity, active); hand: arm, then (out of reach) the trunk led
+  by where the target is (below the hips: pelvis tilt → hips lower → spine → chest →
+  clavicle; behind: chest first; ahead/side: clavicle → chest → spine → pelvis → hips;
+  BIOMECHANICS 9.1/9.3); chest, head, foot, push-off, hips. Not wired into the game yet.
+  Test: tests/test_body_decider.cpp (far target ahead, ball at the feet, cascade on
+  blocked, near target arm only). Real parts overlap with shares (Esola 1996, Levin
+  2001); the queue is step by step for now: the overlap is a speed split (step 2). `math::rotationVector` added
   (clampRotationVector uses it); cricket_motion now links cricket_ik.
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in

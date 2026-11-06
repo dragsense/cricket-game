@@ -11,9 +11,13 @@
 // Real body order (BIOMECHANICS 3.1, 9.1; trunk-assisted reaching, Kaminski
 // et al. 1995):
 //  Hand: shoulder and elbow (two-bone IK, elbow back and out). Out of the
-//   arm's reach the trunk joins from the start: the clavicle, then chest,
-//   spine_02, spine_01, then the pelvis tilts at the hips, then the hips move
-//   toward the hand; each joins when every part before it is blocked.
+//   arm's reach the trunk joins from the start, each next part once every
+//   part before it is blocked, led by where the target is (BIOMECHANICS 9.1,
+//   9.3): below the hips the pelvis tilts first, then the hips lower (legs
+//   bend), then spine_01, spine_02, chest, clavicle; behind the shoulders the
+//   chest turns first, then spine_02, spine_01, clavicle, pelvis, hips; ahead
+//   or to the side the clavicle first, then chest, spine_02, spine_01, pelvis
+//   tilt, hips move.
 //  Chest: chest, spine_02, spine_01, then the pelvis, the same way.
 //  Head: head, then neck.
 //  Foot (an active foot target): hip and knee (two-bone IK, knee forward);
