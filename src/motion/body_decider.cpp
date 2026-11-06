@@ -203,13 +203,20 @@ void BodyDecider::footOrders(int i, const BodyGoals& goals, const std::vector<ui
 void BodyDecider::limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, math::Vec3 pole, math::Vec3 velocity,
                              Goal goal, BodyQueue& out) {
     // The turns a two-bone solve would make give the directions (only those).
+    // Each joint's own turn, relative to its parent (what its muscle turns):
+    // the bone's turn with its parent's turn in the solve taken out (the
+    // elbow's or knee's without the shoulder's or hip's), in character space.
     const size_t a = static_cast<size_t>(chain.start), b = static_cast<size_t>(chain.mid);
     const math::Transform keepA = scratch_.locals[a], keepB = scratch_.locals[b];
     if (ik::solveTwoBone(chain, models_, target, pole, 1.0f, scratch_) && rig_->localToModel(scratch_, solved_)) {
         for (int j : {chain.start, chain.mid}) {
+            const int parent = rig_->parent(j);
             const math::Quat now = rot(j);
             const math::Quat then = math::toTransform(solved_[static_cast<size_t>(j)]).rotation;
-            const math::Vec3 axis = axisOf(then * math::inverse(now));
+            const math::Quat parentTurn =
+                parent >= 0 ? math::toTransform(solved_[static_cast<size_t>(parent)]).rotation * math::inverse(rot(parent))
+                            : math::identityQuat();
+            const math::Vec3 axis = axisOf(math::inverse(parentTurn) * then * math::inverse(now));
             if (math::length(axis) > 0.0f) add(out, j, PartMove::Turn, axis, velocity, goal, true);
         }
     }

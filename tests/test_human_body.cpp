@@ -191,11 +191,11 @@ TEST_CASE("human body muscles: with no target every joint holds its pose (no sag
     CHECK(worst < 0.05f);
 }
 
-// Known failure (2026-11-06): the wrist ends 0.82 m from a target 0.32 m away
-// (it moves away): a sign or frame mix-up between the order's direction and
-// the motor's velocity (joint frame on body b). Next session: measure each
-// joint's commanded vs. actual angular velocity (PROGRESS).
-TEST_CASE("human body muscles: a hand target within reach is reached, pelvis held" * doctest::may_fail()) {
+// Was failing (2026-11-06, wrist 0.82 m off): the decider ordered the elbow
+// to repeat the shoulder's turn (the bone's world turn, not its own), about
+// axes the elbow does not have; its motor pushed at full strength into the
+// locked axis and the leak spun the twists out of range.
+TEST_CASE("human body muscles: a hand target within reach is reached, pelvis held") {
     MuscleRig r;
     REQUIRE(r.make());
     r.s.human.physicalModels(r.s.world, 1.0f, r.models);
