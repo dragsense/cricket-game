@@ -185,7 +185,15 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   always wins); physics on only for players in the play. **Next:** 1 the decider next to
   BodyReposition (exact keep/remove list agreed); 2 muscles: velocity motors with real
   strength + gravity compensation; 3 balancer; 4 free fall and recovery from the landed
-  pose. Balance is part of M6 (the user's call). The backups were deleted; the formula
+  pose. **Step 1 built (2026-11-06):** `motion::BodyDecider` (src/motion/body_decider.*):
+  7 targets (`BodyGoals`: hands, feet, hips, chest, head, each with its own velocity),
+  per-joint `blocked` flags in, a fixed-size `BodyQueue` out (joint, turn or move,
+  direction, the target's velocity, active); hand: arm, then (out of reach) clavicle →
+  chest → spine_02 → spine_01 → pelvis tilt → hips move; chest, head, foot, push-off,
+  hips. Not wired into the game yet. Test: tests/test_body_decider.cpp (far hand target:
+  order, cascade on blocked, near target arm only). `math::rotationVector` added
+  (clampRotationVector uses it); cricket_motion now links cricket_ik.
+  Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).
 - [~] **Muscles** (2026-11-05, in progress): each joint's Jolt motor drives it toward

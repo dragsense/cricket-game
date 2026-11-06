@@ -107,6 +107,16 @@ inline float angleBetween(Quat a, Quat b) {
     return 2.0f * std::acos(c > 1.0f ? 1.0f : c);
 }
 
+// Rotation vector of q (unit axis * angle in radians, shortest arc); zero for
+// no rotation.
+inline Vec3 rotationVector(Quat q) {
+    if (q.w < 0.0f) q = -q;
+    const Vec3 v(q.x, q.y, q.z);
+    const float s = glm::length(v);
+    if (s < kEpsilon) return Vec3(0.0f);
+    return v * (2.0f * std::atan2(s, q.w) / s);
+}
+
 // Splits q into q = swing * twist, where `twist` rotates about `unitAxis` and
 // `swing` rotates about an axis perpendicular to it. Used for joint limits
 // (e.g. forearm twist vs. elbow bend).

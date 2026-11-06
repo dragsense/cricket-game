@@ -59,6 +59,7 @@ cricket_warnings(cricket_ik)
 
 # ---- motion: procedural body motion (own code) ------------------------------------
 add_library(cricket_motion STATIC
+    src/motion/body_decider.cpp
     src/motion/body_reposition.cpp
     src/motion/foot_stepper.cpp
     src/motion/jump_controller.cpp
@@ -66,7 +67,7 @@ add_library(cricket_motion STATIC
     src/motion/throw_arc.cpp
     src/motion/walk_controller.cpp
 )
-target_link_libraries(cricket_motion PUBLIC cricket_core)
+target_link_libraries(cricket_motion PUBLIC cricket_ik)
 cricket_warnings(cricket_motion)
 
 # ---- physics: Jolt behind our own thin interface; our sphere solver; ball setup ----
@@ -143,9 +144,10 @@ if(CRICKET_BUILD_TESTS)
     cricket_warnings(ik_tests)
     add_test(NAME ik_tests COMMAND ik_tests)
 
-    add_executable(motion_tests tests/test_main.cpp tests/test_stepping.cpp tests/test_walk.cpp tests/test_reach.cpp)
+    add_executable(motion_tests tests/test_main.cpp tests/test_body_decider.cpp tests/test_stepping.cpp tests/test_walk.cpp tests/test_reach.cpp)
     target_link_libraries(motion_tests PRIVATE cricket_motion doctest::doctest)
     cricket_warnings(motion_tests)
+    target_compile_definitions(motion_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
     add_test(NAME motion_tests COMMAND motion_tests)
 
     add_executable(agents_tests tests/test_main.cpp tests/test_human.cpp tests/test_ball_feeder.cpp

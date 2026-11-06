@@ -27,12 +27,7 @@ Swing swingToward(math::Vec3 pivot, math::Vec3 end, math::Vec3 target, float rea
 }
 
 math::Quat clampRotationVector(math::Quat q, math::Vec3 min, math::Vec3 max) {
-    if (q.w < 0.0f) q = -q;  // shortest arc
-    const math::Vec3 v(q.x, q.y, q.z);
-    const float s = math::length(v);
-    if (s < math::kEpsilon) return math::identityQuat();
-    const math::Vec3 rv = v * (2.0f * std::atan2(s, q.w) / s);
-    const math::Vec3 c = math::clamp(rv, min, max);
+    const math::Vec3 c = math::clamp(math::rotationVector(q), min, max);
     const float angle = math::length(c);
     return angle < math::kEpsilon ? math::identityQuat() : math::fromAxisAngle(c / angle, angle);
 }

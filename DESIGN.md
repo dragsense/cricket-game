@@ -305,7 +305,7 @@ arm, Step 2.1); left click places the target (the ball), R clears it.
 previous/current transform per body for interpolation, preallocated temp allocator
 (no per-tick heap use), single-threaded job system by default. Jolt stays inside the .cpp.
 
-### Physics body and balance (M6): designed 2026-11-06, not built
+### Physics body and balance (M6): designed 2026-11-06; decider built (`motion::BodyDecider`), not wired
 The body moves only by forces. Nothing places a part while its physics is on. See
 DECISIONS 2026-11-06 and docs/BIOMECHANICS.md 14.
 ```
