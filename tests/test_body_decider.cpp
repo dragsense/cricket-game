@@ -95,7 +95,7 @@ TEST_CASE("body decider: a far hand target ahead: every part moves at once, shar
     }
     CHECK(shareOf(q, clavicle) > shareOf(q, chest));
     CHECK(shareOf(q, chest) > shareOf(q, spine1));
-    CHECK(shareOf(q, spine1) > shareOf(q, tilt));
+    CHECK(shareOf(q, spine1) / shareOf(q, tilt) == doctest::Approx(1.9f));  // measured split (upright)
     CHECK(shareOf(q, tilt) > shareOf(q, move));
     CHECK(trunkShares(f, q) == doctest::Approx(1.0f));
     CHECK(q.orders[static_cast<size_t>(move)].direction.z > 0.9f);  // the hips go toward the hand
@@ -118,7 +118,7 @@ TEST_CASE("body decider: a far hand target ahead: every part moves at once, shar
     CHECK(find(q, f.joints.pelvis, motion::PartMove::Move) < 0);
 }
 
-TEST_CASE("body decider: a ball at the feet: the hips carry the most, the clavicle the least") {
+TEST_CASE("body decider: a ball at the feet: the back and hips split by the measured lumbopelvic rhythm") {
     Fixture f;
     motion::BodyGoals goals;
     goals.hand[0].active = true;
@@ -132,11 +132,21 @@ TEST_CASE("body decider: a ball at the feet: the hips carry the most, the clavic
     REQUIRE(tilt >= 0);
     REQUIRE(lower >= 0);
     REQUIRE(spine1 >= 0);
-    CHECK(shareOf(q, tilt) > shareOf(q, lower));
-    CHECK(shareOf(q, lower) > shareOf(q, spine1));
-    if (clavicle >= 0) CHECK(shareOf(q, clavicle) < shareOf(q, spine1));
+    for (int i = 0; i < q.count; ++i) CHECK(active(q, i));
+    // Standing upright (flexion < 30 deg): the back moves 1.9 times the hips (Esola 1996).
+    CHECK(shareOf(q, spine1) / shareOf(q, tilt) == doctest::Approx(1.9f));
+    if (clavicle >= 0) CHECK(shareOf(q, clavicle) < shareOf(q, tilt));  // last in the queue: the least
     CHECK(trunkShares(f, q) == doctest::Approx(1.0f));
     CHECK(q.orders[static_cast<size_t>(lower)].direction.y < -0.5f);  // the hips go down
+
+    // Bent deep (70 deg at the hips): the hips move 2.5 times the back (ratio 0.4).
+    rig::Pose bent = f.rig.restPose();
+    bent.locals[static_cast<size_t>(f.joints.pelvis)].rotation = math::fromAxisAngle(math::kRight, math::radians(70.0f));
+    f.decider.decide(bent, goals, f.blocked, s, q);
+    REQUIRE(find(q, f.joints.spine[0]) >= 0);
+    REQUIRE(find(q, f.joints.pelvis) >= 0);
+    CHECK(shareOf(q, find(q, f.joints.spine[0])) / shareOf(q, find(q, f.joints.pelvis)) == doctest::Approx(0.4f));
+    CHECK(trunkShares(f, q) == doctest::Approx(1.0f));
 
     // Both knees blocked: the legs cannot lower the hips; the rest share it.
     f.blocked[static_cast<size_t>(f.joints.legs[0].mid)] = 1;

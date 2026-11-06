@@ -355,3 +355,5 @@ Dated log. Format: decision, reason, alternatives rejected.
   (the first the most, the last very little; `decider.queueShare`), and a blocked part's
   share goes to the rest. The queue's order depends on where the target is (below the
   hips: the hips lead; behind: the chest; ahead or to the side: the clavicle).
+  Where research measured a split it replaces the place share (the user's call): the
+  lumbar spine and the hips by the lumbopelvic rhythm (Esola et al. 1996).

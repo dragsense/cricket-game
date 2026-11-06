@@ -195,8 +195,10 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   hips lower, spine, chest, clavicle; behind: chest first; ahead/side: clavicle first;
   BIOMECHANICS 9.1/9.3); chest and head share the same way; foot, push-off, hips. Not
   wired into the game yet. Test: tests/test_body_decider.cpp (target ahead, ball at the
-  feet, shares, blocked parts, near target arm only). Later: measured ratios where
-  research has them (spine : hips, Esola 1996) instead of the fixed share.
+  feet, shares, blocked parts, near target arm only). Measured ratios replace the place
+  share where research has them: in a bend spine_01 : pelvis tilt by the lumbopelvic
+  rhythm at the trunk's flexion (Esola 1996: 1.9 / 0.9 / 0.4 per 30 deg band;
+  `decider.lumbarHipRatio`).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

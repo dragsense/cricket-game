@@ -3,6 +3,7 @@
 #include "motion/reach.h"
 
 #include <cassert>
+#include <cmath>
 
 namespace motion {
 
@@ -137,6 +138,7 @@ void BodyDecider::handOrders(int h, const BodyGoals::Point& goal, const std::vec
     const Stage* order = target.y < hips.y ? kLow : math::dot(target - shoulder, forward) < 0.0f ? kBehind : kAhead;
 
     const int first = out.count;
+    int lumbar = -1, tilt = -1;  // their orders, for the measured split
     for (int k = 0; k < 6; ++k) {
         if (order[k] == Move) {
             // The legs move the hips toward the hand (the planted feet stay:
@@ -154,9 +156,27 @@ void BodyDecider::handOrders(int h, const BodyGoals::Point& goal, const std::vec
         if (j < 0) continue;
         const Swing sw = swingToward(order[k] == Tilt ? hips : pos(j), shoulder, target, reach);
         if (sw.angle <= kMinAngle) continue;
+        if (order[k] == Spine1) lumbar = out.count;
+        if (order[k] == Tilt) tilt = out.count;
         add(out, j, PartMove::Turn, sw.axis, goal.velocity, which, false, isBlocked(blocked, j) ? 0.0f : 1.0f);
     }
     shareQueue(first, s, out);
+
+    // A bend (not a turn): the lumbar spine and the hips split their combined
+    // share by the measured lumbopelvic rhythm at the trunk's flexion now.
+    if (order != kBehind && lumbar >= 0 && tilt >= 0 && joints_.spine[2] >= 0) {
+        PartOrder& l = out.orders[static_cast<size_t>(lumbar)];
+        PartOrder& p = out.orders[static_cast<size_t>(tilt)];
+        if (l.share > 0.0f && p.share > 0.0f) {
+            const math::Vec3 trunk = math::safeNormalize(pos(joints_.spine[2]) - pos(joints_.pelvis), math::kUp);
+            const float flexion = std::acos(math::clamp(math::dot(trunk, math::kUp), -1.0f, 1.0f));
+            int band = 0;
+            while (band < 2 && flexion > s.lumbarHipBand[band]) ++band;
+            const float ratio = s.lumbarHipRatio[band], both = l.share + p.share;
+            l.share = both * ratio / (1.0f + ratio);
+            p.share = both / (1.0f + ratio);
+        }
+    }
 }
 
 void BodyDecider::footOrders(int i, const BodyGoals& goals, const std::vector<uint8_t>& blocked,

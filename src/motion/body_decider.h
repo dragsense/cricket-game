@@ -15,7 +15,10 @@
 //   together (real parts overlap, BIOMECHANICS 9.6), each with a share by its
 //   place in the queue, the first the most, the last very little (queueShare);
 //   a blocked part's share goes to the rest. The queue is led by where the
-//   target is (BIOMECHANICS 9.1, 9.3): below the hips the pelvis tilt, the
+//   target is (BIOMECHANICS 9.1, 9.3). Where research measured a split it
+//   replaces the place share: in a bend the lumbar spine and the hips share by
+//   the lumbopelvic rhythm at the trunk's flexion (Esola et al. 1996): the
+//   back more early, the hips more as the bend deepens. Below the hips the pelvis tilt, the
 //   hips lowering (legs bend), spine_01, spine_02, chest, clavicle; behind the
 //   shoulders the chest, spine_02, spine_01, clavicle, pelvis, hips; ahead or
 //   to the side the clavicle, chest, spine_02, spine_01, pelvis tilt, hips.
@@ -93,6 +96,11 @@ struct BodyDeciderSettings {
     // human_joints.json "decider.queueShare": each next part in a queue
     // carries this times the share of the part before it.
     float queueShare = 0.5f;
+    // human_joints.json "decider": the measured lumbopelvic rhythm (Esola et
+    // al. 1996): lumbar : hip ratio per band of trunk flexion (upper bounds,
+    // rad); it splits the lumbar spine's and the pelvis tilt's combined share.
+    float lumbarHipBand[3] = {0.5236f, 1.0472f, 1.5708f};  // 30, 60, 90 deg
+    float lumbarHipRatio[3] = {1.9f, 0.9f, 0.4f};
 };
 
 class BodyDecider {

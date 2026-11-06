@@ -151,7 +151,14 @@
   // share of the part before it (normalised; a blocked part's share goes to the
   // rest). 0.5 is a starting value, not a measured one.
   "decider": {
-    "queueShare": 0.5
+    "queueShare": 0.5,
+    // Where research measured the split, it replaces the place share: in a
+    // forward bend the lumbar spine (spine_01) and the hips (pelvis tilt) move
+    // together, lumbar : hip ratio per band of trunk flexion (upper bound,
+    // deg): 1.9 up to 30, 0.9 to 60, 0.4 to 90 (Esola et al. 1996,
+    // BIOMECHANICS 9.1). Their combined place share is split by it.
+    "lumbarHipBandsDeg": [30, 60, 90],
+    "lumbarHipRatio": [1.9, 0.9, 0.4]
   },
   "bodyReposition": {
     "legReach": 1.0,         // a leg reaches at most its real length (thigh + shin)
