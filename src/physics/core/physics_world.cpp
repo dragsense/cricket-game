@@ -17,6 +17,9 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollideShape.h>
+#include <Jolt/Physics/Collision/CollisionCollector.h>
+#include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
 #include <Jolt/Physics/Collision/GroupFilterTable.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -579,6 +582,15 @@ void PhysicsWorld::setSixDofVelocity(JointId id, math::Vec3 angularVelocity) {
     x->SetTargetAngularVelocityCS(toJolt(angularVelocity));
 }
 
+void PhysicsWorld::setSixDofFreeAxes(JointId id, bool x, bool y, bool z) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
+    JPH::SixDOFConstraint* c = impl_->sixDofs[id];
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    if (x) c->SetMotorState(A::RotationX, JPH::EMotorState::Off);
+    if (y) c->SetMotorState(A::RotationY, JPH::EMotorState::Off);
+    if (z) c->SetMotorState(A::RotationZ, JPH::EMotorState::Off);
+}
+
 float PhysicsWorld::jointMotorTorque(JointId id, float dt) const {
     if (!impl_ || id >= impl_->hinges.size() || dt <= 0.0f) return 0.0f;
     if (const JPH::HingeConstraint* h = impl_->hinges[id]) return std::fabs(h->GetTotalLambdaMotor()) / dt;
@@ -620,6 +632,46 @@ float PhysicsWorld::groundHeightAt(math::Vec3 point) const {
 math::Vec3 PhysicsWorld::aboveGround(math::Vec3 point, float clearance) const {
     point.y = std::max(point.y, groundHeightAt(point) + clearance);
     return point;
+}
+
+int PhysicsWorld::groundContacts(BodyId id, math::Vec3* out, int capacity) const {
+    const Impl::Slot* s = impl_ ? impl_->slot(id) : nullptr;
+    if (!s || !out || capacity <= 0) return 0;
+    const JPH::BodyInterface& bodies = impl_->system.GetBodyInterfaceNoLock();
+    const JPH::RefConst<JPH::Shape> shape = bodies.GetShape(s->body);
+    if (!shape) return 0;
+    const float reach = impl_->settings.speculativeContactDistance;
+    JPH::CollideShapeSettings settings;
+    settings.mMaxSeparationDistance = reach;
+    settings.mCollectFacesMode = JPH::ECollectFacesMode::CollectFaces;
+    // The deepest touch against the static ground, with the body's touching face.
+    struct Collector final : JPH::CollideShapeCollector {
+        JPH::CollideShapeResult best;
+        bool hit = false;
+        void AddHit(const JPH::CollideShapeResult& r) override {
+            if (!hit || r.mPenetrationDepth > best.mPenetrationDepth) {
+                best = r;
+                hit = true;
+            }
+        }
+    } collector;
+    const JPH::SpecifiedObjectLayerFilter staticOnly(kLayerStatic);
+    impl_->system.GetNarrowPhaseQueryNoLock().CollideShape(shape, JPH::Vec3::sOne(),
+                                                           bodies.GetCenterOfMassTransform(s->body), settings,
+                                                           JPH::RVec3::sZero(), collector, {}, staticOnly);
+    if (!collector.hit) return 0;
+    // The face's corners that lie on the ground: no further from the ground's
+    // contact plane than the speculative distance.
+    const JPH::CollideShapeResult& r = collector.best;
+    const JPH::Vec3 normal = r.mPenetrationAxis.NormalizedOr(JPH::Vec3::sAxisY());  // into the ground
+    const JPH::Vec3 onGround(r.mContactPointOn2);
+    int count = 0;
+    for (const JPH::Vec3& corner : r.mShape1Face) {
+        if (count >= capacity) break;
+        if (normal.Dot(corner - onGround) >= -reach) out[count++] = fromJolt(corner);
+    }
+    if (count == 0) out[count++] = fromJolt(onGround);
+    return count;
 }
 
 bool PhysicsWorld::awake(BodyId id) const {

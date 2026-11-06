@@ -94,6 +94,7 @@ add_executable(CricketGame
     src/match/sim_world.cpp
     src/agents/human.cpp
     src/agents/human_body.cpp
+    src/agents/balancer.cpp
     src/game/human_visual.cpp
     src/debug/skeleton_debug.cpp
     src/debug/axis_gizmo.cpp
@@ -151,7 +152,8 @@ if(CRICKET_BUILD_TESTS)
     add_test(NAME motion_tests COMMAND motion_tests)
 
     add_executable(agents_tests tests/test_main.cpp tests/test_human.cpp tests/test_ball_feeder.cpp
-        tests/test_human_body.cpp src/agents/human.cpp src/agents/human_body.cpp src/game/ball_feeder.cpp)
+        tests/test_human_body.cpp src/agents/human.cpp src/agents/human_body.cpp src/agents/balancer.cpp
+        src/game/ball_feeder.cpp)
     target_link_libraries(agents_tests PRIVATE cricket_ik cricket_motion cricket_physics doctest::doctest)
     target_include_directories(agents_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_definitions(agents_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")

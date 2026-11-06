@@ -357,3 +357,21 @@ Dated log. Format: decision, reason, alternatives rejected.
   hips: the hips lead; behind: the chest; ahead or to the side: the clavicle).
   Where research measured a split it replaces the place share (the user's call): the
   lumbar spine and the hips by the lumbopelvic rhythm (Esola et al. 1996).
+
+## 2026-11-06: Standing balance (step 3a): ankles by Peterka, idle muscles hold their angle
+- **Decision:**
+  - The stance ankles' torque is the measured human ankle feedback T = -(KP θ + KD θ̇)
+    (Peterka 2002: KP 18.6 N m/deg, KD 6.1 N m s/deg; KD/KP 0.33 s ≈ 1/ω₀, so it acts on
+    the capture point), θ the body's sway about the stance ankles (the inverted
+    pendulum's pivot; not the contact centre, which jumped and sat 14 cm ahead of them).
+  - Ahead/back only: side to side the hips load and unload the legs (Winter 1995); a
+    5.5 cm foot tips under side torques at the ankle.
+  - The balancer owns only the ankle's plantar/dorsiflexion; its other axes stay with
+    its muscle (releasing them let the body yaw and rock).
+  - An idle muscle (no order) holds the angle it had when its last order ended (the
+    user's call), the gap closed in fittsA by the velocity motor at full strength. A
+    velocity servo at 0 alone crept (spine 0.28 rad in 4.5 s); Jolt's position spring
+    collapsed the legs (frequency mode scales by the part's own inertia).
+- **Rejected:** Peterka gains on both horizontal axes at the ankles; free ankle axes;
+  Jolt's position motor for holding.
+

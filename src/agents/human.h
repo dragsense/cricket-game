@@ -146,6 +146,7 @@ public:
     // the world is full.
     bool attachPhysics(physics::PhysicsWorld& world);
     const HumanBody& humanBody() const { return humanBody_; }
+    HumanBody& humanBody() { return humanBody_; }
     const ik::JointLimits& jointLimits() const { return limits_; }
     // Re-reads config/locomotion.json without moving the fielder.
     void loadLocomotion(const core::Config& locomotion);

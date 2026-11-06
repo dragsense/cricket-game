@@ -82,28 +82,31 @@ public:
     void setTargets(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const;
 
     // Physics on (every part dynamic: gravity, muscles, contacts) or off
-    // (kinematic, placed by follow), keeping each part's velocity.
-    void setPhysics(physics::PhysicsWorld& world, bool on) const;
+    // (kinematic, placed by follow), keeping each part's velocity. Idle
+    // muscles take their held angles afresh.
+    void setPhysics(physics::PhysicsWorld& world, bool on);
 
     // Each muscle holds the weight of every part beyond it, away from the
     // pelvis (a torque on the part and the opposite on its parent), no harder
     // than its strength. Right for limbs held off the trunk; standing legs
     // carry the body from the feet (the balance's job, later). Call before
-    // drive. No allocations.
-    void compensateGravity(physics::PhysicsWorld& world) const;
+    // drive. `owned` (one entry per part, may be null): parts whose joint
+    // the balancer drives (a stance ankle), left out. No allocations.
+    void compensateGravity(physics::PhysicsWorld& world, const uint8_t* owned = nullptr) const;
 
     // The muscles from the decider's queue. Each active turn order turns its
     // joint along its direction at its share of the speed that closes its
     // target's gap in Fitts' time plus the target's own motion, as that joint
     // sees it (the end's needed velocity across the joint's lever; a turn
-    // target: its angular gap). A joint with no order holds (velocity 0).
+    // target: its angular gap). A joint with no order holds the angle it had
+    // when its last order ended (its motor toward that angle).
     // Each motor pulls no harder than the strength left after holding the
     // weight. A joint riding its parent (clavicle, neck) has no muscle of its
     // own; the hips' moves are the legs' and the balance's (later). `models`:
     // the physics body now (character space). No allocations.
     void drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
                const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
-               const MuscleTiming& timing) const;
+               const MuscleTiming& timing);
 
     // The joints that cannot go further the way their orders pull: at their
     // limit (measured the way Jolt's joints are, ik::clampRotation), with no
@@ -122,13 +125,23 @@ public:
     // Centre of mass of all parts (world) after the last step; its height.
     math::Vec3 centreOfMass(const physics::PhysicsWorld& world) const;
     float height(const physics::PhysicsWorld& world) const { return centreOfMass(world).y; }
+    // Velocity of the centre of mass (world, m/s) after the last step.
+    math::Vec3 centreOfMassVelocity(const physics::PhysicsWorld& world) const;
+    // The part a rig joint's bone belongs to (-1: it rides its parent).
+    int partOf(int joint) const { return joint >= 0 && joint < static_cast<int>(partOf_.size()) ? partOf_[static_cast<size_t>(joint)] : -1; }
 
 private:
     std::vector<Part> parts_;
     std::vector<int> partOf_;  // per rig joint: its part, -1 if it rides
     float totalMass_ = 0.0f;
+    // Per part: holding an angle (no order since it was taken) and the angle
+    // (joint frame as created: SixDOF rotation, hinge angle).
+    std::vector<uint8_t> holding_;
+    std::vector<math::Quat> heldRotation_;
+    std::vector<float> heldAngle_;
     // Scratch, sized at init (no per-step allocation; mutable: not the body's state).
     mutable std::vector<math::Vec3> omega_;         // per part: its muscle's angular velocity (character space)
+    std::vector<uint8_t> ordered_;                  // per part: an order turns it this step
     mutable std::vector<float> hold_;               // per part: the torque its muscle spends holding the weight (N m)
     mutable std::vector<float> beyondMass_;         // per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // per part: their mass x centre of mass (world)

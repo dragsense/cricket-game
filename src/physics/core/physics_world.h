@@ -182,6 +182,10 @@ public:
     // Hinge: about its axis (rad/s). SixDOF: in the joint's frame on body b.
     void setHingeVelocity(JointId id, float angularVelocity);
     void setSixDofVelocity(JointId id, math::Vec3 angularVelocity);
+    // SixDOF: the motor off on the chosen rotation axes of the joint's frame
+    // (they turn freely within their limits, e.g. under torques from
+    // addTorque); the other axes keep their motor.
+    void setSixDofFreeAxes(JointId id, bool x, bool y, bool z);
     // The torque (N m) the joint's motor applied in the last step of `dt` s.
     float jointMotorTorque(JointId id, float dt) const;
 
@@ -191,6 +195,12 @@ public:
     // `point` raised, if needed, so it stays `clearance` m above the ground.
     // The one check every mover that is not a colliding body uses.
     math::Vec3 aboveGround(math::Vec3 point, float clearance = 0.0f) const;
+    // Where the body rests on the static ground (Jolt's narrow phase): the
+    // corners of its touching face that lie on the ground (within the
+    // speculative contact distance), else the deepest point. Writes up to
+    // `capacity` points (world) to `out`; returns how many (0: not touching).
+    // No heap allocations.
+    int groundContacts(BodyId id, math::Vec3* out, int capacity) const;
     bool awake(BodyId id) const;
 
 private:

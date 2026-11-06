@@ -170,6 +170,10 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         }
     }
     omega_.assign(parts_.size(), math::Vec3(0.0f));
+    ordered_.assign(parts_.size(), 0);
+    holding_.assign(parts_.size(), 0);
+    heldRotation_.assign(parts_.size(), math::identityQuat());
+    heldAngle_.assign(parts_.size(), 0.0f);
     hold_.assign(parts_.size(), 0.0f);
     beyondMass_.assign(parts_.size(), 0.0f);
     beyondMoment_.assign(parts_.size(), math::Vec3(0.0f));
@@ -225,11 +229,18 @@ math::Vec3 HumanBody::centreOfMass(const physics::PhysicsWorld& world) const {
     return totalMass_ > 0.0f ? sum / totalMass_ : sum;
 }
 
-void HumanBody::setPhysics(physics::PhysicsWorld& world, bool on) const {
-    for (const Part& p : parts_) world.setKinematic(p.body, !on);
+math::Vec3 HumanBody::centreOfMassVelocity(const physics::PhysicsWorld& world) const {
+    math::Vec3 sum(0.0f);
+    for (const Part& p : parts_) sum += world.linearVelocity(p.body) * p.mass;
+    return totalMass_ > 0.0f ? sum / totalMass_ : sum;
 }
 
-void HumanBody::compensateGravity(physics::PhysicsWorld& world) const {
+void HumanBody::setPhysics(physics::PhysicsWorld& world, bool on) {
+    for (const Part& p : parts_) world.setKinematic(p.body, !on);
+    std::fill(holding_.begin(), holding_.end(), uint8_t{0});
+}
+
+void HumanBody::compensateGravity(physics::PhysicsWorld& world, const uint8_t* owned) const {
     const math::Vec3 g = world.world().gravity;
     // Every part's weight, then (children come after parents) each part's
     // added into its parent's: the mass beyond each joint.
@@ -246,7 +257,7 @@ void HumanBody::compensateGravity(physics::PhysicsWorld& world) const {
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         hold_[i] = 0.0f;
-        if (p.parent < 0 || !p.muscle || beyondMass_[i] <= 0.0f) continue;
+        if (p.parent < 0 || !p.muscle || beyondMass_[i] <= 0.0f || (owned && owned[i])) continue;
         // The joint (the bone's origin) and gravity's torque about it.
         const math::Vec3 pivot = (world.transform(p.body) * math::inverse(p.shape)).position;
         const math::Vec3 centre = beyondMoment_[i] / beyondMass_[i];
@@ -261,10 +272,11 @@ void HumanBody::compensateGravity(physics::PhysicsWorld& world) const {
 
 void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
                       const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
-                      const MuscleTiming& timing) const {
+                      const MuscleTiming& timing) {
     auto pos = [&](int j) { return math::Vec3(models[static_cast<size_t>(j)][3]); };
     auto rot = [&](int j) { return math::toTransform(models[static_cast<size_t>(j)]).rotation; };
     for (math::Vec3& w : omega_) w = math::Vec3(0.0f);
+    std::fill(ordered_.begin(), ordered_.end(), uint8_t{0});
 
     for (int k = 0; k < queue.count; ++k) {
         const motion::PartOrder& o = queue.orders[static_cast<size_t>(k)];
@@ -297,16 +309,38 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
             if (reach > 1e-6f) speed = math::dot(need, lever) / reach;
         }
         omega_[static_cast<size_t>(part)] += o.direction * (o.share * speed);
+        ordered_[static_cast<size_t>(part)] = 1;
     }
 
     // Each muscle: its velocity in its joint's frame (on its own bone), its
-    // pull no harder than the strength left after holding the weight.
+    // pull no harder than the strength left after holding the weight. With no
+    // order it holds the angle it had when its last order ended.
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         if (p.parent < 0 || !p.muscle) continue;
         physics::MotorDesc m;
         m.maxTorque = std::max(p.strength - hold_[i], 0.0f);
         world.setJointMotor(p.link, m, true);
+        if (!ordered_[i]) {
+            // The held angle is a turn target: its gap closed in fittsA (as
+            // any turn target), at full strength by the velocity motor.
+            if (!holding_[i]) {
+                heldRotation_[i] = p.hinge ? math::identityQuat() : world.sixDofRotation(p.link);
+                heldAngle_[i] = p.hinge ? world.hingeAngle(p.link) : 0.0f;
+                holding_[i] = 1;
+            }
+            const float close = 1.0f / std::max(timing.fittsA, 1e-3f);
+            if (p.hinge) {
+                world.setHingeVelocity(p.link, (heldAngle_[i] - world.hingeAngle(p.link)) * close);
+            } else {
+                // Jolt's gap: body 2's turn to the target, in its joint frame.
+                math::Quat diff = math::inverse(world.sixDofRotation(p.link)) * heldRotation_[i];
+                if (diff.w < 0.0f) diff = -diff;
+                world.setSixDofVelocity(p.link, math::rotationVector(diff) * close);
+            }
+            continue;
+        }
+        holding_[i] = 0;
         const math::Vec3 w = math::inverse(rot(p.joint)) * omega_[i];  // the bone's frame
         if (p.hinge)
             world.setHingeVelocity(p.link, math::dot(w, p.frameX));

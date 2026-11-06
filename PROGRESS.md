@@ -228,6 +228,22 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   past their ranges. `BodyDecider::limbOrders` now orders each joint's own turn (its
   parent's turn in the solve taken out; the shoulder's is unchanged). **Next:** step 3
   (the balancer; wire into the game with physics on).
+  **Step 3a in progress (2026-11-06; the user's slicing: 3a stand, 3b step, 3c release,
+  3d game wiring):** `agents::Balancer` (src/agents/balancer.*): stance = feet meant to be
+  down that touch the ground (`PhysicsWorld::groundContacts`, Jolt narrow phase: the
+  touching face's corners); the stance ankles' plantar/dorsiflexion is the balancer's
+  (`PhysicsWorld::setSixDofFreeAxes`), torque T = -(KP sway + KD sway rate) about the
+  stance ankles, Peterka 2002 (KP 18.6 N m/deg, KD 6.1 N m s/deg; human_joints.json
+  "balance"), ahead/back only (side to side is the hips', Winter 1995); a torque pair on
+  shin and foot. Muscles: an idle muscle now holds the angle it had when its last order
+  ended (the user's call), its gap closed in fittsA by the velocity motor at full
+  strength (Jolt's position spring was too soft again). Measured (tests, nothing held):
+  ahead/back the centre of mass stays within 5 mm of the ankles, joints within 0.01 rad;
+  a forward reach moves the hips back. Failing (marked may_fail): side to side nothing
+  balances yet: the body rocks on its foot edges (ankle inversion giving way, the other
+  foot rolling), growing, falls after ~3 s. **Next:** the side-to-side control (hip
+  load/unload, Winter 1995) and the hip strategy: the user's decision (hips are
+  velocity muscles; both need hip torques).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

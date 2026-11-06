@@ -2,6 +2,7 @@
 // joined with the real ranges from human_joints.json. No muscles yet: it
 // folds under the world's gravity onto the world's ground.
 
+#include "agents/balancer.h"
 #include "agents/human.h"
 #include "core/config.h"
 #include "rig/skeleton_def.h"
@@ -121,8 +122,12 @@ struct MuscleRig {
     rig::Pose pose;
     agents::MuscleTiming timing;
 
-    bool make() {
+    agents::Balancer balancer;
+    bool balance = false;  // the balancer stands the body (else the test holds the pelvis)
+
+    bool make(bool withBalance = false) {
         if (!makeScene(s)) return false;
+        balance = withBalance;
         const rig::Rig& rig = s.human.rig();
         auto chain = [&](const char* a, const char* b, const char* c, math::Vec3 axis) {
             return ik::TwoBoneChain{rig.findJoint(a), rig.findJoint(b), rig.findJoint(c), axis};
@@ -146,19 +151,30 @@ struct MuscleRig {
         timing.fittsB = s.joints.getFloat("reach.fittsB", timing.fittsB);
         timing.fittsWidth = s.joints.getFloat("reach.fittsWidth", timing.fittsWidth);
         if (!decider.init(rig, joints)) return false;
-        const agents::HumanBody& body = s.human.humanBody();
+        agents::HumanBody& body = s.human.humanBody();
         body.setPhysics(s.world, true);
-        s.world.setKinematic(body.parts()[0].body, true);  // the test holds the pelvis
-        return true;
+        if (!balance) {
+            s.world.setKinematic(body.parts()[0].body, true);  // the test holds the pelvis
+            return true;
+        }
+        const int foot[2] = {rig.findJoint("foot_l"), rig.findJoint("foot_r")};
+        const int toe[2] = {rig.findJoint("toe_l"), rig.findJoint("toe_r")};
+        return balancer.init(body, foot, toe, agents::readBalanceSettings(s.joints));
     }
 
     void step(const motion::BodyGoals& goals) {
-        const agents::HumanBody& body = s.human.humanBody();
+        agents::HumanBody& body = s.human.humanBody();
         s.human.physicalModels(s.world, 1.0f, models);
         s.human.rig().modelToLocal(models, pose);
         decider.decide(pose, goals, blocked, motion::BodyDeciderSettings{}, queue);
-        body.compensateGravity(s.world);
+        const uint8_t* owned = nullptr;
+        if (balance) {
+            balancer.plan(s.world, body, goals.down);
+            owned = balancer.owned();
+        }
+        body.compensateGravity(s.world, owned);
         body.drive(s.world, queue, goals, joints, models, timing);
+        if (balance) balancer.apply(s.world, body);
         s.world.step(kTick);
         s.human.physicalModels(s.world, 1.0f, models);
         body.blockedJoints(s.world, queue, models, s.human.jointLimits(), kTick, blocked);
@@ -206,4 +222,104 @@ TEST_CASE("human body muscles: a hand target within reach is reached, pelvis hel
     const float miss = math::distance(r.pos(r.joints.arms[0].end), goals.hand[0].position);
     MESSAGE("hand target in reach: wrist ", miss, " m from it after 2 s");
     CHECK(miss < 0.03f);
+}
+
+namespace {
+
+// Lowest part centre (world) and the centre of mass off the stance ankles
+// (horizontal, m) after a run.
+float lowestPart(const MuscleRig& r) {
+    float lowest = 9.0f;
+    for (const agents::HumanBody::Part& p : r.s.human.humanBody().parts())
+        lowest = std::min(lowest, r.s.world.transform(p.body).position.y);
+    return lowest;
+}
+
+float offSupport(const MuscleRig& r) {
+    const math::Vec3 com = r.s.human.humanBody().centreOfMass(r.s.world);
+    const math::Vec3 c = r.balancer.pivot();
+    return std::hypot(com.x - c.x, com.z - c.z);
+}
+
+} // namespace
+
+// Known failure (2026-11-06, step 3a): forward and back the ankles hold the
+// centre of mass within 5 mm of them; side to side nothing balances yet: the
+// body rocks on its foot edges (ankle inversion giving way, the other foot
+// rolling), each swing larger, and falls after about 3 s. Side to side is the
+// hips' load/unload job (Winter 1995): next step, the user's decision.
+TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held" * doctest::may_fail()) {
+    MuscleRig r;
+    REQUIRE(r.make(true));
+    const agents::HumanBody& body = r.s.human.humanBody();
+    const float startHeight = body.height(r.s.world);
+    float worstOff = 0.0f;
+    bool alwaysStanding = true;
+    for (int i = 0; i < 5 * 120; ++i) {
+        r.step(motion::BodyGoals{});
+        alwaysStanding = alwaysStanding && r.balancer.standing();
+        if (i > 120) worstOff = std::max(worstOff, offSupport(r));
+    }
+    const float endHeight = body.height(r.s.world);
+    MESSAGE("standing 5 s: centre of mass ", startHeight, " -> ", endHeight, " m; worst off the ankles after 1 s ",
+            worstOff, " m; ankle torque now ", math::length(r.balancer.ankleTorque()), " N m; lowest part ",
+            lowestPart(r), " m");
+    CHECK(alwaysStanding);
+    CHECK(endHeight > 0.95f * startHeight);  // did not fall or slump
+    CHECK(worstOff < 0.05f);                 // over the feet
+}
+
+// Known failure (2026-11-06, step 3a): forward and back the ankles hold the
+// centre of mass within 5 mm of them; side to side nothing balances yet: the
+// body rocks on its foot edges (ankle inversion giving way, the other foot
+// rolling), each swing larger, and falls after about 3 s. Side to side is the
+// hips' load/unload job (Winter 1995): next step, the user's decision.
+TEST_CASE("balance: pushed forward, the ankles bring it back over the feet" * doctest::may_fail()) {
+    MuscleRig r;
+    REQUIRE(r.make(true));
+    const agents::HumanBody& body = r.s.human.humanBody();
+    const float startHeight = body.height(r.s.world);
+    for (int i = 0; i < 60; ++i) r.step(motion::BodyGoals{});  // settle
+    // The push: every part 0.15 m/s forward (the character's facing).
+    const math::Vec3 ahead = r.s.human.root().rotation * math::kForward;
+    for (const agents::HumanBody::Part& p : body.parts()) r.s.world.addImpulse(p.body, p.mass * 0.15f * ahead, r.s.world.transform(p.body).position);
+    float furthest = 0.0f;
+    for (int i = 0; i < 3 * 120; ++i) {
+        r.step(motion::BodyGoals{});
+        furthest = std::max(furthest, offSupport(r));
+    }
+    const float speed = math::length(body.centreOfMassVelocity(r.s.world));
+    MESSAGE("push 0.15 m/s: furthest off the ankles ", furthest, " m; after 3 s ", offSupport(r),
+            " m off, moving ", speed, " m/s; centre of mass ", startHeight, " -> ", body.height(r.s.world), " m");
+    CHECK(r.balancer.standing());
+    CHECK(body.height(r.s.world) > 0.95f * startHeight);
+    CHECK(offSupport(r) < 0.03f);
+    CHECK(speed < 0.05f);
+}
+
+// Known failure (2026-11-06, step 3a): forward and back the ankles hold the
+// centre of mass within 5 mm of them; side to side nothing balances yet: the
+// body rocks on its foot edges (ankle inversion giving way, the other foot
+// rolling), each swing larger, and falls after about 3 s. Side to side is the
+// hips' load/unload job (Winter 1995): next step, the user's decision.
+TEST_CASE("balance: a forward hand reach moves the hips back, the body stays up" * doctest::may_fail()) {
+    MuscleRig r;
+    REQUIRE(r.make(true));
+    const agents::HumanBody& body = r.s.human.humanBody();
+    const float startHeight = body.height(r.s.world);
+    for (int i = 0; i < 60; ++i) r.step(motion::BodyGoals{});  // settle
+    const math::Vec3 pelvisStart = r.pos(r.joints.pelvis);
+    motion::BodyGoals goals;
+    goals.hand[0].active = true;
+    // Straight ahead of the shoulder at its height, nearly the arm's length.
+    goals.hand[0].position = r.pos(r.joints.arms[0].start) + math::Vec3(0.0f, 0.0f, 0.5f);
+    for (int i = 0; i < 3 * 120; ++i) r.step(goals);
+    const float hipsBack = pelvisStart.z - r.pos(r.joints.pelvis).z;  // character space: +Z ahead
+    const float miss = math::distance(r.pos(r.joints.arms[0].end), goals.hand[0].position);
+    MESSAGE("forward reach: hips moved back ", hipsBack, " m; wrist ", miss, " m from its target; off the support centre ",
+            offSupport(r), " m; centre of mass ", startHeight, " -> ", body.height(r.s.world), " m");
+    CHECK(r.balancer.standing());
+    CHECK(body.height(r.s.world) > 0.95f * startHeight);
+    CHECK(hipsBack > 0.0f);
+    CHECK(offSupport(r) < 0.05f);
 }
