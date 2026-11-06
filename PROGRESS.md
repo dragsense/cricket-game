@@ -242,9 +242,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   closed in fittsA by the velocity motor. Toes got a muscle (8 N m: toe flexors 1.54 +
   0.95 N/kg at ~4.5 cm; they flapped free). Tests (nothing held): stands 5 s, side to side
   too; a 0.15 m/s push no longer knocks it down; a forward reach moves the hips back; the
-  game's own loop with physics on stands 5 s. Open: it rests ~6 cm ahead of the ankles
-  (standing and push tests may_fail): Jolt's ankle springs act ~60 % as stiff as KP
-  (at 2x it comes back to 2 mm); find why.
+  game's own loop with physics on stands 5 s. Fixed 2026-11-07: it rested ~6 cm ahead of
+  the ankles because all of Peterka's KD sat in the joint damper, which fought the
+  contacts on the light foot each step (Jolt's spring alone is exact: new physics test).
+  Now Peterka's own split (Eq. 15): the joint keeps its passive damping B (0.43 N m s/deg)
+  and the active KD (5.8) acts on the body's sway rate through the spring's aim (sway +
+  KD/KP sway rate: the capture point). Measured: standing within 5 mm of the ankles, a
+  0.15 m/s push back to 4 mm in 3 s.
   **Game (2026-11-06, the user's call):** the limb test is physics only: the fielder's
   body is dynamic (`Human::setPhysicsOn`: decider -> balancer -> muscles each tick); only
   the limb moved last has a target, the rest holds and balances; the old kinematic limb
@@ -252,7 +256,7 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (`Human::resetPhysicsBody`). Bones without a body (clavicles, neck, fingers) ride their
   parent as built (rest) while physics is on (they were drawn from the planned pose and
   the shoulder came apart on screen; the physical joints hold within 0.7 mm).
-  **Next:** the spring stiffness question; then 3b stepping (one-foot stance falls).
+  **Next:** 3b stepping (one-foot stance falls).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

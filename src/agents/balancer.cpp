@@ -25,9 +25,9 @@ math::Vec3 frameAxis(const HumanBody::Part& p, int axis) {
 
 // The balance as a spring on one joint axis (Jolt's stiffness-and-damping
 // motor, solved with the contacts): `turn` (world rotation vector) is how
-// the part's joint must turn, body b against body a, to bring the sway to
-// zero; the spring pulls that way with the given stiffness and damping, no
-// harder than the joint's muscle.
+// the part's joint must turn, body b against body a, to its aim; the spring
+// pulls that way with the given stiffness and the joint's own (passive)
+// damping, no harder than the joint's muscle.
 void balanceSpring(physics::PhysicsWorld& world, const HumanBody::Part& p, int axis, math::Vec3 turn,
                    float stiffness, float damping) {
     const math::Quat bone = world.transform(p.body).rotation * math::inverse(p.shape.rotation);
@@ -46,6 +46,7 @@ BalanceSettings readBalanceSettings(const core::Config& joints) {
     const float perDeg = math::degrees(1.0f);  // N m/deg -> N m/rad
     s.ankleStiffness = joints.getFloat("balance.ankleStiffness", s.ankleStiffness / perDeg) * perDeg;
     s.ankleDamping = joints.getFloat("balance.ankleDamping", s.ankleDamping / perDeg) * perDeg;
+    s.passiveDamping = joints.getFloat("balance.passiveDamping", s.passiveDamping / perDeg) * perDeg;
     s.sideStiffness = joints.getFloat("balance.sideStiffness", s.sideStiffness / perDeg) * perDeg;
     s.sideDamping = joints.getFloat("balance.sideDamping", s.sideDamping / perDeg) * perDeg;
     return s;
@@ -136,8 +137,15 @@ void Balancer::plan(const physics::PhysicsWorld& world, const HumanBody& body, c
     // foot, its ankle (a narrow foot tips if it cannot carry it).
     const math::Vec3 ahead = math::safeNormalize(math::Vec3(facing.x, 0.0f, facing.z), math::kForward);
     const math::Vec3 side = math::cross(math::kUp, ahead);
-    swayAhead_ = side * math::dot(sway, side);
-    swaySide_ = ahead * math::dot(sway, ahead);
+    // The springs' aim (Peterka's active feedback on the body's sway): the
+    // sway plus its rate times KD/KP, so a spring of stiffness KP gives
+    // KP sway + KD sway rate (KD/KP ~ 1/omega0: the capture point). The joint
+    // keeps only its passive damping (a damper on the light foot fights the
+    // contacts each step and ate a third of the spring).
+    const float aheadLead = settings_.ankleStiffness > 0.0f ? settings_.ankleDamping / settings_.ankleStiffness : 0.0f;
+    const float sideLead = settings_.sideStiffness > 0.0f ? settings_.sideDamping / settings_.sideStiffness : 0.0f;
+    swayAhead_ = side * math::dot(sway + aheadLead * swayRate, side);
+    swaySide_ = ahead * math::dot(sway + sideLead * swayRate, ahead);
     torque_ = -side * math::dot(settings_.ankleStiffness * sway + settings_.ankleDamping * swayRate, side);
     sideTorque_ = -ahead * math::dot(settings_.sideStiffness * sway + settings_.sideDamping * swayRate, ahead);
 }
@@ -153,11 +161,11 @@ void Balancer::apply(physics::PhysicsWorld& world, const HumanBody& body) const 
         // sway, so the foot turns by it against the shin.
         const HumanBody::Part& foot = body.parts()[static_cast<size_t>(footPart_[i])];
         balanceSpring(world, foot, ankleAheadAxis_[i], swayAhead_, settings_.ankleStiffness * share,
-                      settings_.ankleDamping * share);
+                      settings_.passiveDamping * share);
         if (foot.hinge) continue;
         if (!hips) {
             // One foot: side to side is its ankle's inversion.
-            balanceSpring(world, foot, ankleSideAxis_[i], swaySide_, settings_.sideStiffness, settings_.sideDamping);
+            balanceSpring(world, foot, ankleSideAxis_[i], swaySide_, settings_.sideStiffness, settings_.passiveDamping);
             continue;
         }
         // Two feet: the legs tilt over them (inversion free), the hips'
@@ -165,7 +173,7 @@ void Balancer::apply(physics::PhysicsWorld& world, const HumanBody& body) const 
         world.setSixDofAxisFree(foot.link, ankleSideAxis_[i]);
         const HumanBody::Part& thigh = body.parts()[static_cast<size_t>(thighPart_[i])];
         balanceSpring(world, thigh, hipSideAxis_[i], -swaySide_, settings_.sideStiffness * share,
-                      settings_.sideDamping * share);
+                      settings_.passiveDamping * share);
     }
 }
 

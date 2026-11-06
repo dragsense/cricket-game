@@ -243,11 +243,7 @@ float offSupport(const MuscleRig& r) {
 
 } // namespace
 
-// Known failure (2026-11-06, step 3a): it stands, side to side too (hips),
-// and a push no longer knocks it down, but it rests about 6 cm ahead of the
-// ankles: Jolt's ankle springs act about 60 % as stiff as Peterka's KP (at
-// twice the stiffness it comes back to 2 mm). Open: why.
-TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held" * doctest::may_fail()) {
+TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held") {
     MuscleRig r;
     REQUIRE(r.make(true));
     const agents::HumanBody& body = r.s.human.humanBody();
@@ -268,11 +264,7 @@ TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held
     CHECK(worstOff < 0.05f);                 // over the feet
 }
 
-// Known failure (2026-11-06, step 3a): it stands, side to side too (hips),
-// and a push no longer knocks it down, but it rests about 6 cm ahead of the
-// ankles: Jolt's ankle springs act about 60 % as stiff as Peterka's KP (at
-// twice the stiffness it comes back to 2 mm). Open: why.
-TEST_CASE("balance: pushed forward, the ankles bring it back over the feet" * doctest::may_fail()) {
+TEST_CASE("balance: pushed forward, the ankles bring it back over the feet") {
     MuscleRig r;
     REQUIRE(r.make(true));
     const agents::HumanBody& body = r.s.human.humanBody();

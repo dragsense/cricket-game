@@ -381,4 +381,8 @@ Dated log. Format: decision, reason, alternatives rejected.
   (8 N m). The limb test is physics only (the user's call); only the limb moved last has
   a target; R resets the body to its standing pose. Bones without a body ride their
   parent as built while physics is on.
+- **2026-11-07:** Peterka's damping is split as he fit it (Eq. 15): the balance springs
+  keep only the joint's passive damping B; the active KD acts on the body's sway rate
+  through the spring's aim (sway + KD/KP sway rate, the capture point). All of KD in the
+  joint damper fought the contacts on the light foot and left the body 6 cm forward.
 

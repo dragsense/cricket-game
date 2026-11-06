@@ -34,7 +34,8 @@ namespace agents {
 // config/human_joints.json "balance" (converted to radians).
 struct BalanceSettings {
     float ankleStiffness = 1066.0f;  // KP, N m/rad (Peterka 2002: 18.6 N m/deg)
-    float ankleDamping = 350.0f;     // KD, N m s/rad (6.1 N m s/deg)
+    float ankleDamping = 332.0f;     // active KD on the body's sway rate, N m s/rad (5.8 N m s/deg)
+    float passiveDamping = 24.6f;    // the joint's own damping B, N m s/rad (0.43 N m s/deg)
     float sideStiffness = 1066.0f;   // side to side (hips on two feet), N m/rad
     float sideDamping = 350.0f;      // N m s/rad
 };
@@ -77,7 +78,7 @@ private:
     bool stance_[2] = {false, false};
     int stanceCount_ = 0;
     math::Vec3 centre_{0.0f}, pivot_{0.0f}, capture_{0.0f}, torque_{0.0f}, sideTorque_{0.0f};
-    math::Vec3 swayAhead_{0.0f}, swaySide_{0.0f};  // the sway (angle vector) ahead/back and side to side
+    math::Vec3 swayAhead_{0.0f}, swaySide_{0.0f};  // the springs' aim (angle vector) ahead/back and side to side
 };
 
 } // namespace agents
