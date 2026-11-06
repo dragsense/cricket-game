@@ -11,10 +11,11 @@ namespace {
 // Turns smaller than this (rad) are no direction at all.
 constexpr float kMinAngle = 1e-4f;
 
-void add(BodyQueue& out, int joint, PartMove kind, math::Vec3 direction, math::Vec3 velocity, Goal goal, bool active) {
+void add(BodyQueue& out, int joint, PartMove kind, math::Vec3 direction, math::Vec3 velocity, Goal goal, bool active,
+         float share = 1.0f) {
     assert(out.count < BodyQueue::kCapacity);
     if (out.count >= BodyQueue::kCapacity) return;
-    out.orders[static_cast<size_t>(out.count++)] = {joint, kind, direction, velocity, goal, active};
+    out.orders[static_cast<size_t>(out.count++)] = {joint, kind, direction, velocity, goal, active, share};
 }
 
 // The unit axis of a turn, zero for none.
@@ -74,13 +75,13 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
     if (goals.chest.active && joints_.spine[2] >= 0) {
         const int chain[4] = {joints_.spine[2], joints_.spine[1], joints_.spine[0], joints_.pelvis};
         turnChain(chain, 4, goals.chest.rotation * math::inverse(rot(joints_.spine[2])), goals.chest.angularVelocity,
-                  Goal::Chest, blocked, out);
+                  Goal::Chest, blocked, s, out);
     }
     // Head: head, then neck.
     if (goals.head.active && joints_.head >= 0) {
         const int chain[2] = {joints_.head, joints_.neck};
         turnChain(chain, 2, goals.head.rotation * math::inverse(rot(joints_.head)), goals.head.angularVelocity,
-                  Goal::Head, blocked, out);
+                  Goal::Head, blocked, s, out);
     }
 
     for (int i = 0; i < 2; ++i) {
@@ -113,18 +114,18 @@ void BodyDecider::handOrders(int h, const BodyGoals::Point& goal, const std::vec
     const math::Vec3 pole = math::safeNormalize(side - dir * math::dot(side, dir), side);
     limbOrders(arm, target, pole, goal.velocity, which, out);
 
-    // Out of the arm's reach: the trunk joins from the start, each part once
-    // every part before it is blocked; a part that cannot bring the shoulder
-    // closer is passed over. Which part leads depends on where the target is
-    // (BIOMECHANICS 9.1, 9.3):
+    // Out of the arm's reach every part of the queue moves from the start,
+    // shared by its place (shareQueue). The queue is led by where the target
+    // is (BIOMECHANICS 9.1, 9.3):
     //  - below the hips: a deep bend is mostly at the hips, and the legs lower
     //    the body (Esola et al. 1996; fielders bend the legs, section 8): pelvis
-    //    tilt, hips move, spine_01, spine_02, chest, clavicle;
+    //    tilt, hips lower, spine_01, spine_02, chest, clavicle;
     //  - behind the shoulders: a turn is mostly thoracic: chest, spine_02,
-    //    spine_01, clavicle, pelvis, hips move;
-    //  - ahead or to the side: the shoulder girdle first, then the trunk leans,
-    //    then the whole body (Levin et al. 2001): clavicle, chest, spine_02,
-    //    spine_01, pelvis, hips move.
+    //    spine_01, clavicle, pelvis, hips;
+    //  - ahead or to the side: the shoulder girdle, then the trunk leans, then
+    //    the whole body (Levin et al. 2001): clavicle, chest, spine_02,
+    //    spine_01, pelvis tilt, hips.
+    // A part that cannot bring the shoulder closer is left out.
     const float reach = armLength_[h];
     if (math::distance(shoulder, target) <= reach) return;
     const math::Vec3 hips = pos(joints_.pelvis) + rot(joints_.pelvis) * hipCentre_;
@@ -135,13 +136,14 @@ void BodyDecider::handOrders(int h, const BodyGoals::Point& goal, const std::vec
     static constexpr Stage kAhead[6] = {Clavicle, Chest, Spine2, Spine1, Tilt, Move};
     const Stage* order = target.y < hips.y ? kLow : math::dot(target - shoulder, forward) < 0.0f ? kBehind : kAhead;
 
-    bool before = true;  // every part before this one is blocked
+    const int first = out.count;
     for (int k = 0; k < 6; ++k) {
         if (order[k] == Move) {
-            // The hips move toward the hand (the planted feet stay: the legs bend).
-            add(out, joints_.pelvis, PartMove::Move, math::normalize(target - shoulder), goal.velocity, which, before);
-            // The legs carry the hips: they cannot go further once both knees are blocked.
-            before = before && isBlocked(blocked, joints_.legs[0].mid) && isBlocked(blocked, joints_.legs[1].mid);
+            // The legs move the hips toward the hand (the planted feet stay:
+            // the legs bend); they cannot once both knees are blocked.
+            const bool legsBlocked = isBlocked(blocked, joints_.legs[0].mid) && isBlocked(blocked, joints_.legs[1].mid);
+            add(out, joints_.pelvis, PartMove::Move, math::normalize(target - shoulder), goal.velocity, which, false,
+                legsBlocked ? 0.0f : 1.0f);
             continue;
         }
         const int j = order[k] == Clavicle ? joints_.clavicles[h]
@@ -152,9 +154,9 @@ void BodyDecider::handOrders(int h, const BodyGoals::Point& goal, const std::vec
         if (j < 0) continue;
         const Swing sw = swingToward(order[k] == Tilt ? hips : pos(j), shoulder, target, reach);
         if (sw.angle <= kMinAngle) continue;
-        add(out, j, PartMove::Turn, sw.axis, goal.velocity, which, before);
-        before = before && isBlocked(blocked, j);
+        add(out, j, PartMove::Turn, sw.axis, goal.velocity, which, false, isBlocked(blocked, j) ? 0.0f : 1.0f);
     }
+    shareQueue(first, s, out);
 }
 
 void BodyDecider::footOrders(int i, const BodyGoals& goals, const std::vector<uint8_t>& blocked,
@@ -196,15 +198,32 @@ void BodyDecider::limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, m
 }
 
 void BodyDecider::turnChain(const int* joints, int count, math::Quat delta, math::Vec3 velocity, Goal goal,
-                            const std::vector<uint8_t>& blocked, BodyQueue& out) {
+                            const std::vector<uint8_t>& blocked, const BodyDeciderSettings& s, BodyQueue& out) {
     const math::Vec3 axis = axisOf(delta);
     if (math::length(axis) <= 0.0f) return;
-    bool before = true;  // every part before this one is blocked
+    const int first = out.count;
     for (int k = 0; k < count; ++k) {
         const int j = joints[k];
         if (j < 0) continue;
-        add(out, j, PartMove::Turn, axis, velocity, goal, before);
-        before = before && isBlocked(blocked, j);
+        add(out, j, PartMove::Turn, axis, velocity, goal, false, isBlocked(blocked, j) ? 0.0f : 1.0f);
+    }
+    shareQueue(first, s, out);
+}
+
+void BodyDecider::shareQueue(int first, const BodyDeciderSettings& s, BodyQueue& out) const {
+    // Orders come in with share 1 (free) or 0 (blocked); the k-th free one by
+    // place carries queueShare^k, then all are normalised to sum to 1.
+    float weight = 1.0f, total = 0.0f;
+    for (int i = first; i < out.count; ++i) {
+        PartOrder& o = out.orders[static_cast<size_t>(i)];
+        o.share *= weight;
+        total += o.share;
+        weight *= s.queueShare;
+    }
+    for (int i = first; i < out.count; ++i) {
+        PartOrder& o = out.orders[static_cast<size_t>(i)];
+        o.share = total > 0.0f ? o.share / total : 0.0f;
+        o.active = o.share > 0.0f;
     }
 }
 

@@ -188,14 +188,15 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   pose. **Step 1 built (2026-11-06):** `motion::BodyDecider` (src/motion/body_decider.*):
   7 targets (`BodyGoals`: hands, feet, hips, chest, head, each with its own velocity),
   per-joint `blocked` flags in, a fixed-size `BodyQueue` out (joint, turn or move,
-  direction, the target's velocity, active); hand: arm, then (out of reach) the trunk led
-  by where the target is (below the hips: pelvis tilt → hips lower → spine → chest →
-  clavicle; behind: chest first; ahead/side: clavicle → chest → spine → pelvis → hips;
-  BIOMECHANICS 9.1/9.3); chest, head, foot, push-off, hips. Not wired into the game yet.
-  Test: tests/test_body_decider.cpp (far target ahead, ball at the feet, cascade on
-  blocked, near target arm only). Real parts overlap with shares (Esola 1996, Levin
-  2001); the queue is step by step for now: the overlap is a speed split (step 2). `math::rotationVector` added
-  (clampRotationVector uses it); cricket_motion now links cricket_ik.
+  direction, the target's velocity, active, share); hand: arm, then (out of reach) every
+  part of the queue moves at once, each with a share by its place (the user's rule:
+  `decider.queueShare` 0.5, a starting value, not measured; a blocked part's share goes
+  to the rest); the queue is led by where the target is (below the hips: pelvis tilt,
+  hips lower, spine, chest, clavicle; behind: chest first; ahead/side: clavicle first;
+  BIOMECHANICS 9.1/9.3); chest and head share the same way; foot, push-off, hips. Not
+  wired into the game yet. Test: tests/test_body_decider.cpp (target ahead, ball at the
+  feet, shares, blocked parts, near target arm only). Later: measured ratios where
+  research has them (spine : hips, Esola 1996) instead of the fixed share.
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

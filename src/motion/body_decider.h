@@ -11,15 +11,16 @@
 // Real body order (BIOMECHANICS 3.1, 9.1; trunk-assisted reaching, Kaminski
 // et al. 1995):
 //  Hand: shoulder and elbow (two-bone IK, elbow back and out). Out of the
-//   arm's reach the trunk joins from the start, each next part once every
-//   part before it is blocked, led by where the target is (BIOMECHANICS 9.1,
-//   9.3): below the hips the pelvis tilts first, then the hips lower (legs
-//   bend), then spine_01, spine_02, chest, clavicle; behind the shoulders the
-//   chest turns first, then spine_02, spine_01, clavicle, pelvis, hips; ahead
-//   or to the side the clavicle first, then chest, spine_02, spine_01, pelvis
-//   tilt, hips move.
-//  Chest: chest, spine_02, spine_01, then the pelvis, the same way.
-//  Head: head, then neck.
+//   arm's reach the body joins from the start: every part of the queue moves
+//   together (real parts overlap, BIOMECHANICS 9.6), each with a share by its
+//   place in the queue, the first the most, the last very little (queueShare);
+//   a blocked part's share goes to the rest. The queue is led by where the
+//   target is (BIOMECHANICS 9.1, 9.3): below the hips the pelvis tilt, the
+//   hips lowering (legs bend), spine_01, spine_02, chest, clavicle; behind the
+//   shoulders the chest, spine_02, spine_01, clavicle, pelvis, hips; ahead or
+//   to the side the clavicle, chest, spine_02, spine_01, pelvis tilt, hips.
+//  Chest and head chains share the same way.
+//  Chest: chest, spine_02, spine_01, pelvis. Head: head, neck.
 //  Foot (an active foot target): hip and knee (two-bone IK, knee forward);
 //   the hip blocked: the pelvis tilts; a foot on the ground beyond the leg's
 //   length: the hips move toward it.
@@ -67,7 +68,8 @@ struct PartOrder {
     math::Vec3 direction{0.0f};          // unit, character space: rotation axis (right-hand rule) or travel direction
     math::Vec3 targetVelocity{0.0f};     // the target's own speed (m/s for a move or point target, rad/s for a turn target)
     Goal goal = Goal::HandL;             // the target it serves
-    bool active = false;                 // its muscle pulls now (else it waits for the parts before it)
+    bool active = false;                 // its muscle pulls now (else it waits for the parts it needs blocked first)
+    float share = 1.0f;                  // its share of a motion its queue carries together (a queue's shares sum to 1)
 };
 
 struct BodyQueue {
@@ -88,6 +90,9 @@ struct BodyDeciderJoints {
 struct BodyDeciderSettings {
     math::Vec3 kneePole{0.0f, 0.0f, 1.0f};    // knees point this way (pelvis frame)
     math::Vec3 elbowPole{0.3f, 0.0f, -1.0f};  // left elbow points this way (mirrored for the right; +X is left)
+    // human_joints.json "decider.queueShare": each next part in a queue
+    // carries this times the share of the part before it.
+    float queueShare = 0.5f;
 };
 
 class BodyDecider {
@@ -110,9 +115,12 @@ private:
     // Shoulder and elbow (or hip and knee) of `chain` toward `target`.
     void limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, math::Vec3 pole, math::Vec3 velocity, Goal goal,
                     BodyQueue& out);
-    // A chain of joints turning one way, each joining once all before it are blocked.
+    // A queue of joints turning one way together, shared by place.
     void turnChain(const int* joints, int count, math::Quat delta, math::Vec3 velocity, Goal goal,
-                   const std::vector<uint8_t>& blocked, BodyQueue& out);
+                   const std::vector<uint8_t>& blocked, const BodyDeciderSettings& s, BodyQueue& out);
+    // Shares of the queue orders [first, out.count): by place (queueShare),
+    // blocked ones none, normalised to 1; a part with a share is active.
+    void shareQueue(int first, const BodyDeciderSettings& s, BodyQueue& out) const;
 
     math::Vec3 pos(int joint) const;
     math::Quat rot(int joint) const;

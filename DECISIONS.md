@@ -350,3 +350,8 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** external "balloon" forces (Gang Beasts, TABS), AI controllers (PHC,
   MaskedMimic, DeepMimic: mocap, GPU training, a network runtime), stiff joints alone
   (ankle stiffness < mgh), the hybrid (planned pose with physics only for dives).
+- **Later the same day (the user's call):** the parts a target needs move together from
+  the start, not one after another; each part's share comes from its place in the queue
+  (the first the most, the last very little; `decider.queueShare`), and a blocked part's
+  share goes to the rest. The queue's order depends on where the target is (below the
+  hips: the hips lead; behind: the chest; ahead or to the side: the clavicle).

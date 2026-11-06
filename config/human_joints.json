@@ -145,6 +145,14 @@
   // Body from the feet (motion::BodyReposition): the moving leg reaches with its
   // own joints; past the hip's range the pelvis tilts (reach.pelvis*Deg limits),
   // past the leg's length it moves toward the foot. No weights.
+  // The body's decider (motion::BodyDecider, DECISIONS 2026-11-06): the parts a
+  // target needs move together from the start, each with a share by its place
+  // in the queue (the user's rule): each next part carries queueShare times the
+  // share of the part before it (normalised; a blocked part's share goes to the
+  // rest). 0.5 is a starting value, not a measured one.
+  "decider": {
+    "queueShare": 0.5
+  },
   "bodyReposition": {
     "legReach": 1.0,         // a leg reaches at most its real length (thigh + shin)
     "armLegRatio": 1.0,      // a hand swings opposite the other leg by this share of its thigh angle (walking: about equal)
