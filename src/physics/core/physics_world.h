@@ -136,6 +136,13 @@ public:
     // Teleports the body (velocity zero), for resets; no interpolation smear.
     void resetBody(BodyId id, const math::Transform& pose);
     void addImpulse(BodyId id, math::Vec3 impulse, math::Vec3 point);
+    // Torque (world, N m) on the body for the next step.
+    void addTorque(BodyId id, math::Vec3 torque);
+    math::Vec3 angularVelocity(BodyId id) const;  // world, rad/s
+    // A moving body switches between kinematic (moved only by moveKinematic)
+    // and dynamic (gravity, forces, joints, contacts), keeping its mass and
+    // velocity: a player's physics on and off.
+    void setKinematic(BodyId id, bool kinematic);
     // Kinematic body: reaches `position` at the end of the next step (dt s).
     void moveKinematic(BodyId id, math::Vec3 position, float dt);
     // Kinematic body: reach this pose (position and rotation) in `dt`.
@@ -169,6 +176,12 @@ public:
     // frame as created (clamped by the limits); current rotation.
     void setSixDofTarget(JointId id, math::Quat rotation);
     math::Quat sixDofRotation(JointId id) const;
+    // Velocity motors (a muscle turning its joint): the motor turns the joint
+    // at this angular velocity, as fast as its torque limit allows, and holds
+    // it at 0. Switches the motor from its target (setJointMotor) to velocity.
+    // Hinge: about its axis (rad/s). SixDOF: in the joint's frame on body b.
+    void setHingeVelocity(JointId id, float angularVelocity);
+    void setSixDofVelocity(JointId id, math::Vec3 angularVelocity);
 
     // The ground (Jolt's static scenery) under `point`: its height there, or
     // the world's groundHeight if nothing is below.

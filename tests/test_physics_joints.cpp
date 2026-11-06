@@ -222,3 +222,81 @@ TEST_CASE("physics joints: a SixDOF motor drives the joint to its target inside 
     MESSAGE("SixDOF motor: at ", z, " rad (target 0.8; gives a little under the arm's weight)");
     CHECK(z == doctest::Approx(0.8f).scale(0.0).epsilon(0.1));
 }
+
+TEST_CASE("physics joints: a kinematic body turned dynamic falls under gravity") {
+    physics::PhysicsWorld w;
+    REQUIRE(makeWorld(w));
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Sphere;
+    d.radius = 0.1f;
+    d.mass = 1.0f;
+    d.kinematic = true;
+    d.pose.position = math::Vec3(0.0f, 3.0f, 0.0f);
+    const physics::BodyId b = w.createBody(d);
+    run(w, 0.5f);
+    CHECK(w.transform(b).position.y == doctest::Approx(3.0f));  // kinematic: held
+    w.setKinematic(b, false);
+    run(w, 0.5f);
+    // Dynamic: falls g t^2 / 2 = 1.23 m in 0.5 s.
+    CHECK(w.transform(b).position.y == doctest::Approx(3.0f - 0.5f * 9.81f * 0.25f).epsilon(0.03));
+}
+
+TEST_CASE("physics joints: a hinge velocity motor turns the arm at its speed; a weak one cannot lift it") {
+    // Gravity's torque on the arm at the pivot: 4.9 N m (see above).
+    for (const float maxTorque : {50.0f, 1.0f}) {
+        physics::PhysicsWorld w;
+        REQUIRE(makeWorld(w));
+        const math::Vec3 pivot(0.0f, 2.0f, 0.0f);
+        const physics::BodyId a = anchorAt(w, pivot), arm = armFrom(w, pivot);
+        physics::HingeDesc h;
+        h.pivot = pivot;
+        h.axis = math::Vec3(0, 0, 1);
+        h.normal = math::Vec3(1, 0, 0);
+        const physics::JointId j = w.createHinge(a, arm, h);
+        physics::MotorDesc m;
+        m.maxTorque = maxTorque;
+        w.setJointMotor(j, m, true);
+        w.setHingeVelocity(j, 0.5f);  // raise it at 0.5 rad/s
+        run(w, 1.0f);
+        MESSAGE("velocity motor ", maxTorque, " N m: angle after 1 s ", w.hingeAngle(j));
+        if (maxTorque > 4.9f)
+            CHECK(w.hingeAngle(j) == doctest::Approx(0.5f).epsilon(0.05));
+        else
+            CHECK(w.hingeAngle(j) < 0.0f);  // too weak: the arm drops
+    }
+}
+
+TEST_CASE("physics joints: a SixDOF velocity motor turns at its speed and holds at zero") {
+    physics::PhysicsWorld w;
+    REQUIRE(makeWorld(w));
+    const physics::JointId j = unevenArm(w, math::Vec3(0.0f, 2.0f, 0.0f), 1.0f);
+    physics::MotorDesc m;
+    m.maxTorque = 100.0f;
+    w.setJointMotor(j, m, true);
+    w.setSixDofVelocity(j, math::Vec3(0.0f, 0.0f, 0.4f));  // raise it at 0.4 rad/s
+    run(w, 1.0f);
+    const float raised = aboutZ(w.sixDofRotation(j));
+    MESSAGE("SixDOF velocity motor: ", raised, " rad after 1 s");
+    CHECK(raised == doctest::Approx(0.4f).epsilon(0.05));
+    w.setSixDofVelocity(j, math::Vec3(0.0f));  // hold
+    run(w, 1.0f);
+    CHECK(aboutZ(w.sixDofRotation(j)) == doctest::Approx(raised).epsilon(0.05));
+}
+
+TEST_CASE("physics joints: a torque spins a free body by torque / inertia") {
+    physics::PhysicsWorld w;
+    REQUIRE(makeWorld(w));
+    physics::BodyDesc d;
+    d.shape = physics::ShapeType::Sphere;
+    d.radius = 0.1f;
+    d.mass = 1.0f;
+    d.collides = false;
+    d.pose.position = math::Vec3(0.0f, 5.0f, 0.0f);
+    const physics::BodyId b = w.createBody(d);
+    const float inertia = 0.4f * 1.0f * 0.1f * 0.1f;  // solid sphere: 2/5 m r^2
+    for (int i = 0; i < 60; ++i) {  // 0.5 s at I rad/s^2 worth of torque: 0.5 rad/s
+        w.addTorque(b, math::Vec3(0.0f, inertia, 0.0f));
+        w.step(kTick);
+    }
+    CHECK(w.angularVelocity(b).y == doctest::Approx(0.5f).epsilon(0.05));  // less a little angular damping
+}

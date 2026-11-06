@@ -282,9 +282,12 @@ BodyId PhysicsWorld::createBody(const BodyDesc& d) {
     if (d.collisionGroup > 0) bcs.mCollisionGroup = JPH::CollisionGroup(m.sameGroup, d.collisionGroup, 0);
     bcs.mLinearDamping = m.settings.linearDamping;
     bcs.mAngularDamping = m.settings.angularDamping;
-    if (motion == JPH::EMotionType::Dynamic) {
+    // A kinematic body keeps its mass too, for when it turns dynamic (setKinematic).
+    if (motion != JPH::EMotionType::Static) {
         bcs.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
         bcs.mMassPropertiesOverride.mMass = d.mass;
+    }
+    if (motion == JPH::EMotionType::Dynamic) {
         if (d.verticalOnly) bcs.mAllowedDOFs = JPH::EAllowedDOFs::TranslationY;
         else if (d.lockRotation)
             bcs.mAllowedDOFs =
@@ -352,6 +355,23 @@ void PhysicsWorld::resetBody(BodyId id, const math::Transform& pose) {
 void PhysicsWorld::addImpulse(BodyId id, math::Vec3 impulse, math::Vec3 point) {
     if (!impl_ || !impl_->slot(id)) return;
     impl_->system.GetBodyInterface().AddImpulse(impl_->slots[id].body, toJolt(impulse), JPH::RVec3(toJolt(point)));
+}
+
+void PhysicsWorld::addTorque(BodyId id, math::Vec3 torque) {
+    if (!impl_ || !impl_->slot(id)) return;
+    impl_->system.GetBodyInterface().AddTorque(impl_->slots[id].body, toJolt(torque));
+}
+
+math::Vec3 PhysicsWorld::angularVelocity(BodyId id) const {
+    const Impl::Slot* s = impl_ ? impl_->slot(id) : nullptr;
+    return s ? fromJolt(impl_->system.GetBodyInterfaceNoLock().GetAngularVelocity(s->body)) : math::Vec3(0.0f);
+}
+
+void PhysicsWorld::setKinematic(BodyId id, bool kinematic) {
+    if (!impl_ || !impl_->slot(id)) return;
+    impl_->system.GetBodyInterface().SetMotionType(
+        impl_->slots[id].body, kinematic ? JPH::EMotionType::Kinematic : JPH::EMotionType::Dynamic,
+        JPH::EActivation::Activate);
 }
 
 void PhysicsWorld::moveKinematic(BodyId id, math::Vec3 position, float dt) {
@@ -541,6 +561,21 @@ void PhysicsWorld::setJointMotor(JointId id, const MotorDesc& motor, bool on) {
             x->SetMotorState(axis, state);
         }
     }
+}
+
+void PhysicsWorld::setHingeVelocity(JointId id, float angularVelocity) {
+    if (!impl_ || id >= impl_->hinges.size() || !impl_->hinges[id]) return;
+    JPH::HingeConstraint* h = impl_->hinges[id];
+    h->SetMotorState(JPH::EMotorState::Velocity);
+    h->SetTargetAngularVelocity(angularVelocity);
+}
+
+void PhysicsWorld::setSixDofVelocity(JointId id, math::Vec3 angularVelocity) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
+    JPH::SixDOFConstraint* x = impl_->sixDofs[id];
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    for (A axis : {A::RotationX, A::RotationY, A::RotationZ}) x->SetMotorState(axis, JPH::EMotorState::Velocity);
+    x->SetTargetAngularVelocityCS(toJolt(angularVelocity));
 }
 
 void PhysicsWorld::setHingeTarget(JointId id, float angle) {

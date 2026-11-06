@@ -199,6 +199,17 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   share where research has them: in a bend spine_01 : pelvis tilt by the lumbopelvic
   rhythm at the trunk's flexion (Esola 1996: 1.9 / 0.9 / 0.4 per 30 deg band;
   `decider.lumbarHipRatio`).
+  **Step 2a built (2026-11-06):** generic physics for the muscles (`PhysicsWorld`):
+  `setKinematic` (a body switches kinematic/dynamic keeping mass and velocity: physics
+  on/off), velocity motors `setHingeVelocity` / `setSixDofVelocity` (SixDOF: joint frame
+  on body b; torque limit kept, 0 holds), `addTorque`, `angularVelocity`. Tests on simple
+  objects: kinematic→dynamic falls g t²/2; hinge velocity motor 0.5 rad/s → 0.500 rad
+  in 1 s, a 1 N m one cannot lift the arm; SixDOF 0.4 rad/s → 0.400 rad, holds at 0;
+  torque / inertia spin. The game keeps the body kinematic until the balancer (a
+  dynamic body without balance falls). **Next, 2b:** HumanBody muscles from the
+  decider's queue (velocity per joint from the shares and the target's motion, capped
+  at real strength) + gravity compensation; blocked joints from Jolt; test with the
+  pelvis held by the test only.
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).
