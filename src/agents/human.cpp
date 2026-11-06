@@ -20,6 +20,95 @@ math::Quat modelRot(const std::vector<math::Mat4>& models, int joint) {
     return math::toTransform(models[static_cast<size_t>(joint)]).rotation;
 }
 
+// --- The old formula repositioning (see RepositionSettings in human.h) ---
+
+// Moves `pelvis` so this leg's hip is within [lo, hi] of its foot. The top
+// eases in over `band` (smooth, no kink as the leg nears straight).
+math::Vec3 clampLeg(math::Vec3 pelvis, const LegSupport& leg, float lo, float hi, float band) {
+    math::Vec3 d = pelvis + leg.hipOffset - leg.foot;
+    float len = math::length(d);
+    float clamped = std::max(len, lo);
+    const float knee = hi - band;
+    if (band > 0.0f && clamped > knee) clamped = hi - band * std::exp(-(clamped - knee) / band);
+    else clamped = std::min(clamped, hi);
+    if (std::fabs(clamped - len) < 1e-5f) return pelvis;
+    return pelvis + math::safeNormalize(d, math::kUp) * (clamped - len);
+}
+
+// One semi-implicit step of a damped spring toward `goal` (frequency w, ratio z).
+template <typename T>
+void spring(T& x, T& v, T goal, float w, float z, float dt) {
+    v += (w * w * (goal - x) - 2.0f * z * w * v) * dt;
+    x += v * dt;
+}
+
+// Knee-limited reach: hip-to-ankle distance with the knee bent `kneeFlex`
+// radians (law of cosines over thigh and shin).
+float bentReach(float thigh, float shin, float kneeFlex) {
+    return std::sqrt(std::max(thigh * thigh + shin * shin + 2.0f * thigh * shin * std::cos(kneeFlex), 0.0f));
+}
+
+// The leg clamp: moves `pelvis` so each hip is within reach of its foot:
+// `first` up to maxReach, `second` within [minReach, maxReach] (x legLength,
+// soft top), `first` then `second`, s.iterations times.
+math::Vec3 clampToLegs(math::Vec3 pelvis, const LegSupport& first, const LegSupport& second, float legLength,
+                       const RepositionSettings& s) {
+    const float lo = s.minReach * legLength, hi = s.maxReach * legLength, band = s.softBand * legLength;
+    for (int i = 0; i < s.iterations; ++i) {
+        pelvis = clampLeg(pelvis, first, 0.0f, hi, band);
+        pelvis = clampLeg(pelvis, second, lo, hi, band);
+    }
+    return pelvis;
+}
+
+// Advances `body` one tick toward the feet. `stanceWeight` in [0, 1]: 0 = left
+// leg carries the body, 1 = right leg. All points in the same space, +Y up.
+void moveBodyToFeet(BodyState& body, const LegSupport& left, const LegSupport& right, float legLength,
+                    float stanceWeight, const RepositionSettings& s, float dt) {
+    const float w = math::clamp(stanceWeight, 0.0f, 1.0f);
+    const float single = std::fabs(2.0f * w - 1.0f);  // 0 both feet loaded, 1 one foot
+
+    // Where: between the feet by the weight each carries.
+    auto stand = [&](const LegSupport& leg) { return leg.foot + math::kUp * (s.standReach * legLength) - leg.hipOffset; };
+    const math::Vec3 overL = stand(left), overR = stand(right);
+    math::Vec3 goal = math::lerp(overL, overR, w);
+    goal.x = math::lerp(0.5f * (overL.x + overR.x), goal.x, s.sideFollow);
+    goal.z = math::lerp(s.restZ, goal.z, s.forwardFollow);
+
+    // How high: as high as every loaded leg reaches straight (standReach);
+    // the lowest one decides. A lifted foot sets nothing.
+    const float reach = s.standReach * legLength;
+    auto hipHeight = [&](const LegSupport& leg) {
+        const math::Vec3 hip = goal + leg.hipOffset;
+        const math::Vec2 out(hip.x - leg.foot.x, hip.z - leg.foot.z);
+        return leg.foot.y + std::sqrt(std::max(reach * reach - math::dot(out, out), 0.0f)) - leg.hipOffset.y;
+    };
+    const float yL = hipHeight(left), yR = hipHeight(right);
+    const float both = std::min(yL, yR), one = w >= 0.5f ? yR : yL;
+    goal.y = math::lerp(goal.y, math::lerp(both, one, single), s.standShare);
+    body.goal = goal;
+
+    // On one foot the lifted side drops (BIOMECHANICS 4.3).
+    spring(body.drop, body.dropRate, -s.standShare * s.stanceDrop * (2.0f * w - 1.0f), s.followRate, s.damping, dt);
+    const math::Quat tilt = body.rotation();
+    const LegSupport l{tilt * left.hipOffset, left.foot}, r{tilt * right.hipOffset, right.foot};
+    spring(body.position, body.velocity, goal, s.followRate, s.damping, dt);
+
+    // Rule 1: the legs reach. The unloaded leg only limits the reach (a lifted
+    // foot must not push the body away; its knee bends more); stance leg last.
+    const math::Vec3 sprung = body.position;
+    body.position = clampToLegs(sprung, w >= 0.5f ? l : r, w >= 0.5f ? r : l, legLength, s);
+    // The clamp stops the spring: drop the velocity pushing into it, so the
+    // body does not jump once the limit lets go.
+    const math::Vec3 push = body.position - sprung;
+    const float pushLength = math::length(push);
+    if (pushLength > 1e-6f) {
+        const math::Vec3 n = push / pushLength;
+        const float into = math::dot(body.velocity, n);
+        if (into < 0.0f) body.velocity -= n * into;
+    }
+}
+
 } // namespace
 
 bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion) {
@@ -317,7 +406,7 @@ bool Human::setHeight(float height) {
                                     segmentMass_[static_cast<size_t>(arm.end)]) / total
                                  : 0.0f;
     models_.assign(static_cast<size_t>(rig_.numJoints()), math::Mat4(1.0f));
-    body_ = motion::BodyState{};
+    body_ = BodyState{};
     body_.position = current_.locals[static_cast<size_t>(joints_.pelvis)].position;  // pelvis is the root joint
     rig_.localToModel(current_, models_);
     restShoulderL_ = modelPos(models_, joints_.armL.start);
@@ -337,7 +426,7 @@ bool Human::setHeight(float height) {
     {
         const float thigh = math::distance(modelPos(models_, joints_.legL.start), modelPos(models_, joints_.legL.mid));
         const float shin = math::distance(modelPos(models_, joints_.legL.mid), modelPos(models_, joints_.legL.end));
-        reposition_.minReach = motion::bentReach(thigh, shin, limits_.limit(joints_.legL.mid).twistMax) / rig_.legLength();
+        reposition_.minReach = bentReach(thigh, shin, limits_.limit(joints_.legL.mid).twistMax) / rig_.legLength();
     }
     armLength_ = math::distance(modelPos(models_, joints_.armL.start), modelPos(models_, joints_.armL.mid)) +
                  math::distance(modelPos(models_, joints_.armL.mid), modelPos(models_, joints_.armL.end));
@@ -799,12 +888,12 @@ void Human::repositionBody(float dt) {
     rig_.localToModel(rig_.restPose(), models_);
     const math::Vec3 restPelvis = modelPos(models_, joints_.pelvis);
     const math::Transform toModel = math::inverse(root_);
-    motion::LegSupport left{modelPos(models_, joints_.legL.start) - restPelvis, toModel.transformPoint(targets_.footL)};
-    motion::LegSupport right{modelPos(models_, joints_.legR.start) - restPelvis, toModel.transformPoint(targets_.footR)};
+    LegSupport left{modelPos(models_, joints_.legL.start) - restPelvis, toModel.transformPoint(targets_.footL)};
+    LegSupport right{modelPos(models_, joints_.legR.start) - restPelvis, toModel.transformPoint(targets_.footR)};
 
     // The lower foot carries the body; even weight when both are level.
     const float stance = math::clamp(0.5f + 0.5f * (left.foot.y - right.foot.y) / stanceBlendHeight_, 0.0f, 1.0f);
-    motion::RepositionSettings reposition = reposition_;
+    RepositionSettings reposition = reposition_;
     reposition.sideFollow = shape_.sideFollow;  // runners barely shift sideways
     // Moving, the root already travels smoothly; chasing the stance foot
     // (which slides back every step) would make the body lag and surge.
@@ -814,7 +903,7 @@ void Human::repositionBody(float dt) {
     // pelvis motion (addGaitMotion) takes over.
     reposition.standShare = reposition.forwardFollow;
 
-    motion::repositionBody(body_, left, right, rig_.legLength(), stance, reposition, dt);
+    moveBodyToFeet(body_, left, right, rig_.legLength(), stance, reposition, dt);
     math::Transform& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)];
     pelvis.position = body_.position;
     pelvis.rotation = body_.rotation() * pelvis.rotation;
@@ -869,7 +958,7 @@ void Human::repositionFromFeet() {
     bodyRepositionSettings_.pelvisMax = reach_.pelvisMax;
     bodyReposition_.solve(current_, models_, t, bodyRepositionSettings_);
     // Leaving the test, the usual repositioning carries on from here.
-    body_ = motion::BodyState{};
+    body_ = BodyState{};
     body_.position = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
 }
 
@@ -961,9 +1050,9 @@ void Human::swingArms(float dt) {
         const motion::JumpArm& a = jumper_.arm(left);
         math::Quat& shoulder = current_.locals[static_cast<size_t>(chain.start)].rotation;
         math::Quat& elbow = current_.locals[static_cast<size_t>(chain.mid)].rotation;
-        const math::Quat want = math::fromAxisAngle(math::kForward, left ? a.abduct : -a.abduct) *
+        const math::Quat jumpPose = math::fromAxisAngle(math::kForward, left ? a.abduct : -a.abduct) *
                                 math::fromAxisAngle(math::kRight, -a.flex);
-        shoulder = math::normalize(math::slerp(shoulder, want, weight));
+        shoulder = math::normalize(math::slerp(shoulder, jumpPose, weight));
         elbow = math::normalize(math::slerp(elbow, math::fromAxisAngle(math::kRight, -a.elbow), weight));
     }
 }
@@ -1105,14 +1194,14 @@ math::Vec3 Human::balanceOverhang(math::Vec3 pelvisMove) {
 math::Vec3 Human::clampPelvisToLegs(math::Vec3 pelvis) {
     // The reposition leg clamp with both feet planted and no squat limit;
     // legs stay within the IK soften ratio so the ankles reach their targets.
-    motion::RepositionSettings legs = reposition_;
+    RepositionSettings legs = reposition_;
     legs.minReach = 0.0f;
     legs.maxReach = std::min(reposition_.maxReach, ik_.soften);
     const math::Transform toModel = math::inverse(root_);
     const math::Vec3 now = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
-    const motion::LegSupport left{modelPos(models_, joints_.legL.start) - now, toModel.transformPoint(targets_.footL)};
-    const motion::LegSupport right{modelPos(models_, joints_.legR.start) - now, toModel.transformPoint(targets_.footR)};
-    return motion::clampToLegs(pelvis, left, right, rig_.legLength(), legs);
+    const LegSupport left{modelPos(models_, joints_.legL.start) - now, toModel.transformPoint(targets_.footL)};
+    const LegSupport right{modelPos(models_, joints_.legR.start) - now, toModel.transformPoint(targets_.footR)};
+    return clampToLegs(pelvis, left, right, rig_.legLength(), legs);
 }
 
 math::Vec3 Human::modelCentreOfMass() {
@@ -1697,9 +1786,9 @@ void Human::updateBowl(float dt) {
             // left it; a foot already ahead steps less).
             strideWaiting_ = false;
             const motion::Foot foot = reachLeft_ ? motion::Foot::Right : motion::Foot::Left;
-            const motion::Foot back = reachLeft_ ? motion::Foot::Left : motion::Foot::Right;
+            const motion::Foot backFoot = reachLeft_ ? motion::Foot::Left : motion::Foot::Right;
             const math::Vec3 straight = math::fromAxisAngle(math::kUp, bowlBaseYaw_ - walker_.yaw()) * math::kForward;
-            const float along = math::dot(stepper_.foot(back) - stepper_.foot(foot), straight);
+            const float along = math::dot(stepper_.foot(backFoot) - stepper_.foot(foot), straight);
             stepper_.stepTo(foot, stepper_.foot(foot) + straight * (along + bowl_.strideLength));
             strideFoot_ = static_cast<int>(foot);
         }

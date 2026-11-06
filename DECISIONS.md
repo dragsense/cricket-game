@@ -317,3 +317,36 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Reason:** the user's call: general things first, one physics for every object.
 - **Also:** until then a released ball does not fly (SimWorld keeps the ball interface).
   The spring-leg stand-in for muscles was removed the same day (no jugaad).
+
+## 2026-11-06: The body moves by physics only; one decider, one balancer
+- **Decision:** while a player's physics is on, every part moves only by Jolt muscle
+  forces; joint limits apply in Jolt.
+  - `BodyReposition` becomes a decider (new file next to it; the old one is deleted
+    once it works). The backups were deleted the same day (the user's call): the
+    formula repositioning that jog, run, jump, pick, throw and bowl still use moved
+    into `agents::Human` unchanged (its test went with it); those actions move to the
+    decider later, in M6. Balance is part of M6 (the user's call). It
+    keeps today's order and direction math, outputs a fixed-size queue (part,
+    direction, order) from the real physics pose, and decides no amounts, applies no
+    limits, moves nothing. Speed comes from the target's own motion and timing.
+  - Removed from it: limit clamps, pelvis min/max, writing the pose, `bodyDrop`,
+    `keepLeg`, the geometric foot roll, passes, `legReach` / `armReach`. Push-off stays
+    as a decision (a muscle action).
+  - Balance is real human balance (Horak & Nashner 1986; Winter 1995; Maki & McIlroy
+    1997; Hof 2008; Peterka 2002): capture point with ankle, hip (blended) and step,
+    planned ahead from the known steps and target paths (anticipation; Kajita 2003,
+    Englsberger 2015), feedback for surprises. It uses only the free parts and
+    **always wins**: the active target gives way if the free parts cannot hold it. A
+    far reach brings a step; when nothing is left the body is released to free physics.
+  - Torques: capture point + centre-of-mass spring (Jᵀ) + gravity compensation (Coros
+    2010), no new library; the whole-body optimiser (QP) can replace the torque step
+    later. Foot placement details: later.
+  - Physics on only for players in the play (bowler from the delivery start, batter
+    at release, keeper and fielders when the ball comes); standing = kinematic.
+- **Reason:** the user's rules (real mechanics, nothing faked, physics in one place).
+  The 2026-11-05 muscles sagged (Jolt's frequency mode scales stiffness by each part's
+  own inertia, ~19 N m/rad at the shoulder against ~10.6 N m of arm weight: 0.56 rad,
+  as measured) and the body tipped (no balance).
+- **Rejected:** external "balloon" forces (Gang Beasts, TABS), AI controllers (PHC,
+  MaskedMimic, DeepMimic: mocap, GPU training, a network runtime), stiff joints alone
+  (ankle stiffness < mgh), the hybrid (planned pose with physics only for dives).

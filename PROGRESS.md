@@ -178,10 +178,16 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   balance system for every activity, from the capture point (Hof: xi = x + v / w0;
   inside the feet: ankle/hip strategies, Peterka 2002; outside: step to xi + margin;
   beyond reach: controlled fall); the walk's foot placement should come from xi (the
-  gait timer stays as the rhythm). **Next session:** research knee and hip stiffness in
-  standing under load (gap; the knee needs more than ~265 N m/rad by estimate), switch
-  the motors to Jolt's StiffnessAndDamping mode, then the standing balance (phase 1).
-  Open questions for the user: balance as its own milestone or part of M6.
+  gait timer stays as the rhythm). **Designed 2026-11-06 (DESIGN "Physics body and
+  balance", DECISIONS 2026-11-06):** physics only moves the body; BodyReposition becomes
+  a decider (queue + directions from the real physics pose, speed from the target's
+  timing); a balancer (capture point: ankle/hip blended, step, release; planned ahead;
+  always wins); physics on only for players in the play. **Next:** 1 the decider next to
+  BodyReposition (exact keep/remove list agreed); 2 muscles: velocity motors with real
+  strength + gravity compensation; 3 balancer; 4 free fall and recovery from the landed
+  pose. Balance is part of M6 (the user's call). The backups were deleted; the formula
+  repositioning that jog, run, jump, pick, throw and bowl still use now lives in
+  `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).
 - [~] **Muscles** (2026-11-05, in progress): each joint's Jolt motor drives it toward
   BodyReposition's planned pose (`HumanBody::setTargets`) with the joint's real strength
   as max torque (human_joints.json "muscles", BIOMECHANICS 14); the planned pose no longer

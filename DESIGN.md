@@ -249,7 +249,8 @@ Small parts are merged with `render::appendMesh` to keep draw calls low.
   `motion::FootStepper` (Step 1.4, WASD via `Fielder::setStepInput`). ImGuizmo was not added (the user's choice).
 
 ### Motion (M1): repositioning, stepping, walk, jog, run built
-- `motion::repositionBody` (`src/motion/body_reposition_backup.*`, kept as a backup since 2026-11-03;
+- The formula repositioning (`moveBodyToFeet` in `src/agents/human.cpp`; was
+  `motion::repositionBody` in `src/motion/body_reposition_backup.*` until 2026-11-06;
   `motion::BodyReposition` in `src/motion/body_reposition.*` replaced it for standing, walking,
   running and the limb test): every tick after the foot
   targets are set, the pelvis eases toward standing height above the stance-weighted
@@ -303,6 +304,47 @@ arm, Step 2.1); left click places the target (the ball), R clears it.
 (shared gravity, air density, wind), stepped once per 120 Hz tick by `match::SimWorld`,
 previous/current transform per body for interpolation, preallocated temp allocator
 (no per-tick heap use), single-threaded job system by default. Jolt stays inside the .cpp.
+
+### Physics body and balance (M6): designed 2026-11-06, not built
+The body moves only by forces. Nothing places a part while its physics is on. See
+DECISIONS 2026-11-06 and docs/BIOMECHANICS.md 14.
+```
+Actions (walk, run, bowl, bat, reach, field, dive)
+   only move the 7 targets (hips, chest, head, 2 hands, 2 feet) + elbow/knee hints,
+   mark which targets are ACTIVE, and give path + timing (the future is known)
+        ▼
+Decider (replaces BodyReposition; only numbers, never moves anything)
+   reads the physics body's real pose; per active target: the queue of parts
+   in real body order (hand: arm → clavicle → chest → spine_02 → spine_01 → hips
+   tilt → hips move; chest: chest → spine → pelvis; foot: hip/knee, then pelvis)
+   + each part's direction; speed from the target's own motion and timing
+        ▼
+Balancer (always wins; uses only the free, non-active parts)
+   planner: capture-point / centre-of-mass path over the known steps and target
+   paths, pre-shifting for fast moves (anticipation)
+   feedback, every tick: ξ = x + v/ω₀ against the support (whatever touches the
+   ground): inside → ankle, edge → hip/trunk (blended, not switched), outside →
+   step to ξ + margin, nothing left → release to free physics (fall/dive)
+   if the free parts cannot hold it, the active target gives way
+        ▼
+Muscles: Jolt motors in velocity mode toward the directions, max torque = the
+   joint's real strength (human_joints.json), plus gravity compensation
+        ▼
+Jolt: 19 parts, real masses, joint limits stop the joints, contacts, friction
+        ▼
+Draw the Jolt body
+```
+- **Physics on/off by game events:** bowler from the start of the delivery through the
+  follow-through; batter at the ball's release; keeper and fielders when the ball comes
+  to them. Off (kinematic, fixed pose, no work) when standing still. Switching keeps the
+  pose and speed. A physics player touching a kinematic one turns it on.
+- **Recovery** starts from the real landed pose; the support is whatever touches the
+  ground (knees, hands, hip). No fixed get-up.
+- **Caching:** the plan and gravity compensation are recomputed only when a target, the
+  pose or a contact changes; the feedback runs every tick (tiny).
+- **Never:** outside forces on the body, placing parts while physics is on, locked axes,
+  tuned strategy thresholds (physical limits decide), per-action balance code.
+- **Measure:** hand lag behind a moving target, CPU with ~5 active players, Jolt sleep.
 
 ### Own sphere physics (M3): in progress
 Generic, reusable by any object we simulate ourselves (ball now; e.g. players' contact

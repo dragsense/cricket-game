@@ -12,7 +12,6 @@
 #include "ik/joint_limits.h"
 #include "ik/limb_ik.h"
 #include "math/math.h"
-#include "motion/body_reposition_backup.h"
 #include "motion/foot_stepper.h"
 #include "motion/jump_controller.h"
 #include "motion/body_reposition.h"
@@ -28,6 +27,46 @@ class Config;
 }
 
 namespace agents {
+
+// The old formula repositioning (moved here from motion/body_reposition_backup,
+// 2026-11-06), still used by jogging, running, jumping, picking, throwing and
+// bowling until they move to the physics decider (DECISIONS 2026-11-06).
+// One formula, whatever moved a foot:
+//  - where: between the feet by the weight each carries;
+//  - how high: as high as every loaded leg reaches straight (standReach), the
+//    lowest deciding; a lifted foot sets nothing;
+//  - on one foot the lifted side drops stanceDrop (BIOMECHANICS 4.3);
+//  - a damped spring moves it there; the leg clamp keeps both feet reachable.
+struct RepositionSettings {
+    float standReach = 0.95f;  // comfortable hip-to-foot distance (fraction of leg length)
+    float minReach = 0.5f;     // deepest crouch (the knee fully bent; set from the joint limits)
+    float maxReach = 0.98f;    // legs never fully straight
+    float softBand = 0.02f;    // the max reach eases in over this share of leg length (0: hard)
+    float followRate = 10.0f;  // 1/s, the spring's natural frequency
+    float damping = 1.0f;      // spring damping ratio (1: settles without overshoot)
+    float sideFollow = 1.0f;   // share of the sideways shift over the stance foot the body takes
+    float forwardFollow = 1.0f; // share of the forward/back shift over the feet (0: stay at restZ)
+    float restZ = 0.0f;        // pelvis forward position when not following the feet
+    float stanceDrop = 0.07f;  // radians, the unloaded side's hip drop with all weight on one leg
+    float standShare = 1.0f;   // share of the standing rules (straight-leg height, hip drop); 0 moving
+    int iterations = 4;
+};
+
+struct LegSupport {
+    math::Vec3 hipOffset{0.0f};  // hip relative to the pelvis (rest, unrotated)
+    math::Vec3 foot{0.0f};       // foot (ankle) target
+};
+
+// The pelvis kept between ticks: position and hip drop, each with its spring
+// velocity, and the position it is heading for.
+struct BodyState {
+    math::Vec3 position{0.0f};
+    math::Vec3 velocity{0.0f};
+    math::Vec3 goal{0.0f};
+    float drop = 0.0f, dropRate = 0.0f;  // about +Z; positive raises the left hip
+
+    math::Quat rotation() const { return math::fromAxisAngle(math::kForward, drop); }
+};
 
 // IK goals in world space.
 struct IkTargets {
@@ -459,7 +498,7 @@ private:
     bool reachLeft_ = true;       // this tick's (primary) reaching hand
     math::Vec3 goal_{0.0f};  // wrist goal, character space
     float reachError_ = 0.0f;
-    motion::RepositionSettings reposition_;
+    RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
     int posedFoot_ = -1;  // limb test: the foot last placed (motion::Foot), -1 none
     math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
@@ -517,7 +556,7 @@ private:
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians
     Joints joints_;
     IkTargets targets_;
-    motion::BodyState body_;  // pelvis position and foot-driven turn/drop in character space, kept between ticks
+    BodyState body_;  // pelvis position and foot-driven turn/drop in character space, kept between ticks
     rig::Pose previous_, current_;
     // Segment mass model (built with the skeleton): mass share per joint, its
     // single child (segment end) or -1, and the leaf tip in joint space.
