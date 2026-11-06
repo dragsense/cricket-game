@@ -87,6 +87,17 @@ int Rig::findJoint(const std::string& name) const {
     return -1;
 }
 
+bool Rig::modelToLocal(const std::vector<math::Mat4>& models, Pose& pose) const {
+    const size_t n = parents_.size();
+    if (!valid() || models.size() != n || pose.locals.size() != n) return false;
+    for (size_t j = 0; j < n; ++j) {
+        const math::Transform model = math::toTransform(models[j]);
+        const int parent = parents_[j];
+        pose.locals[j] = parent >= 0 ? math::inverse(math::toTransform(models[static_cast<size_t>(parent)])) * model : model;
+    }
+    return true;
+}
+
 bool Rig::localToModel(const Pose& pose, std::vector<math::Mat4>& out) const {
     const size_t n = parents_.size();
     if (!valid() || pose.locals.size() != n || out.size() != n) return false;

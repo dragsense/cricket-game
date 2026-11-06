@@ -210,6 +210,19 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   decider's queue (velocity per joint from the shares and the target's motion, capped
   at real strength) + gravity compensation; blocked joints from Jolt; test with the
   pelvis held by the test only.
+  **Step 2b built, one test failing (2026-11-06):** `HumanBody::compensateGravity` (each
+  muscle holds the weight beyond its joint, away from the pelvis, capped at its strength),
+  `drive` (each active turn order: its share of the speed that closes the target's gap in
+  Fitts' time plus the target's own motion, across the joint's lever; turn targets close
+  in fittsA; joints without orders hold at 0; motor limit = strength left after holding),
+  `blockedJoints` (at its limit by ik::clampRotation, no own muscle, or the motor at full
+  strength by Jolt's lambda), `setPhysics`; `Rig::modelToLocal`;
+  `PhysicsWorld::jointMotorTorque`. Tests (tests/test_human_body.cpp, pelvis held by the
+  test): no target, 2 s: worst joint 0 rad off rest (was 0.56 rad sag) ✓; hand target
+  0.32 m away: the wrist ends 0.82 m away ✗ (may_fail; moves away: a sign or frame
+  mix-up between the order's direction and the motor's velocity). **Next session:**
+  measure each joint's commanded vs. actual angular velocity, fix, then step 3 (the
+  balancer; wire into the game with physics on).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

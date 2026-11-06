@@ -47,6 +47,10 @@ public:
     // Model-space (relative to the character root) matrices for every joint.
     // `out` must already hold numJoints() entries. Returns false on error.
     bool localToModel(const Pose& pose, std::vector<math::Mat4>& out) const;
+    // The inverse: each joint's local transform from model-space matrices
+    // (e.g. a physics body's bones). `pose` must already hold numJoints()
+    // locals. No allocations.
+    bool modelToLocal(const std::vector<math::Mat4>& models, Pose& pose) const;
 
 private:
     struct Impl;

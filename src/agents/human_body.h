@@ -8,18 +8,20 @@
 // bone without mass of its own (neck, clavicles, fingers) rides its parent.
 // The parts of one body do not collide with each other; they collide with
 // the ground and with everything else.
-// Muscles (BIOMECHANICS 14): each joint's motor drives it toward the planned
-// pose (setTargets), no harder than that joint's real strength, switching on
-// as fast as muscle activation allows. Nothing balances the body yet: it
-// keeps its shape but can tip over.
+// Muscles (BIOMECHANICS 14; DECISIONS 2026-11-06): each joint's velocity
+// motor turns it the way the decider's queue says, no harder than that
+// joint's real strength, after holding the weight beyond it (gravity
+// compensation). Nothing balances the body yet: it can tip over.
 // Load-time allocation only.
 
 #include "ik/joint_limits.h"
 #include "math/math.h"
+#include "motion/body_decider.h"
 #include "physics/core/physics_world.h"
 #include "rig/rig.h"
 #include "rig/skeleton_def.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,6 +35,13 @@ struct MuscleSettings {
     // Strongest torque per joint (N m), by bone name without its side
     // ("thigh" for thigh_l and thigh_r). A joint not listed has no muscle.
     std::vector<std::pair<std::string, float>> maxTorque;
+};
+
+// How fast a muscle closes its target's gap: Fitts' law movement time
+// fittsA + fittsB log2(2D / fittsWidth) (human_joints.json "reach";
+// BIOMECHANICS 9.6). A turn target has no Fitts' law: it closes in fittsA.
+struct MuscleTiming {
+    float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
 };
 
 class HumanBody {
@@ -58,6 +67,7 @@ public:
         bool hinge = false;                // hinge (else SixDOF)
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame
         bool muscle = false;               // its motor is on
+        float strength = 0.0f;             // N m, its muscle's strongest torque (human_joints.json "muscles")
     };
     const std::vector<Part>& parts() const { return parts_; }
     float totalMass() const { return totalMass_; }
@@ -70,6 +80,38 @@ public:
                 float dt) const;
 
     void setTargets(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const;
+
+    // Physics on (every part dynamic: gravity, muscles, contacts) or off
+    // (kinematic, placed by follow), keeping each part's velocity.
+    void setPhysics(physics::PhysicsWorld& world, bool on) const;
+
+    // Each muscle holds the weight of every part beyond it, away from the
+    // pelvis (a torque on the part and the opposite on its parent), no harder
+    // than its strength. Right for limbs held off the trunk; standing legs
+    // carry the body from the feet (the balance's job, later). Call before
+    // drive. No allocations.
+    void compensateGravity(physics::PhysicsWorld& world) const;
+
+    // The muscles from the decider's queue. Each active turn order turns its
+    // joint along its direction at its share of the speed that closes its
+    // target's gap in Fitts' time plus the target's own motion, as that joint
+    // sees it (the end's needed velocity across the joint's lever; a turn
+    // target: its angular gap). A joint with no order holds (velocity 0).
+    // Each motor pulls no harder than the strength left after holding the
+    // weight. A joint riding its parent (clavicle, neck) has no muscle of its
+    // own; the hips' moves are the legs' and the balance's (later). `models`:
+    // the physics body now (character space). No allocations.
+    void drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
+               const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
+               const MuscleTiming& timing) const;
+
+    // The joints that cannot go further the way their orders pull: at their
+    // limit (measured the way Jolt's joints are, ik::clampRotation), with no
+    // muscle of their own, or with the muscle at its full strength in the last
+    // step of `dt` s. `out`: one entry per rig joint. No allocations.
+    void blockedJoints(const physics::PhysicsWorld& world, const motion::BodyQueue& queue,
+                       const std::vector<math::Mat4>& models, const ik::JointLimits& limits, float dt,
+                       std::vector<uint8_t>& out) const;
 
     // The drawn skeleton from the bodies (character space of `root`; `alpha`
     // between the last two steps): a bone with a body takes the body's pose,
@@ -85,6 +127,11 @@ private:
     std::vector<Part> parts_;
     std::vector<int> partOf_;  // per rig joint: its part, -1 if it rides
     float totalMass_ = 0.0f;
+    // Scratch, sized at init (no per-step allocation; mutable: not the body's state).
+    mutable std::vector<math::Vec3> omega_;         // per part: its muscle's angular velocity (character space)
+    mutable std::vector<float> hold_;               // per part: the torque its muscle spends holding the weight (N m)
+    mutable std::vector<float> beyondMass_;         // per part: mass of it and every part beyond it
+    mutable std::vector<math::Vec3> beyondMoment_;  // per part: their mass x centre of mass (world)
 };
 
 } // namespace agents

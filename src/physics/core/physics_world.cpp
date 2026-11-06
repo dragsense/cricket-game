@@ -29,6 +29,7 @@
 #include <Jolt/RegisterTypes.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <vector>
@@ -576,6 +577,13 @@ void PhysicsWorld::setSixDofVelocity(JointId id, math::Vec3 angularVelocity) {
     using A = JPH::SixDOFConstraintSettings::EAxis;
     for (A axis : {A::RotationX, A::RotationY, A::RotationZ}) x->SetMotorState(axis, JPH::EMotorState::Velocity);
     x->SetTargetAngularVelocityCS(toJolt(angularVelocity));
+}
+
+float PhysicsWorld::jointMotorTorque(JointId id, float dt) const {
+    if (!impl_ || id >= impl_->hinges.size() || dt <= 0.0f) return 0.0f;
+    if (const JPH::HingeConstraint* h = impl_->hinges[id]) return std::fabs(h->GetTotalLambdaMotor()) / dt;
+    if (const JPH::SixDOFConstraint* x = impl_->sixDofs[id]) return x->GetTotalLambdaMotorRotation().Length() / dt;
+    return 0.0f;
 }
 
 void PhysicsWorld::setHingeTarget(JointId id, float angle) {

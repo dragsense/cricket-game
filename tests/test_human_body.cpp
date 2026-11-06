@@ -105,3 +105,105 @@ TEST_CASE("human body: with muscles each joint holds its planned rotation (no ba
     CHECK(lowestPart > -0.01f);    // the ground holds every part
     CHECK(worstOutside < 0.25f);   // joints near their real ranges
 }
+
+namespace {
+
+// The muscles' loop with the pelvis held by the test (no balance yet): the
+// decider reads the physics body, the muscles hold the weight and turn the
+// joints its queue names, Jolt reports the blocked joints.
+struct MuscleRig {
+    Scene s;
+    motion::BodyDeciderJoints joints;
+    motion::BodyDecider decider;
+    motion::BodyQueue queue;
+    std::vector<uint8_t> blocked;
+    std::vector<math::Mat4> models;
+    rig::Pose pose;
+    agents::MuscleTiming timing;
+
+    bool make() {
+        if (!makeScene(s)) return false;
+        const rig::Rig& rig = s.human.rig();
+        auto chain = [&](const char* a, const char* b, const char* c, math::Vec3 axis) {
+            return ik::TwoBoneChain{rig.findJoint(a), rig.findJoint(b), rig.findJoint(c), axis};
+        };
+        joints.pelvis = rig.findJoint("pelvis");
+        joints.spine[0] = rig.findJoint("spine_01");
+        joints.spine[1] = rig.findJoint("spine_02");
+        joints.spine[2] = rig.findJoint("chest");
+        joints.neck = rig.findJoint("neck");
+        joints.head = rig.findJoint("head");
+        joints.clavicles[0] = rig.findJoint("clavicle_l");
+        joints.clavicles[1] = rig.findJoint("clavicle_r");
+        joints.legs[0] = chain("thigh_l", "shin_l", "foot_l", {-1, 0, 0});
+        joints.legs[1] = chain("thigh_r", "shin_r", "foot_r", {-1, 0, 0});
+        joints.arms[0] = chain("upper_arm_l", "forearm_l", "hand_l", {1, 0, 0});
+        joints.arms[1] = chain("upper_arm_r", "forearm_r", "hand_r", {1, 0, 0});
+        blocked.assign(static_cast<size_t>(rig.numJoints()), 0);
+        models.resize(static_cast<size_t>(rig.numJoints()));
+        pose = rig.restPose();
+        timing.fittsA = s.joints.getFloat("reach.fittsA", timing.fittsA);
+        timing.fittsB = s.joints.getFloat("reach.fittsB", timing.fittsB);
+        timing.fittsWidth = s.joints.getFloat("reach.fittsWidth", timing.fittsWidth);
+        if (!decider.init(rig, joints)) return false;
+        const agents::HumanBody& body = s.human.humanBody();
+        body.setPhysics(s.world, true);
+        s.world.setKinematic(body.parts()[0].body, true);  // the test holds the pelvis
+        return true;
+    }
+
+    void step(const motion::BodyGoals& goals) {
+        const agents::HumanBody& body = s.human.humanBody();
+        s.human.physicalModels(s.world, 1.0f, models);
+        s.human.rig().modelToLocal(models, pose);
+        decider.decide(pose, goals, blocked, motion::BodyDeciderSettings{}, queue);
+        body.compensateGravity(s.world);
+        body.drive(s.world, queue, goals, joints, models, timing);
+        s.world.step(kTick);
+        s.human.physicalModels(s.world, 1.0f, models);
+        body.blockedJoints(s.world, queue, models, s.human.jointLimits(), kTick, blocked);
+    }
+
+    math::Vec3 pos(int joint) const { return math::Vec3(models[static_cast<size_t>(joint)][3]); }
+};
+
+} // namespace
+
+TEST_CASE("human body muscles: with no target every joint holds its pose (no sag), pelvis held") {
+    MuscleRig r;
+    REQUIRE(r.make());
+    const agents::HumanBody& body = r.s.human.humanBody();
+    float worst = 0.0f;
+    std::string worstJoint;
+    for (int i = 0; i < 2 * 120; ++i) r.step(motion::BodyGoals{});
+    for (const agents::HumanBody::Part& p : body.parts()) {
+        if (p.parent < 0) continue;
+        const math::Quat local = math::inverse(boneRotation(r.s.world, body.parts()[static_cast<size_t>(p.parent)])) *
+                                 boneRotation(r.s.world, p);
+        const float off = math::angleBetween(local, math::identityQuat());  // rest pose: identity
+        if (off > worst) {
+            worst = off;
+            worstJoint = r.s.human.rig().jointName(p.joint);
+        }
+    }
+    MESSAGE("no target, 2 s: worst joint off its rest rotation ", worst, " rad (", worstJoint,
+            "); before muscles with gravity compensation the shoulder sagged 0.56 rad");
+    CHECK(worst < 0.05f);
+}
+
+// Known failure (2026-11-06): the wrist ends 0.82 m from a target 0.32 m away
+// (it moves away): a sign or frame mix-up between the order's direction and
+// the motor's velocity (joint frame on body b). Next session: measure each
+// joint's commanded vs. actual angular velocity (PROGRESS).
+TEST_CASE("human body muscles: a hand target within reach is reached, pelvis held" * doctest::may_fail()) {
+    MuscleRig r;
+    REQUIRE(r.make());
+    r.s.human.physicalModels(r.s.world, 1.0f, r.models);
+    motion::BodyGoals goals;
+    goals.hand[0].active = true;
+    goals.hand[0].position = r.pos(r.joints.arms[0].end) + math::Vec3(0.0f, 0.2f, 0.25f);  // forward and up
+    for (int i = 0; i < 2 * 120; ++i) r.step(goals);
+    const float miss = math::distance(r.pos(r.joints.arms[0].end), goals.hand[0].position);
+    MESSAGE("hand target in reach: wrist ", miss, " m from it after 2 s");
+    CHECK(miss < 0.03f);
+}

@@ -182,6 +182,8 @@ public:
     // Hinge: about its axis (rad/s). SixDOF: in the joint's frame on body b.
     void setHingeVelocity(JointId id, float angularVelocity);
     void setSixDofVelocity(JointId id, math::Vec3 angularVelocity);
+    // The torque (N m) the joint's motor applied in the last step of `dt` s.
+    float jointMotorTorque(JointId id, float dt) const;
 
     // The ground (Jolt's static scenery) under `point`: its height there, or
     // the world's groundHeight if nothing is below.

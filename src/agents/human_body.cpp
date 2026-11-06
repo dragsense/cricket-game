@@ -1,6 +1,7 @@
 #include "agents/human_body.h"
 
 #include "core/log.h"
+#include "motion/reach.h"
 
 #include <algorithm>
 #include <cmath>
@@ -165,8 +166,13 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             m.maxTorque = strength;
             world.setJointMotor(p.link, m, true);
             p.muscle = true;
+            p.strength = strength;
         }
     }
+    omega_.assign(parts_.size(), math::Vec3(0.0f));
+    hold_.assign(parts_.size(), 0.0f);
+    beyondMass_.assign(parts_.size(), 0.0f);
+    beyondMoment_.assign(parts_.size(), math::Vec3(0.0f));
     LOG_INFO("human body: {} parts, {:.1f} kg", parts_.size(), totalMass_);
     return true;
 }
@@ -217,6 +223,131 @@ math::Vec3 HumanBody::centreOfMass(const physics::PhysicsWorld& world) const {
     math::Vec3 sum(0.0f);
     for (const Part& p : parts_) sum += world.transform(p.body).position * p.mass;
     return totalMass_ > 0.0f ? sum / totalMass_ : sum;
+}
+
+void HumanBody::setPhysics(physics::PhysicsWorld& world, bool on) const {
+    for (const Part& p : parts_) world.setKinematic(p.body, !on);
+}
+
+void HumanBody::compensateGravity(physics::PhysicsWorld& world) const {
+    const math::Vec3 g = world.world().gravity;
+    // Every part's weight, then (children come after parents) each part's
+    // added into its parent's: the mass beyond each joint.
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        beyondMass_[i] = parts_[i].mass;
+        beyondMoment_[i] = parts_[i].mass * world.transform(parts_[i].body).position;
+    }
+    for (size_t i = parts_.size(); i-- > 0;) {
+        const int parent = parts_[i].parent;
+        if (parent < 0) continue;
+        beyondMass_[static_cast<size_t>(parent)] += beyondMass_[i];
+        beyondMoment_[static_cast<size_t>(parent)] += beyondMoment_[i];
+    }
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        const Part& p = parts_[i];
+        hold_[i] = 0.0f;
+        if (p.parent < 0 || !p.muscle || beyondMass_[i] <= 0.0f) continue;
+        // The joint (the bone's origin) and gravity's torque about it.
+        const math::Vec3 pivot = (world.transform(p.body) * math::inverse(p.shape)).position;
+        const math::Vec3 centre = beyondMoment_[i] / beyondMass_[i];
+        math::Vec3 hold = -math::cross(centre - pivot, beyondMass_[i] * g);
+        const float size = math::length(hold);
+        if (size > p.strength) hold *= p.strength / size;  // no stronger than the muscle
+        hold_[i] = std::min(size, p.strength);
+        world.addTorque(p.body, hold);
+        world.addTorque(parts_[static_cast<size_t>(p.parent)].body, -hold);
+    }
+}
+
+void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
+                      const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
+                      const MuscleTiming& timing) const {
+    auto pos = [&](int j) { return math::Vec3(models[static_cast<size_t>(j)][3]); };
+    auto rot = [&](int j) { return math::toTransform(models[static_cast<size_t>(j)]).rotation; };
+    for (math::Vec3& w : omega_) w = math::Vec3(0.0f);
+
+    for (int k = 0; k < queue.count; ++k) {
+        const motion::PartOrder& o = queue.orders[static_cast<size_t>(k)];
+        if (!o.active || o.kind != motion::PartMove::Turn || o.joint < 0) continue;
+        const int part = partOf_[static_cast<size_t>(o.joint)];
+        if (part < 0) continue;
+        const Part& p = parts_[static_cast<size_t>(part)];
+        if (p.joint != o.joint || !p.muscle) continue;  // rides its parent, or no muscle (the pelvis)
+        float speed = 0.0f;                              // rad/s about the order's direction
+        if (o.goal == motion::Goal::Chest || o.goal == motion::Goal::Head) {
+            // A turn target: its angular gap closed in fittsA, plus its own turning.
+            const bool chest = o.goal == motion::Goal::Chest;
+            const motion::BodyGoals::Turn& t = chest ? goals.chest : goals.head;
+            const int turned = chest ? joints.spine[2] : joints.head;
+            const math::Vec3 gap = math::rotationVector(t.rotation * math::inverse(rot(turned)));
+            speed = math::dot(t.angularVelocity + gap / std::max(timing.fittsA, 1e-3f), o.direction);
+        } else {
+            // A point target (hand, foot): the end's needed velocity (its gap
+            // in Fitts' time plus the target's own motion) across this joint's lever.
+            const int h = o.goal == motion::Goal::HandL ? 0 : o.goal == motion::Goal::HandR ? 1 : -1;
+            const int f = o.goal == motion::Goal::FootL ? 0 : o.goal == motion::Goal::FootR ? 1 : -1;
+            const motion::BodyGoals::Point* g = h >= 0 ? &goals.hand[h] : f >= 0 ? &goals.foot[f] : nullptr;
+            const int end = h >= 0 ? joints.arms[h].end : f >= 0 ? joints.legs[f].end : -1;
+            if (!g || end < 0) continue;
+            const math::Vec3 gapVec = g->position - pos(end);
+            const float time = motion::movementTime(math::length(gapVec), timing.fittsWidth, timing.fittsA, timing.fittsB);
+            const math::Vec3 need = g->velocity + gapVec / std::max(time, 1e-3f);
+            const math::Vec3 lever = math::cross(o.direction, pos(end) - pos(o.joint));
+            const float reach = math::dot(lever, lever);
+            if (reach > 1e-6f) speed = math::dot(need, lever) / reach;
+        }
+        omega_[static_cast<size_t>(part)] += o.direction * (o.share * speed);
+    }
+
+    // Each muscle: its velocity in its joint's frame (on its own bone), its
+    // pull no harder than the strength left after holding the weight.
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        const Part& p = parts_[i];
+        if (p.parent < 0 || !p.muscle) continue;
+        physics::MotorDesc m;
+        m.maxTorque = std::max(p.strength - hold_[i], 0.0f);
+        world.setJointMotor(p.link, m, true);
+        const math::Vec3 w = math::inverse(rot(p.joint)) * omega_[i];  // the bone's frame
+        if (p.hinge)
+            world.setHingeVelocity(p.link, math::dot(w, p.frameX));
+        else
+            world.setSixDofVelocity(p.link,
+                                    math::Vec3(math::dot(w, p.frameX), math::dot(w, p.frameY), math::dot(w, p.frameZ)));
+    }
+}
+
+void HumanBody::blockedJoints(const physics::PhysicsWorld& world, const motion::BodyQueue& queue,
+                              const std::vector<math::Mat4>& models, const ik::JointLimits& limits, float dt,
+                              std::vector<uint8_t>& out) const {
+    std::fill(out.begin(), out.end(), uint8_t{0});
+    constexpr float kNudge = 0.01f;  // rad: a joint that cannot turn half of this further is at its limit
+    for (int k = 0; k < queue.count; ++k) {
+        const motion::PartOrder& o = queue.orders[static_cast<size_t>(k)];
+        if (o.kind != motion::PartMove::Turn || o.joint < 0 || static_cast<size_t>(o.joint) >= out.size()) continue;
+        uint8_t& blocked = out[static_cast<size_t>(o.joint)];
+        const int part = partOf_[static_cast<size_t>(o.joint)];
+        if (part < 0 || parts_[static_cast<size_t>(part)].joint != o.joint) {
+            blocked = 1;  // rides its parent: no muscle of its own
+            continue;
+        }
+        const Part& p = parts_[static_cast<size_t>(part)];
+        if (p.parent < 0 || !p.muscle) {
+            blocked = 1;
+            continue;
+        }
+        // At its limit: nudged the way it is pulled, the joint's range stops it.
+        const math::Quat parent =
+            math::toTransform(models[static_cast<size_t>(parts_[static_cast<size_t>(p.parent)].joint)]).rotation;
+        const math::Quat bone = math::toTransform(models[static_cast<size_t>(p.joint)]).rotation;
+        const math::Quat local = math::normalize(math::inverse(parent) * bone);
+        const math::Quat nudged = math::normalize(math::inverse(parent) * math::fromAxisAngle(o.direction, kNudge) * bone);
+        const bool atLimit =
+            math::angleBetween(local, ik::clampRotation(nudged, limits.limit(p.joint))) < 0.5f * kNudge;
+        // At full strength: its motor pushed as hard as it may.
+        const float may = std::max(p.strength - hold_[static_cast<size_t>(part)], 0.0f);
+        const bool spent = may <= 0.0f || world.jointMotorTorque(p.link, dt) >= 0.99f * may;
+        if (atLimit || spent) blocked = 1;
+    }
 }
 
 } // namespace agents
