@@ -601,12 +601,28 @@ void PhysicsWorld::setSixDofAxisSpring(JointId id, int axis, float offset, float
     JPH::SixDOFConstraint* c = impl_->sixDofs[id];
     using A = JPH::SixDOFConstraintSettings::EAxis;
     const A a = static_cast<A>(static_cast<int>(A::RotationX) + axis);
+    const bool othersHeld = [&] {  // another axis drives toward the target orientation
+        for (int k = 0; k < 3; ++k)
+            if (k != axis && c->GetMotorState(static_cast<A>(static_cast<int>(A::RotationX) + k)) == JPH::EMotorState::Position)
+                return true;
+        return false;
+    }();
     c->GetMotorSettings(a) = springMotor(stiffness, damping, maxTorque);
     c->SetMotorState(a, JPH::EMotorState::Position);
-    // Target: this axis turned by `offset` from now (Jolt keeps only the
-    // position-motor axes of the target).
-    const JPH::Vec3 along = axis == 0 ? JPH::Vec3::sAxisX() : axis == 1 ? JPH::Vec3::sAxisY() : JPH::Vec3::sAxisZ();
-    c->SetTargetOrientationCS(c->GetRotationInConstraintSpace() * JPH::Quat::sRotation(along, offset));
+    // Target: this axis turned by `offset` from now. The target orientation
+    // is shared by the axes: those driving to a position keep theirs (in
+    // rotation-vector components, the joint's own small angles).
+    const JPH::Quat now = c->GetRotationInConstraintSpace();
+    if (!othersHeld) {
+        const JPH::Vec3 along = axis == 0 ? JPH::Vec3::sAxisX() : axis == 1 ? JPH::Vec3::sAxisY() : JPH::Vec3::sAxisZ();
+        c->SetTargetOrientationCS(now * JPH::Quat::sRotation(along, offset));
+        return;
+    }
+    math::Vec3 target = math::rotationVector(fromJolt(c->GetTargetOrientationCS()));
+    const math::Vec3 current = math::rotationVector(fromJolt(now));
+    target[axis] = current[axis] + offset;
+    const float angle = math::length(target);
+    c->SetTargetOrientationCS(toJolt(angle > 1e-6f ? math::fromAxisAngle(target / angle, angle) : math::identityQuat()));
 }
 
 void PhysicsWorld::setSixDofAxisFree(JointId id, int axis) {

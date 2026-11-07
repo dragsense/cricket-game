@@ -305,6 +305,22 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (the clavicle has no body to lift the shoulder); across the body at chest height
   stops 25 cm short (the shoulder's swing range: flexion and adduction together; to
   check with the joint numbers).
+  **Whole-body target pose (part B, tried 2026-11-07, saved, not applied):**
+  `wip/whole_body_plan.patch` (untracked; against d1ac11f; also holds the 2026-11-06
+  balance WIP hunks): the decider keeps one planned pose (trunk from upright with the
+  queue's shares and the lumbopelvic split as amounts, legs by IK from the planned hips
+  to the planted feet, the plan's centre of mass kept over the feet, the legs within
+  their real ranges; the arm from the planned shoulder); every planned joint follows it
+  by Jolt's spring; stance knees and hips get support torque for the body above them
+  (Coros 2010). Measured: far ahead stands (6.8 cm short), the trunk straightens after;
+  ground / beside-foot / low-behind reaches fall after 1.5-3 s (they stood before) and
+  the face hold went 0.7 mm -> 1.6 cm. Cause: the body passes through unbalanced states
+  on its way to the plan; holding a big posture change needs dynamic balance (hips
+  back as you go, hip strategy, steps). **Next (the user's call):** the balance redesign
+  (one COM controller: capture point -> ground force -> joint torques, Jᵀ, with the
+  stance support torque), then part B on top of it. Kept from part B (committed): a
+  SixDOF one-axis spring keeps the other axes' targets (the balancer's hip spring wiped
+  the thigh's planned bend).
   **Talks 2026-11-07:** balance may be redesigned as one centre-of-mass controller
   (capture point -> ground force -> joint torques through the stance legs, Jᵀ) instead
   of per-case joints; the user's call pending. Yesterday's uncommitted one-foot work
