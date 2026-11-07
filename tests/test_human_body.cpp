@@ -390,3 +390,38 @@ TEST_CASE("human body muscles: a hand up at the face bends the elbow, elbow belo
     CHECK(bendAngle(r, arm) > 90.0f);
     CHECK(r.pos(arm.mid).y < r.pos(arm.end).y);
 }
+
+// Was failing (2026-11-07, the user's report: the hand does not stop at its
+// target, it turns away): through the game's own path the hand reached a
+// target at the face, then the forearm's twist crept and the arm flew 0.21 m
+// off. The two-bone solve read the elbow's bend axis in the forearm's frame,
+// twist included, so a twisted forearm turned the bend plane and the shoulder
+// chased it. Now the bend axis leaves the forearm's twist out.
+TEST_CASE("human: through the game loop a hand at the face stays on its target") {
+    Scene s;
+    REQUIRE(makeScene(s));
+    s.human.setPhysicsOn(true);
+    for (int i = 0; i < 60; ++i) {
+        s.human.tick(kTick);
+        s.world.step(kTick);
+    }
+    const rig::Rig& rig = s.human.rig();
+    const int shoulder = rig.findJoint("upper_arm_r"), wrist = rig.findJoint("hand_r");
+    std::vector<math::Mat4> m(static_cast<size_t>(rig.numJoints()));
+    auto world = [&](int j) {
+        s.human.physicalModels(s.world, 1.0f, m);
+        return s.human.root().transformPoint(math::Vec3(m[static_cast<size_t>(j)][3]));
+    };
+    const math::Vec3 goal = world(shoulder) + s.human.root().rotation * math::Vec3(0.05f, 0.2f, 0.2f);
+    s.human.setPoseHand(false, goal);
+    float worstLate = 0.0f;
+    for (int i = 0; i < 4 * 120; ++i) {
+        s.human.tick(kTick);
+        s.world.step(kTick);
+        if (i >= 2 * 120) worstLate = std::max(worstLate, math::distance(world(wrist), goal));
+    }
+    MESSAGE("hand at the face, game loop: worst wrist miss from 2 s to 4 s ", worstLate, " m; standing ",
+            s.human.balancer().standing());
+    CHECK(worstLate < 0.01f);
+    CHECK(s.human.balancer().standing());
+}

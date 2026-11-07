@@ -268,7 +268,18 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   `reach.elbowPole` (down, out, back): the elbow went over the head for a hand at the
   face. Measured, pelvis held, 2 s: knee-up foot 0.03 mm (knee 97 deg), heel back 0.03
   mm, hand ahead 0.5 mm, to the chest 2.7 mm, at the face 2.4 cm (elbow below the
-  hand); the balanced forward reach 1.9 -> 0.7 cm. Not yet seen in the game.
+  hand); the balanced forward reach 1.9 -> 0.7 cm.
+  **Then (the user's report: the hand does not stop at its target, it turns away):**
+  through the game's own loop the hand reached a target at the face, then the forearm's
+  twist crept to its -80 deg limit and the shoulder was ordered 78 deg off: the arm flew
+  0.21 m away (spin up to 8 rad/s); a side target stopped 3.6 cm short. The two-bone
+  solve read the elbow's bend axis in the forearm's frame, twist included. Now it
+  leaves the forearm's twist out (pronation is below the elbow's hinge). Measured: face
+  0.7 mm held 2-4 s (spin 0.02 rad/s), side 1.2 mm, rig face 0.13 mm, forward reach
+  0.4 mm. Left: the forearm's twist still creeps ~1 deg/s while its elbow is ordered
+  (an ordered joint's other axes do not hold); it no longer moves the hand. The arm
+  rising for a low target near the hip (the user's screenshot) was not reproduced in
+  tests (6 spots around the hip reach within 5 mm); the user's steps are needed.
   **Talks 2026-11-07:** balance may be redesigned as one centre-of-mass controller
   (capture point -> ground force -> joint torques through the stance legs, Jᵀ) instead
   of per-case joints; the user's call pending. Yesterday's uncommitted one-foot work

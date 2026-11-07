@@ -210,7 +210,17 @@ void BodyDecider::limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, m
     // elbow's or knee's without the shoulder's or hip's), in character space.
     const size_t a = static_cast<size_t>(chain.start), b = static_cast<size_t>(chain.mid);
     const math::Transform keepA = scratch_.locals[a], keepB = scratch_.locals[b];
-    if (ik::solveTwoBone(chain, models_, target, pole, 1.0f, scratch_) && rig_->localToModel(scratch_, solved_)) {
+    // The middle joint bends about its own axis before the part's twist
+    // along the bone (the forearm's pronation is below the elbow's hinge): the
+    // solve's bend axis leaves that twist out, or a twisted forearm turns the
+    // bend plane and the shoulder chases it (measured 2026-11-07: the forearm
+    // crept to its twist limit and the shoulder to 78 deg off).
+    ik::TwoBoneChain bend = chain;
+    const math::Vec3 along = math::safeNormalize(scratch_.locals[static_cast<size_t>(chain.end)].position, math::kUp);
+    math::Quat swing, twist;
+    math::swingTwist(scratch_.locals[b].rotation, along, swing, twist);
+    bend.midAxis = math::inverse(twist) * chain.midAxis;
+    if (ik::solveTwoBone(bend, models_, target, pole, 1.0f, scratch_) && rig_->localToModel(scratch_, solved_)) {
         for (int j : {chain.start, chain.mid}) {
             const int parent = rig_->parent(j);
             const math::Quat now = rot(j);
