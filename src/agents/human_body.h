@@ -35,6 +35,9 @@ struct MuscleSettings {
     // Strongest torque per joint (N m), by bone name without its side
     // ("thigh" for thigh_l and thigh_r). A joint not listed has no muscle.
     std::vector<std::pair<std::string, float>> maxTorque;
+    // A limb joint following its target pose: the spring's stiffness (N m/rad)
+    // and damping (N m s/rad) by bone name (human_joints.json "muscles").
+    std::vector<std::pair<std::string, float>> stiffness, jointDamping;
 };
 
 // How fast a muscle closes its target's gap: Fitts' law movement time
@@ -68,6 +71,8 @@ public:
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame
         bool muscle = false;               // its motor is on
         float strength = 0.0f;             // N m, its muscle's strongest torque (human_joints.json "muscles")
+        float stiffness = 0.0f;            // N m/rad, its spring toward a target pose (0: none)
+        float damping = 0.0f;              // N m s/rad, that spring's damping
     };
     const std::vector<Part>& parts() const { return parts_; }
     float totalMass() const { return totalMass_; }
@@ -145,6 +150,8 @@ private:
     // Scratch, sized at init (no per-step allocation; mutable: not the body's state).
     mutable std::vector<math::Vec3> omega_;         // per part: its muscle's angular velocity (character space)
     std::vector<uint8_t> ordered_;                  // per part: an order turns it this step
+    std::vector<uint8_t> targeted_;                 // per part: it pulls to a target pose this step
+    std::vector<math::Quat> targetLocal_;           // per part: that target (its bone on its parent's)
     mutable std::vector<float> hold_;               // per part: the torque its muscle spends holding the weight (N m)
     mutable std::vector<float> beyondMass_;         // per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // per part: their mass x centre of mass (world)

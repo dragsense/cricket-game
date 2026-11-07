@@ -54,11 +54,35 @@ std::string baseName(const std::string& name) {
     return n > 2 && name[n - 2] == '_' && (name[n - 1] == 'l' || name[n - 1] == 'r') ? name.substr(0, n - 2) : name;
 }
 
-float strengthOf(const MuscleSettings& m, const std::string& name) {
+// A per-bone value (by name without its side), 0 if not listed.
+float valueOf(const std::vector<std::pair<std::string, float>>& list, const std::string& name) {
     const std::string base = baseName(name);
-    for (const auto& [bone, torque] : m.maxTorque)
-        if (bone == base) return torque;
+    for (const auto& [bone, value] : list)
+        if (bone == base) return value;
     return 0.0f;
+}
+
+// A part's bone rotation on its parent part's bone (the rig's local
+// rotation) as its joint's target: a hinge's angle, a SixDOF's rotation in
+// the joint's frame.
+void setJointTarget(physics::PhysicsWorld& world, const HumanBody::Part& p, math::Quat local, bool spring,
+                    float maxTorque) {
+    math::Quat q = math::normalize(local);
+    if (q.w < 0.0f) q = -q;
+    const math::Vec3 v(q.x, q.y, q.z);
+    if (p.hinge) {
+        const float angle = 2.0f * std::atan2(math::dot(v, p.frameX), q.w);
+        if (spring)
+            world.setHingeSpringTarget(p.link, angle, p.stiffness, p.damping, maxTorque);
+        else
+            world.setHingeTarget(p.link, angle);
+        return;
+    }
+    const math::Quat inFrame(q.w, math::dot(v, p.frameX), math::dot(v, p.frameY), math::dot(v, p.frameZ));
+    if (spring)
+        world.setSixDofSpringTarget(p.link, inFrame, p.stiffness, p.damping, maxTorque);
+    else
+        world.setSixDofTarget(p.link, inFrame);
 }
 
 } // namespace
@@ -158,7 +182,10 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         // Its muscle: no stronger than the joint really is, pulling as fast as
         // muscle activation allows (a critically damped drive with time
         // constant activationTime: f = 1 / (2 pi t)).
-        const float strength = strengthOf(muscles, def.bones[static_cast<size_t>(rig.boneDefIndex(p.joint))].name);
+        const std::string& bone = def.bones[static_cast<size_t>(rig.boneDefIndex(p.joint))].name;
+        const float strength = valueOf(muscles.maxTorque, bone);
+        p.stiffness = valueOf(muscles.stiffness, bone);
+        p.damping = valueOf(muscles.jointDamping, bone);
         if (strength > 0.0f) {
             physics::MotorDesc m;
             m.frequency = 1.0f / (math::kTwoPi * std::max(muscles.activationTime, 1e-3f));
@@ -171,6 +198,8 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     }
     omega_.assign(parts_.size(), math::Vec3(0.0f));
     ordered_.assign(parts_.size(), 0);
+    targeted_.assign(parts_.size(), 0);
+    targetLocal_.assign(parts_.size(), math::identityQuat());
     holding_.assign(parts_.size(), 0);
     heldRotation_.assign(parts_.size(), math::identityQuat());
     heldAngle_.assign(parts_.size(), 0.0f);
@@ -192,15 +221,8 @@ void HumanBody::setTargets(physics::PhysicsWorld& world, const std::vector<math:
         if (!p.muscle) continue;
         // The bone relative to its parent part's bone in the planned pose.
         const math::Quat parent = math::toTransform(models[static_cast<size_t>(parts_[static_cast<size_t>(p.parent)].joint)]).rotation;
-        math::Quat q = math::normalize(math::inverse(parent) * math::toTransform(models[static_cast<size_t>(p.joint)]).rotation);
-        if (q.w < 0.0f) q = -q;
-        const math::Vec3 v(q.x, q.y, q.z);
-        if (p.hinge) {
-            world.setHingeTarget(p.link, 2.0f * std::atan2(math::dot(v, p.frameX), q.w));
-        } else {
-            // In the joint's frame (its axes in the bone frame).
-            world.setSixDofTarget(p.link, math::Quat(q.w, math::dot(v, p.frameX), math::dot(v, p.frameY), math::dot(v, p.frameZ)));
-        }
+        setJointTarget(world, p, math::inverse(parent) * math::toTransform(models[static_cast<size_t>(p.joint)]).rotation,
+                       false, 0.0f);
     }
 }
 
@@ -283,6 +305,7 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
     auto rot = [&](int j) { return math::toTransform(models[static_cast<size_t>(j)]).rotation; };
     for (math::Vec3& w : omega_) w = math::Vec3(0.0f);
     std::fill(ordered_.begin(), ordered_.end(), uint8_t{0});
+    std::fill(targeted_.begin(), targeted_.end(), uint8_t{0});
 
     for (int k = 0; k < queue.count; ++k) {
         const motion::PartOrder& o = queue.orders[static_cast<size_t>(k)];
@@ -291,6 +314,15 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
         if (part < 0) continue;
         const Part& p = parts_[static_cast<size_t>(part)];
         if (p.joint != o.joint || !p.muscle) continue;  // rides its parent, or no muscle (the pelvis)
+        if (o.hasTarget && p.stiffness > 0.0f) {
+            // A target pose (a limb's IK): the bone on its parent part's bone
+            // (the clavicle rides the chest: the shoulder's parent part).
+            const math::Quat parent = rot(parts_[static_cast<size_t>(p.parent)].joint);
+            targetLocal_[static_cast<size_t>(part)] = math::inverse(parent) * o.rotation;
+            targeted_[static_cast<size_t>(part)] = 1;
+            ordered_[static_cast<size_t>(part)] = 1;
+            continue;
+        }
         float speed = 0.0f;                              // rad/s about the order's direction
         if (o.goal == motion::Goal::Chest || o.goal == motion::Goal::Head) {
             // A turn target: its angular gap closed in fittsA, plus its own turning.
@@ -300,12 +332,9 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
             const math::Vec3 gap = math::rotationVector(t.rotation * math::inverse(rot(turned)));
             speed = math::dot(t.angularVelocity + gap / std::max(timing.fittsA, 1e-3f), o.direction);
         } else {
-            // A point target (hand, foot), in Fitts' time for the end's gap.
-            // A limb joint (shoulder, elbow, hip, knee) closes its own angle to
-            // the two-bone solve, so the joints turn the solve's way and arrive
-            // together; the target's own motion across the joint's lever adds.
-            // Others (trunk, hips joining a far reach) take the end's needed
-            // velocity across their lever.
+            // A point target (hand, foot) the trunk joins (a far reach): the
+            // end's needed velocity (its gap in Fitts' time plus the target's
+            // own motion) across this joint's lever.
             const int h = o.goal == motion::Goal::HandL ? 0 : o.goal == motion::Goal::HandR ? 1 : -1;
             const int f = o.goal == motion::Goal::FootL ? 0 : o.goal == motion::Goal::FootR ? 1 : -1;
             const motion::BodyGoals::Point* g = h >= 0 ? &goals.hand[h] : f >= 0 ? &goals.foot[f] : nullptr;
@@ -316,11 +345,7 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
                 motion::movementTime(math::length(gapVec), timing.fittsWidth, timing.fittsA, timing.fittsB), 1e-3f);
             const math::Vec3 lever = math::cross(o.direction, pos(end) - pos(o.joint));
             const float reach = math::dot(lever, lever);
-            if (o.angle > 0.0f) {
-                speed = o.angle / time + (reach > 1e-6f ? math::dot(g->velocity, lever) / reach : 0.0f);
-            } else if (reach > 1e-6f) {
-                speed = math::dot(g->velocity + gapVec / time, lever) / reach;
-            }
+            if (reach > 1e-6f) speed = math::dot(g->velocity + gapVec / time, lever) / reach;
         }
         omega_[static_cast<size_t>(part)] += o.direction * (o.share * speed);
         ordered_[static_cast<size_t>(part)] = 1;
@@ -335,6 +360,13 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
         physics::MotorDesc m;
         m.maxTorque = std::max(p.strength - hold_[i], 0.0f);
         world.setJointMotor(p.link, m, true);
+        if (targeted_[i]) {
+            // Its target pose: a spring on every axis (Jolt's position motor),
+            // no harder than the strength left after holding the weight.
+            holding_[i] = 0;
+            setJointTarget(world, p, targetLocal_[i], true, m.maxTorque);
+            continue;
+        }
         if (!ordered_[i]) {
             // The held angle is a turn target: its gap closed in fittsA (as
             // any turn target), at full strength by the velocity motor.
@@ -372,6 +404,7 @@ void HumanBody::blockedJoints(const physics::PhysicsWorld& world, const motion::
     for (int k = 0; k < queue.count; ++k) {
         const motion::PartOrder& o = queue.orders[static_cast<size_t>(k)];
         if (o.kind != motion::PartMove::Turn || o.joint < 0 || static_cast<size_t>(o.joint) >= out.size()) continue;
+        if (math::dot(o.direction, o.direction) <= 0.0f) continue;  // at its target: no way to be pulled
         uint8_t& blocked = out[static_cast<size_t>(o.joint)];
         const int part = partOf_[static_cast<size_t>(o.joint)];
         if (part < 0 || parts_[static_cast<size_t>(part)].joint != o.joint) {

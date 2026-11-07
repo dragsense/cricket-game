@@ -73,7 +73,12 @@ struct PartOrder {
     Goal goal = Goal::HandL;             // the target it serves
     bool active = false;                 // its muscle pulls now (else it waits for the parts it needs blocked first)
     float share = 1.0f;                  // its share of a motion its queue carries together (a queue's shares sum to 1)
-    float angle = 0.0f;                  // rad, a limb joint's own turn to the two-bone solve (0: none, the end's gap leads)
+    // A limb joint (shoulder, elbow, hip, knee): the bone's rotation the
+    // two-bone solve gives it (character space). Its muscle pulls it there as
+    // a spring and holds it (Jolt's position motor); `direction` is then only
+    // the way it turns now.
+    bool hasTarget = false;
+    math::Quat rotation = math::identityQuat();
 };
 
 struct BodyQueue {

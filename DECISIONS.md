@@ -402,3 +402,25 @@ Dated log. Format: decision, reason, alternatives rejected.
   arrive together.
 - **Rejected:** the whole chain's Jacobian for the speeds (singular at a straight limb:
   the same failure); clamping the projected speed's sign (a patch).
+
+## 2026-11-07 (later): Limbs follow their IK pose with Jolt position motors
+- **Decision (the user's call: "IK decides like the brain, Jolt moves everything"):**
+  the decider solves a hand's or foot's two-bone IK from the limb's rest rotations on
+  the body's real parents and sends each limb joint (shoulder, elbow, hip, knee) its
+  target rotation. Its muscle is Jolt's position motor in stiffness-and-damping mode
+  (N m/rad and N m s/rad per joint, `muscles.stiffness` / `jointDamping`), capped at
+  the strength left after holding the weight; gravity compensation stays. Timing:
+  the commanded point travels from the end to the goal in Fitts' time on a
+  minimum-jerk path (Flash & Hogan 1985); a goal moved mid-way retargets the path.
+  Replaces the earlier 2026-11-07 entry (the order's angle closed by a velocity
+  motor) and the bend-axis twist patch.
+- **Reason:** measured: a velocity motor has no target, so axes without an order
+  drifted (the forearm's twist crept to its limit) and a solve from the drifting pose
+  fed the drift back (the shoulder chased it; the arm flew 0.21 m off). The standard
+  way to drive a physics body to a pose is a spring toward each joint's target angle
+  (PD tracking: Jolt's `Ragdoll::DriveToPoseUsingMotors`; SIMBICON; Zordan & Hodgins);
+  muscles act as springs toward an equilibrium angle the brain sets (Feldman; Bizzi).
+  The 2026-11-06 rejection of the position motor was its frequency mode (stiffness
+  scaled by each part's inertia); stiffness mode has real units.
+- **Not yet:** idle joints and the trunk joining a far reach keep velocity motors;
+  the stiffness and damping values are [E] estimates to check against the papers.

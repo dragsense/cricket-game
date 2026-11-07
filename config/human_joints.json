@@ -191,7 +191,20 @@
       "foot": 80,         // ankle plantarflexion 70-86 (isokinetic; isometric likely higher)
       "toe": 8            // toe flexors: 1st 1.54, lesser 0.95 N/kg (young men) = ~180 N at the toe pads,
                           // ~4.5 cm from the joint on our skeleton [force measured, lever ours]
-    }
+    },
+    // A limb following its IK target pose (DECISIONS 2026-11-07): each joint's
+    // muscle is a spring toward the target angle (Jolt's position motor,
+    // stiffness mode; torque capped at maxTorque; gravity held separately).
+    // Stiffness, N m/rad. [E] estimates: arm joints within the measured
+    // postural range (tens of N m/rad, rising with the torque held: Mussa-Ivaldi
+    // 1985, Gomi & Osu 1998); knee and hip toward walking quasi-stiffness
+    // (hundreds of N m/rad: Shamaei 2013-2015). To be checked against the
+    // papers' tables.
+    "stiffness": { "upper_arm": 40, "forearm": 20, "thigh": 200, "shin": 200 },
+    // Damping, N m s/rad [E]: about critical (2 sqrt(K I)) for the limb beyond
+    // the joint (I ~ 0.33 kg m2 arm at the shoulder, 0.065 forearm and hand at
+    // the elbow, 1.35 leg at the hip, 0.28 shank and foot at the knee).
+    "jointDamping": { "upper_arm": 7.3, "forearm": 2.3, "thigh": 33, "shin": 15 }
   },
 
   // Balance (BIOMECHANICS 3; DECISIONS 2026-11-06): the stance ankles' torque

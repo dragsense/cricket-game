@@ -189,6 +189,12 @@ public:
     // keep their motor. Hinge: its one axis.
     void setSixDofAxisSpring(JointId id, int axis, float offset, float stiffness, float damping, float maxTorque);
     void setHingeSpring(JointId id, float offset, float stiffness, float damping, float maxTorque);
+    // A spring on every rotation axis toward a target (Jolt's position motor,
+    // stiffness-and-damping mode): `rotation` as setSixDofTarget, `angle` as
+    // setHingeTarget; `stiffness` N m/rad, `damping` N m s/rad, never harder
+    // than `maxTorque`.
+    void setSixDofSpringTarget(JointId id, math::Quat rotation, float stiffness, float damping, float maxTorque);
+    void setHingeSpringTarget(JointId id, float angle, float stiffness, float damping, float maxTorque);
     // SixDOF: the motor off on one rotation axis of the joint's frame (it
     // turns freely within its limits); the other axes keep their motor.
     void setSixDofAxisFree(JointId id, int axis);

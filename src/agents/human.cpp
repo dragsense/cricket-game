@@ -1233,6 +1233,11 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             if (auto t = m->find("maxTorque"); t != m->end() && t->is_object())
                 for (auto it = t->begin(); it != t->end(); ++it)
                     if (it->is_number()) muscles.maxTorque.emplace_back(it.key(), it->get<float>());
+        if (auto m = root.find("muscles"); m != root.end())
+            for (auto [key, list] : {std::pair{"stiffness", &muscles.stiffness}, std::pair{"jointDamping", &muscles.jointDamping}})
+                if (auto t = m->find(key); t != m->end() && t->is_object())
+                    for (auto it = t->begin(); it != t->end(); ++it)
+                        if (it->is_number()) list->emplace_back(it.key(), it->get<float>());
     }
     if (!humanBody_.init(world, def_, rig_, limits_, muscles, root_, nextGroup++)) {
         LOG_ERROR("fielder: no room for the body in the physics world");
@@ -1297,22 +1302,47 @@ void Human::physicsTick(float dt) {
     // The body's targets (character space): only the limb the limb test moves
     // now (the user's rule); every other joint holds its angle and the rest
     // moves only by balance. A moved foot is lifted off the ground to reach.
+    // The physics body now (character space; bones without a body ride as built).
+    humanBody_.boneModels(*physics_, 1.0f, rig_, rig_.restPose(), root_, physicsModels_);
+    rig_.modelToLocal(physicsModels_, physicsPose_);
+    // The commanded point on its way to the goal (GoalPath), from the end's
+    // real position when a move starts.
+    auto travel = [&](GoalPath& path, math::Vec3 goal, int end) {
+        const bool done = path.time >= path.duration;
+        if (!path.on || path.end != end || (done && math::distance(goal, path.to) > 1e-3f)) {
+            path.from = path.on && path.end == end ? path.at : math::Vec3(physicsModels_[static_cast<size_t>(end)][3]);
+            path.end = end;
+            path.time = 0.0f;
+            path.duration = motion::movementTime(math::distance(path.from, goal), muscleTiming_.fittsWidth,
+                                                 muscleTiming_.fittsA, muscleTiming_.fittsB);
+            path.on = true;
+        }
+        path.to = goal;  // mid-way: the same path, retargeted
+        path.time += dt;
+        const float s = std::clamp(path.time / std::max(path.duration, 1e-3f), 0.0f, 1.0f);
+        path.at = math::lerp(path.from, path.to, s * s * s * (10.0f + s * (6.0f * s - 15.0f)));  // minimum jerk
+        return path.at;
+    };
     motion::BodyGoals goals;
     if (phase_ == Phase::Pose && poseHand_ && poseHandLast_) {
         motion::BodyGoals::Point& hand = goals.hand[reachLeft_ ? 0 : 1];
         hand.active = true;
-        hand.position = math::inverse(root_).transformPoint(poseGoal_);
+        hand.position = travel(handPath_, math::inverse(root_).transformPoint(poseGoal_),
+                               reachLeft_ ? joints_.armL.end : joints_.armR.end);
+    } else {
+        handPath_.on = false;
     }
     if (phase_ == Phase::Pose && posedFoot_ >= 0 && !poseHandLast_) {
         const int f = posedFoot_;
         goals.foot[f].active = true;
-        goals.foot[f].position = math::inverse(root_).transformPoint(poseFootGoal_);
+        goals.foot[f].position = travel(footPath_, math::inverse(root_).transformPoint(poseFootGoal_),
+                                        f == 0 ? joints_.legL.end : joints_.legR.end);
         goals.down[f] = false;
+    } else {
+        footPath_.on = false;
     }
-    // The physics body now -> the decider's queue -> balance -> muscles.
-    // Jolt steps after every human has ticked (match::SimWorld).
-    humanBody_.boneModels(*physics_, 1.0f, rig_, rig_.restPose(), root_, physicsModels_);  // riders as built
-    rig_.modelToLocal(physicsModels_, physicsPose_);
+    // The decider's queue -> balance -> muscles. Jolt steps after every human
+    // has ticked (match::SimWorld).
     humanBody_.blockedJoints(*physics_, queue_, physicsModels_, limits_, dt, blocked_);
     decider_.decide(physicsPose_, goals, blocked_, deciderSettings_, queue_);
     balancer_.plan(*physics_, humanBody_, goals.down);

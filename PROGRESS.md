@@ -280,6 +280,19 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (an ordered joint's other axes do not hold); it no longer moves the hand. The arm
   rising for a low target near the hip (the user's screenshot) was not reproduced in
   tests (6 spots around the hip reach within 5 mm); the user's steps are needed.
+  **Then the IK -> Jolt handover redone (the user's call, DECISIONS 2026-11-07 "Limbs
+  follow their IK pose"):** the decider (the brain) solves the limb from its rest
+  rotations on the body's real parents and sends each limb joint its target rotation;
+  the muscle is Jolt's position motor (stiffness mode, `human_joints.json`
+  `muscles.stiffness` / `jointDamping`, [E]) capped at its strength, gravity held as
+  before; the hand's or foot's commanded point travels to the goal in Fitts' time on a
+  minimum-jerk path (`Human::GoalPath`). The speed-per-joint code and the bend-axis
+  patch are gone. Measured through the game loop (right hand, 8 targets): within 1 cm
+  in 0.67-0.98 s (just out of reach 1.7 s), held 1-8 mm from 2 s to 4 s, the forearm's
+  twist no longer creeps (< 0.4 deg); a goal dragged mid-way follows. **Known:**
+  straight overhead is slow (3.7 s, 2.7 cm): the clavicle has no body to lift the
+  shoulder; idle joints and the trunk joining a far reach still use velocity motors;
+  the stiffness and damping values are estimates to check.
   **Talks 2026-11-07:** balance may be redesigned as one centre-of-mass controller
   (capture point -> ground force -> joint torques through the stance legs, Jᵀ) instead
   of per-case joints; the user's call pending. Yesterday's uncommitted one-foot work

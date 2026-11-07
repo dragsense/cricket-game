@@ -521,6 +521,16 @@ private:
     int posedFoot_ = -1;  // limb test: the foot last placed (motion::Foot), -1 none
     bool poseHandLast_ = false;  // limb test: the hand was moved after the foot (physics: only it has a target)
     math::Vec3 poseFootGoal_{0.0f};  // limb test ankle goal, world space
+    // Physics: a hand's or foot's commanded point travels from where it was
+    // to its goal in Fitts' time on a minimum-jerk path (Flash & Hogan 1985);
+    // the IK solves for it (character space). A goal moved mid-way retargets.
+    struct GoalPath {
+        math::Vec3 from{0.0f}, to{0.0f}, at{0.0f};
+        float time = 0.0f, duration = 0.0f;
+        int end = -1;  // the rig joint it moves (wrist or ankle)
+        bool on = false;
+    };
+    GoalPath handPath_, footPath_;
     math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
     bool stepWalk_ = false;         // single steps in use (standing)
     int stepPlanted_ = 1;           // single steps: the foot carrying the body (motion::Foot)

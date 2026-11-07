@@ -13,10 +13,10 @@ namespace {
 constexpr float kMinAngle = 1e-4f;
 
 void add(BodyQueue& out, int joint, PartMove kind, math::Vec3 direction, math::Vec3 velocity, Goal goal, bool active,
-         float share = 1.0f, float angle = 0.0f) {
+         float share = 1.0f) {
     assert(out.count < BodyQueue::kCapacity);
     if (out.count >= BodyQueue::kCapacity) return;
-    out.orders[static_cast<size_t>(out.count++)] = {joint, kind, direction, velocity, goal, active, share, angle};
+    out.orders[static_cast<size_t>(out.count++)] = {joint, kind, direction, velocity, goal, active, share};
 }
 
 // The unit axis of a turn, zero for none.
@@ -202,26 +202,22 @@ void BodyDecider::footOrders(int i, const BodyGoals& goals, const std::vector<ui
 
 void BodyDecider::limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, math::Vec3 pole, math::Vec3 velocity,
                              Goal goal, BodyQueue& out) {
-    // The turns a two-bone solve would make: each joint's direction and angle
-    // (the muscles close it in the movement time, so the limb's joints turn
-    // the solve's way and arrive together; DECISIONS 2026-11-07).
-    // Each joint's own turn, relative to its parent (what its muscle turns):
-    // the bone's turn with its parent's turn in the solve taken out (the
-    // elbow's or knee's without the shoulder's or hip's), in character space.
+    // The brain's decision for the limb (DECISIONS 2026-11-07): the pose a
+    // two-bone solve gives the shoulder and elbow (hip and knee), as each
+    // joint's target rotation; the muscles pull to it and hold it (Jolt's
+    // position motors). The solve starts from the limb's rest rotations on
+    // the body's real parents (clavicle, pelvis), so the target never follows
+    // the limb's own drift (a solve from the drifting pose fed it back: the
+    // forearm's twist crept and the shoulder chased it).
     const size_t a = static_cast<size_t>(chain.start), b = static_cast<size_t>(chain.mid);
     const math::Transform keepA = scratch_.locals[a], keepB = scratch_.locals[b];
-    // The middle joint bends about its own axis before the part's twist
-    // along the bone (the forearm's pronation is below the elbow's hinge): the
-    // solve's bend axis leaves that twist out, or a twisted forearm turns the
-    // bend plane and the shoulder chases it (measured 2026-11-07: the forearm
-    // crept to its twist limit and the shoulder to 78 deg off).
-    ik::TwoBoneChain bend = chain;
-    const math::Vec3 along = math::safeNormalize(scratch_.locals[static_cast<size_t>(chain.end)].position, math::kUp);
-    math::Quat swing, twist;
-    math::swingTwist(scratch_.locals[b].rotation, along, swing, twist);
-    bend.midAxis = math::inverse(twist) * chain.midAxis;
-    if (ik::solveTwoBone(bend, models_, target, pole, 1.0f, scratch_) && rig_->localToModel(scratch_, solved_)) {
+    scratch_.locals[a].rotation = rig_->restPose().locals[a].rotation;
+    scratch_.locals[b].rotation = rig_->restPose().locals[b].rotation;
+    if (rig_->localToModel(scratch_, solved_) && ik::solveTwoBone(chain, solved_, target, pole, 1.0f, scratch_) &&
+        rig_->localToModel(scratch_, solved_)) {
         for (int j : {chain.start, chain.mid}) {
+            // The way it turns now: its own turn (its parent's turn in the
+            // solve taken out), in character space.
             const int parent = rig_->parent(j);
             const math::Quat now = rot(j);
             const math::Quat then = math::toTransform(solved_[static_cast<size_t>(j)]).rotation;
@@ -230,7 +226,13 @@ void BodyDecider::limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, m
                             : math::identityQuat();
             const math::Vec3 turn = math::rotationVector(math::inverse(parentTurn) * then * math::inverse(now));
             const float angle = math::length(turn);
-            if (angle > kMinAngle) add(out, j, PartMove::Turn, turn / angle, velocity, goal, true, 1.0f, angle);
+            const int at = out.count;
+            add(out, j, PartMove::Turn, angle > kMinAngle ? turn / angle : math::Vec3(0.0f), velocity, goal, true);
+            if (out.count > at) {
+                PartOrder& o = out.orders[static_cast<size_t>(at)];
+                o.hasTarget = true;
+                o.rotation = then;
+            }
         }
     }
     scratch_.locals[a] = keepA;
