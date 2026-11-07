@@ -1256,15 +1256,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
     deciderJoints_.legs[1] = joints_.legR;
     deciderJoints_.arms[0] = joints_.armL;
     deciderJoints_.arms[1] = joints_.armR;
-    if (!decider_.init(rig_, deciderJoints_, &limits_)) {
+    if (!decider_.init(rig_, deciderJoints_)) {
         LOG_ERROR("human: the body decider could not start");
         return false;
-    }
-    {
-        std::vector<float> mass;
-        std::vector<math::Vec3> centre;
-        humanBody_.jointMasses(rig_.numJoints(), mass, centre);
-        decider_.setMasses(mass, centre);
     }
     const int foot[2] = {joints_.legL.end, joints_.legR.end};
     const int toe[2] = {joints_.toeL, joints_.toeR};

@@ -346,19 +346,13 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   hips back 1.6 cm; **one foot (new test):** lift after 1.09 s, foot up 10 cm, stands
   3 s on the other, centre of mass at most 2.8 cm side / 4.2 cm ahead-back of the ankle
   (over the sole), 2.2 cm at the end. Not yet: hip strategy, stepping, release.
-  **Part B re-applied on it (2026-11-08):** `wip/whole_body_plan.patch` without its
-  `supportWeight` and one-foot hip spring (the controller replaces both): the decider's
-  one planned pose (trunk shares + lumbopelvic split, legs by IK to the planted feet,
-  the plan's centre of mass over the feet), followed by Jolt springs; trunk stiffness
-  600 / damping 70 per spine joint [E]. Measured through the game loop: every far reach
-  now **stands** (before: ground ahead, beside the foot and low behind fell after
-  1.5-3 s); face hold 1 mm (was 1.6 cm with part B); forward reach hips back 2.1 cm;
-  one foot 3.2 cm worst. **But the hand stops short:** far ahead 5.1 cm (was 6.8),
-  ground ahead 52 cm (trunk 24 deg, hips down 13 cm), beside the foot 55 cm, low behind
-  13.6 cm; back within reach 1.2 cm, trunk straightens. **Next (the user's call
-  pending):** the hip strategy (slice B: hips back as the trunk bends, the pressure at
-  the support's edge) and/or supports beyond the feet (hands, knees: the same
-  controller with more support chains, each push-only and capped by its strength).
+  **Part B re-applied on it, then reverted (2026-11-08, the user's call):** the far
+  reaches stood, but in the limb test the hand moved backward as its target moved
+  across the body (wrist 0.33 -> 0.26 m while the target went 0.5 -> 0.75 m): the
+  plan's chest turn jumped tick to tick (-0.3, -5.8, -17.8, -2.4 deg) and the body's
+  shoulder swung inward chasing it. Back to the arm aiming from the real body.
+  **Next (the user's call):** stepping (a far foot target: the body moves and the other
+  foot follows instead of the foot hanging at the leg's length).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

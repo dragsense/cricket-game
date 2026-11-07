@@ -246,16 +246,6 @@ void HumanBody::boneModels(const physics::PhysicsWorld& world, float alpha, cons
     }
 }
 
-void HumanBody::jointMasses(int numJoints, std::vector<float>& mass, std::vector<math::Vec3>& centre) const {
-    mass.assign(static_cast<size_t>(std::max(numJoints, 0)), 0.0f);
-    centre.assign(mass.size(), math::Vec3(0.0f));
-    for (const Part& p : parts_) {
-        if (p.joint < 0 || static_cast<size_t>(p.joint) >= mass.size()) continue;
-        mass[static_cast<size_t>(p.joint)] = p.mass;
-        centre[static_cast<size_t>(p.joint)] = p.shape.position;
-    }
-}
-
 math::Vec3 HumanBody::centreOfMass(const physics::PhysicsWorld& world) const {
     math::Vec3 sum(0.0f);
     for (const Part& p : parts_) sum += world.transform(p.body).position * p.mass;
@@ -318,30 +308,22 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
     std::fill(ordered_.begin(), ordered_.end(), uint8_t{0});
     std::fill(targeted_.begin(), targeted_.end(), uint8_t{0});
 
-    // The brain's target pose: each planned joint's bone on its parent part's
-    // bone, both as planned (the clavicle rides the chest: the shoulder's
-    // parent part).
-    if (queue.plan) {
-        const std::vector<math::Mat4>& plan = *queue.plan;
-        auto planRot = [&](int j) { return math::toTransform(plan[static_cast<size_t>(j)]).rotation; };
-        for (size_t i = 0; i < parts_.size(); ++i) {
-            const Part& p = parts_[i];
-            if (p.parent < 0 || !p.muscle || p.stiffness <= 0.0f || p.joint >= motion::BodyQueue::kMaxJoints ||
-                !queue.planned[static_cast<size_t>(p.joint)])
-                continue;
-            targetLocal_[i] = math::inverse(planRot(parts_[static_cast<size_t>(p.parent)].joint)) * planRot(p.joint);
-            targeted_[i] = 1;
-            ordered_[i] = 1;
-        }
-    }
-
     for (int k = 0; k < queue.count; ++k) {
         const motion::PartOrder& o = queue.orders[static_cast<size_t>(k)];
         if (!o.active || o.kind != motion::PartMove::Turn || o.joint < 0) continue;
         const int part = partOf_[static_cast<size_t>(o.joint)];
-        if (part < 0 || targeted_[static_cast<size_t>(part)]) continue;  // no body, or it follows the plan
+        if (part < 0) continue;
         const Part& p = parts_[static_cast<size_t>(part)];
         if (p.joint != o.joint || !p.muscle) continue;  // rides its parent, or no muscle (the pelvis)
+        if (o.hasTarget && p.stiffness > 0.0f) {
+            // A target pose (a limb's IK): the bone on its parent part's bone
+            // (the clavicle rides the chest: the shoulder's parent part).
+            const math::Quat parent = rot(parts_[static_cast<size_t>(p.parent)].joint);
+            targetLocal_[static_cast<size_t>(part)] = math::inverse(parent) * o.rotation;
+            targeted_[static_cast<size_t>(part)] = 1;
+            ordered_[static_cast<size_t>(part)] = 1;
+            continue;
+        }
         float speed = 0.0f;                              // rad/s about the order's direction
         if (o.goal == motion::Goal::Chest || o.goal == motion::Goal::Head) {
             // A turn target: its angular gap closed in fittsA, plus its own turning.
