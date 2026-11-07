@@ -430,3 +430,25 @@ Dated log. Format: decision, reason, alternatives rejected.
   through the front. A fixed pole twists a straight arm toward it and flips the elbow
   where the arm points along it. The decider's elbow pole setting is removed
   (`reach.elbowPole` stays for the kinematic reach).
+
+## 2026-11-08: One centre-of-mass controller for balance
+- **Decision (the user's call, planned 2026-11-07):** the balancer is one controller of
+  the centre of mass, no per-case joints: capture point -> centre of pressure (Peterka's
+  KP/KD written as the pressure they make, T = m g (p - aim); kept inside the touching
+  soles' hull) -> ground force (LIPM: m omega0^2 (x - p) across, m g up) -> per-foot
+  share (by where p lies between the ankles) -> J^T joint torques through each stance
+  leg (ankle, knee, hip, minus the leg's weight below the joint; Coros 2010's support
+  torque). One law in every direction (the side gains, [E] copies, are removed).
+  - The ankle's torque goes through its Jolt springs (slope KP, aim giving the torque),
+    solved with the contacts; knee and hip torques are added torques over their holds.
+  - The support is the soles of the touching parts, not the corners touching this step.
+  - A foot lifts once the pressure the feedback asks for (for the position, and for
+    position and motion) lies inside the other foot; a lifting foot carries nothing.
+- **Reason:** measured. Explicit ankle torques made the stance foot chatter and spin on
+  one foot; a contact-corner support let a tilted foot press its own edge and stay
+  tilted; lifting with the centre of mass at the foot's edge left no pressure range to
+  bring it back. The single law also gives Winter's load/unload on two feet without
+  hip springs.
+- **Rejected:** keeping per-case springs (ankle, hip parallelogram, one-foot hip);
+  lift on "centre of mass and capture point inside the foot" (lifted at the edge).
+

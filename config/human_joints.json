@@ -207,23 +207,21 @@
     "jointDamping": { "upper_arm": 7.3, "forearm": 2.3, "thigh": 33, "shin": 15 }
   },
 
-  // Balance (BIOMECHANICS 3; DECISIONS 2026-11-06): the stance ankles' torque
-  // T = -(KP sway + KD sway rate) - B joint rate, sway = the body's angle about
-  // the stance ankles (the inverted pendulum's pivot). Measured in quiet
-  // standing (Peterka 2002, J Neurophysiol 88, normal adults): KP 18.6 (Eq. 14:
-  // active + passive), active KD 5.8 on the body's sway rate and passive joint
-  // damping B 0.43 (Eq. 15). KD/KP = 0.31 s, about the body's own 1/omega0
-  // (0.30 s), so it acts on the capture point. The measured feedback delay
-  // (100-200 ms) is not modelled.
+  // Balance (BIOMECHANICS 3; DECISIONS 2026-11-07 "One centre-of-mass
+  // controller"): the measured human ankle feedback T = KP sway + KD sway rate
+  // (+ passive joint damping B), sway = the body's angle about where the
+  // weight is kept, written as the centre of pressure it makes (T = m g (p -
+  // aim)); the ground force and the stance legs' torques (J^T) follow from it.
+  // One law in every direction (side to side was the same [E] values).
+  // Measured in quiet standing (Peterka 2002, J Neurophysiol 88, normal
+  // adults): KP 18.6 (Eq. 14: active + passive), active KD 5.8 on the body's
+  // sway rate and passive joint damping B 0.43 (Eq. 15). KD/KP = 0.31 s,
+  // about the body's own 1/omega0 (0.30 s), so it acts on the capture point.
+  // The measured feedback delay (100-200 ms) is not modelled.
   "balance": {
-    "ankleStiffness": 18.6,  // KP, N m/deg (all stance ankles together; mgh of our body ~11.3 N m/deg)
+    "ankleStiffness": 18.6,  // KP, N m/deg (the whole body; mgh of our body ~11.3 N m/deg)
     "ankleDamping": 5.8,     // active KD, on the body's sway rate, N m s/deg
-    "passiveDamping": 0.43,  // B, the joints' own damping, N m s/deg (ankles; hips side to side too [E])
-    // Side to side (the hips' load/unload on two feet, Winter 1995; one foot:
-    // its ankle). Estimate [E]: Peterka's sagittal values; the measured
-    // frontal-plane fits (Goodworth & Peterka 2012) were not read.
-    "sideStiffness": 18.6,   // N m/deg
-    "sideDamping": 5.8       // active, N m s/deg
+    "passiveDamping": 0.43   // B, the joints' own damping, N m s/deg (stance ankles together; the hips' ab/adduction on two feet too [E])
   },
 
   "reposition": {

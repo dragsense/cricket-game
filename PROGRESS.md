@@ -327,6 +327,27 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   (lift gating, unloading pivot) is not committed: a lift measured that the weight
   shift overshoots (the hips' parallelogram tips about the feet's middle, not the
   stance ankle).
+  **Balance redesign built (2026-11-08, the user's call; DECISIONS 2026-11-08 "One
+  centre-of-mass controller"):** `agents::Balancer` is one controller for every stance:
+  support = the soles of the touching foot parts (hull); pressure point p = aim + (KP (x
+  - aim) + KD v) / (m g h) (Peterka's gains as a centre of pressure, on the capture
+  point), kept in the support; ground force m omega0^2 (x - p) across, m g up; two feet
+  share it by where p lies between the ankles (Winter's load/unload falls out); J^T
+  torques through each stance leg (ankle, knee, hip; minus the leg's own weight below
+  the joint: the support torque). The ankle's part goes through its Jolt springs
+  (slope KP, aim giving the torque; an added torque made the light foot chatter and
+  spin on one foot); the hips' ab/adduction on two feet is passive (B). Lift: the aim
+  goes over the other ankle; the foot lifts once the pressure the feedback asks for
+  (position alone, and with motion) lies inside the other foot; a lifting foot carries
+  nothing. A joint the balancer lets go of holds its angle then (`HumanBody::drive`
+  `driven`). Removed: the per-case ankle/hip springs, the parallelogram's free
+  inversion, `sideStiffness` / `sideDamping`. Measured: standing 1.5 mm off the ankles
+  (was 5 mm); push 0.15 m/s: 2.4 cm furthest, 1 mm after 3 s (was 4 mm); forward reach
+  hips back 1.6 cm; **one foot (new test):** lift after 1.09 s, foot up 10 cm, stands
+  3 s on the other, centre of mass at most 2.8 cm side / 4.2 cm ahead-back of the ankle
+  (over the sole), 2.2 cm at the end. Not yet: hip strategy, stepping, release.
+  **Next:** re-apply `wip/whole_body_plan.patch` on top (its `supportWeight` and
+  one-foot hip spring dropped: replaced by this).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

@@ -110,11 +110,14 @@ public:
     // when its last order ended (its motor toward that angle).
     // Each motor pulls no harder than the strength left after holding the
     // weight. A joint riding its parent (clavicle, neck) has no muscle of its
-    // own; the hips' moves are the legs' and the balance's (later). `models`:
-    // the physics body now (character space). No allocations.
+    // own; the hips' moves are the legs' and the balance's. `models`: the
+    // physics body now (character space). `driven` (one entry per part, may
+    // be null): joints with an axis the balancer drives this step
+    // (Balancer::driven); one it lets go of holds the angle it has then. No
+    // allocations.
     void drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
                const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
-               const MuscleTiming& timing);
+               const MuscleTiming& timing, const uint8_t* driven = nullptr);
 
     // The joints that cannot go further the way their orders pull: at their
     // limit (measured the way Jolt's joints are, ik::clampRotation), with no
@@ -145,6 +148,7 @@ private:
     // Per part: holding an angle (no order since it was taken) and the angle
     // (joint frame as created: SixDOF rotation, hinge angle).
     std::vector<uint8_t> holding_;
+    std::vector<uint8_t> wasDriven_;  // per part: the balancer drove an axis of it last step
     std::vector<math::Quat> heldRotation_;
     std::vector<float> heldAngle_;
     // Scratch, sized at init (no per-step allocation; mutable: not the body's state).

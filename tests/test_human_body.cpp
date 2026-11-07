@@ -164,18 +164,22 @@ struct MuscleRig {
         return balancer.init(body, foot, toe, agents::readBalanceSettings(s.joints));
     }
 
-    void step(const motion::BodyGoals& goals) {
+    void step(const motion::BodyGoals& wanted) {
         agents::HumanBody& body = s.human.humanBody();
         s.human.physicalModels(s.world, 1.0f, models);
         s.human.rig().modelToLocal(models, pose);
-        decider.decide(pose, goals, blocked, settings, queue);
+        motion::BodyGoals goals = wanted;
         const uint8_t* owned = nullptr;
+        const uint8_t* driven = nullptr;
         if (balance) {
             balancer.plan(s.world, body, goals.down);
             owned = balancer.owned();
+            driven = balancer.driven();
+            for (int f = 0; f < 2; ++f) goals.foot[f].active = goals.foot[f].active && balancer.liftReady(f);
         }
+        decider.decide(pose, goals, blocked, settings, queue);
         body.compensateGravity(s.world, owned);
-        body.drive(s.world, queue, goals, joints, models, timing);
+        body.drive(s.world, queue, goals, joints, models, timing, driven);
         if (balance) balancer.apply(s.world, body);
         s.world.step(kTick);
         s.human.physicalModels(s.world, 1.0f, models);
@@ -259,7 +263,7 @@ TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held
     }
     const float endHeight = body.height(r.s.world);
     MESSAGE("standing 5 s: centre of mass ", startHeight, " -> ", endHeight, " m; worst off the ankles after 1 s ",
-            worstOff, " m; ankle torque now ", math::length(r.balancer.ankleTorque()), " N m; lowest part ",
+            worstOff, " m; ground force across now ", std::hypot(r.balancer.groundForce().x, r.balancer.groundForce().z), " N; lowest part ",
             lowestPart(r), " m");
     CHECK(alwaysStanding);
     CHECK(endHeight > 0.95f * startHeight);  // did not fall or slump
@@ -330,6 +334,57 @@ TEST_CASE("human: physics on in the game loop, it stands 5 s") {
     MESSAGE("game loop, physics on: centre of mass ", start, " m, lowest ", lowest, " m in 5 s");
     CHECK(standing);
     CHECK(lowest > 0.95f * start);
+}
+
+// One foot lifted 10 cm after 1 s standing: the weight goes over the other
+// foot first (the foot waits for it), then it stands on one foot.
+TEST_CASE("balance: the weight shifts over one foot, the other lifts, it stands on one foot 3 s") {
+    MuscleRig r;
+    REQUIRE(r.make(true));
+    const agents::HumanBody& body = r.s.human.humanBody();
+    for (int i = 0; i < 120; ++i) r.step(motion::BodyGoals{});
+    const float startHeight = body.height(r.s.world);
+    const float footStart = r.pos(r.joints.legs[0].end).y;
+    motion::BodyGoals goals;
+    goals.foot[0].active = true;
+    goals.foot[0].position = r.pos(r.joints.legs[0].end) + math::Vec3(0.0f, 0.1f, 0.0f);
+    goals.down[0] = false;
+    const math::Vec3 ahead = r.s.human.root().rotation * math::kForward;
+    const math::Vec3 side = math::cross(math::kUp, ahead);
+    float liftAt = -1.0f, rise = 0.0f, worstOff = 0.0f, worstSide = 0.0f, worstAhead = 0.0f, lowest = startHeight;
+    bool standing = true;
+    for (int i = 0; i < 4 * 120; ++i) {
+        r.step(goals);
+        const float t = static_cast<float>(i + 1) / 120.0f;
+        if (liftAt < 0.0f && r.balancer.liftReady(0)) liftAt = t;
+        rise = std::max(rise, r.pos(r.joints.legs[0].end).y - footStart);
+        standing = standing && r.balancer.footDown(1);
+        lowest = std::min(lowest, body.height(r.s.world));
+        if (liftAt >= 0.0f && t > liftAt + 0.25f) {
+            const math::Vec3 off = body.centreOfMass(r.s.world) - r.balancer.pivot();
+            worstOff = std::max(worstOff, offSupport(r));
+            worstSide = std::max(worstSide, std::fabs(math::dot(off, side)));
+            worstAhead = std::max(worstAhead, std::fabs(math::dot(off, ahead)));
+        }
+        if (i % 30 == 0)
+            MESSAGE("t ", t, " left down ", r.balancer.footDown(0), " share L ", r.balancer.footShare(0), " lift ",
+                    r.balancer.liftReady(0), " off aim ", offSupport(r), " m; foot rise ",
+                    r.pos(r.joints.legs[0].end).y - footStart, " m");
+    }
+    MESSAGE("one foot: lift allowed after ", liftAt, " s; foot rose ", rise, " m; worst off the stance ankle (from 0.25 s after the lift) ",
+            worstOff, " m (side ", worstSide, ", ahead/back ", worstAhead, "); at the end ", offSupport(r),
+            " m; centre of mass ", startHeight, " -> lowest ", lowest, " m; left foot down at the end ", r.balancer.footDown(0));
+    CHECK(liftAt > 0.0f);
+    CHECK(liftAt < 2.0f);
+    CHECK(rise > 0.07f);
+    CHECK_FALSE(r.balancer.footDown(0));
+    CHECK(standing);
+    CHECK(lowest > 0.9f * startHeight);
+    // Over the stance sole (our foot: 4.9 cm either side of the ankle, its
+    // heel 7.2 cm behind it), settling back toward the ankle.
+    CHECK(worstSide < 0.049f);
+    CHECK(worstAhead < 0.072f);
+    CHECK(offSupport(r) < 0.03f);
 }
 
 namespace {

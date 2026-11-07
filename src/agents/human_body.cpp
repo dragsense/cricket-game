@@ -201,6 +201,7 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     targeted_.assign(parts_.size(), 0);
     targetLocal_.assign(parts_.size(), math::identityQuat());
     holding_.assign(parts_.size(), 0);
+    wasDriven_.assign(parts_.size(), 0);
     heldRotation_.assign(parts_.size(), math::identityQuat());
     heldAngle_.assign(parts_.size(), 0.0f);
     hold_.assign(parts_.size(), 0.0f);
@@ -300,7 +301,7 @@ void HumanBody::compensateGravity(physics::PhysicsWorld& world, const uint8_t* o
 
 void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
                       const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
-                      const MuscleTiming& timing) {
+                      const MuscleTiming& timing, const uint8_t* driven) {
     auto pos = [&](int j) { return math::Vec3(models[static_cast<size_t>(j)][3]); };
     auto rot = [&](int j) { return math::toTransform(models[static_cast<size_t>(j)]).rotation; };
     for (math::Vec3& w : omega_) w = math::Vec3(0.0f);
@@ -357,6 +358,10 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         if (p.parent < 0 || !p.muscle) continue;
+        // A joint the balancer let go of holds the angle it has now.
+        const uint8_t drivenNow = driven ? driven[i] : 0;
+        if (wasDriven_[i] && !drivenNow) holding_[i] = 0;
+        wasDriven_[i] = drivenNow;
         physics::MotorDesc m;
         m.maxTorque = std::max(p.strength - hold_[i], 0.0f);
         world.setJointMotor(p.link, m, true);

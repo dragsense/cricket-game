@@ -1343,10 +1343,12 @@ void Human::physicsTick(float dt) {
     // The decider's queue -> balance -> muscles. Jolt steps after every human
     // has ticked (match::SimWorld).
     humanBody_.blockedJoints(*physics_, queue_, physicsModels_, limits_, dt, blocked_);
-    decider_.decide(physicsPose_, goals, blocked_, deciderSettings_, queue_);
     balancer_.plan(*physics_, humanBody_, goals.down);
+    // A foot lifts only once the weight is over the other (the shift first).
+    for (int f = 0; f < 2; ++f) goals.foot[f].active = goals.foot[f].active && balancer_.liftReady(f);
+    decider_.decide(physicsPose_, goals, blocked_, deciderSettings_, queue_);
     humanBody_.compensateGravity(*physics_, balancer_.owned());
-    humanBody_.drive(*physics_, queue_, goals, deciderJoints_, physicsModels_, muscleTiming_);
+    humanBody_.drive(*physics_, queue_, goals, deciderJoints_, physicsModels_, muscleTiming_, balancer_.driven());
     balancer_.apply(*physics_, humanBody_);
 }
 

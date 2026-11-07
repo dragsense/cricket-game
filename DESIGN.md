@@ -322,9 +322,11 @@ Decider (replaces BodyReposition; only numbers, never moves anything)
 Balancer (always wins; uses only the free, non-active parts)
    planner: capture-point / centre-of-mass path over the known steps and target
    paths, pre-shifting for fast moves (anticipation)
-   feedback, every tick: ξ = x + v/ω₀ against the support (whatever touches the
-   ground): inside → ankle, edge → hip/trunk (blended, not switched), outside →
-   step to ξ + margin, nothing left → release to free physics (fall/dive)
+   feedback, every tick (built 2026-11-08, one centre-of-mass controller):
+   ξ = x + v/ω₀ → centre of pressure p (Peterka's gains) inside the touching soles →
+   ground force (LIPM) → per-foot share → Jᵀ torques through the stance legs
+   (ankle via its Jolt springs); planned: p at the edge → hip/trunk (blended),
+   outside → step to ξ + margin, nothing left → release to free physics
    if the free parts cannot hold it, the active target gives way
         ▼
 Muscles: Jolt motors in velocity mode toward the directions, max torque = the
