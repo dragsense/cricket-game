@@ -13,10 +13,10 @@ namespace {
 constexpr float kMinAngle = 1e-4f;
 
 void add(BodyQueue& out, int joint, PartMove kind, math::Vec3 direction, math::Vec3 velocity, Goal goal, bool active,
-         float share = 1.0f) {
+         float share = 1.0f, float angle = 0.0f) {
     assert(out.count < BodyQueue::kCapacity);
     if (out.count >= BodyQueue::kCapacity) return;
-    out.orders[static_cast<size_t>(out.count++)] = {joint, kind, direction, velocity, goal, active, share};
+    out.orders[static_cast<size_t>(out.count++)] = {joint, kind, direction, velocity, goal, active, share, angle};
 }
 
 // The unit axis of a turn, zero for none.
@@ -202,7 +202,9 @@ void BodyDecider::footOrders(int i, const BodyGoals& goals, const std::vector<ui
 
 void BodyDecider::limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, math::Vec3 pole, math::Vec3 velocity,
                              Goal goal, BodyQueue& out) {
-    // The turns a two-bone solve would make give the directions (only those).
+    // The turns a two-bone solve would make: each joint's direction and angle
+    // (the muscles close it in the movement time, so the limb's joints turn
+    // the solve's way and arrive together; DECISIONS 2026-11-07).
     // Each joint's own turn, relative to its parent (what its muscle turns):
     // the bone's turn with its parent's turn in the solve taken out (the
     // elbow's or knee's without the shoulder's or hip's), in character space.
@@ -216,8 +218,9 @@ void BodyDecider::limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, m
             const math::Quat parentTurn =
                 parent >= 0 ? math::toTransform(solved_[static_cast<size_t>(parent)]).rotation * math::inverse(rot(parent))
                             : math::identityQuat();
-            const math::Vec3 axis = axisOf(math::inverse(parentTurn) * then * math::inverse(now));
-            if (math::length(axis) > 0.0f) add(out, j, PartMove::Turn, axis, velocity, goal, true);
+            const math::Vec3 turn = math::rotationVector(math::inverse(parentTurn) * then * math::inverse(now));
+            const float angle = math::length(turn);
+            if (angle > kMinAngle) add(out, j, PartMove::Turn, turn / angle, velocity, goal, true, 1.0f, angle);
         }
     }
     scratch_.locals[a] = keepA;

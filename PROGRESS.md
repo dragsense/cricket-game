@@ -257,6 +257,24 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   parent as built (rest) while physics is on (they were drawn from the planned pose and
   the shoulder came apart on screen; the physical joints hold within 0.7 mm).
   **Next:** 3b stepping (one-foot stance falls).
+  **Fixed 2026-11-07, limb IK in physics (the user's report: the arm turned the wrong
+  way first and the elbow never bent):** the muscles took each limb joint's speed from
+  the hand's or foot's straight-line gap across the joint's lever; from a straight limb
+  bending the elbow or knee first moves the end away, so the joint turned against the
+  IK (measured: the knee pushed straight into its -3 deg limit, the foot 0.3 m short).
+  Now the decider's order carries the two-bone solve's angle per joint and the muscle
+  closes it in Fitts' time (`PartOrder::angle`; the trunk joining a far reach is
+  unchanged). The game also gave the decider the default elbow pole (back only), not
+  `reach.elbowPole` (down, out, back): the elbow went over the head for a hand at the
+  face. Measured, pelvis held, 2 s: knee-up foot 0.03 mm (knee 97 deg), heel back 0.03
+  mm, hand ahead 0.5 mm, to the chest 2.7 mm, at the face 2.4 cm (elbow below the
+  hand); the balanced forward reach 1.9 -> 0.7 cm. Not yet seen in the game.
+  **Talks 2026-11-07:** balance may be redesigned as one centre-of-mass controller
+  (capture point -> ground force -> joint torques through the stance legs, Jᵀ) instead
+  of per-case joints; the user's call pending. Yesterday's uncommitted one-foot work
+  (lift gating, unloading pivot) is not committed: a lift measured that the weight
+  shift overshoots (the hips' parallelogram tips about the feet's middle, not the
+  stance ankle).
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

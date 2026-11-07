@@ -386,3 +386,19 @@ Dated log. Format: decision, reason, alternatives rejected.
   through the spring's aim (sway + KD/KP sway rate, the capture point). All of KD in the
   joint damper fought the contacts on the light foot and left the body 6 cm forward.
 
+
+## 2026-11-07: Limb joints close the two-bone solve's angle (the decider gives it)
+- **Decision:** a limb joint's order (shoulder, elbow, hip, knee) carries its own turn
+  to the decider's two-bone solve (`PartOrder::angle`), and its muscle closes that angle
+  in Fitts' time for the end's gap (plus the target's own motion across its lever).
+  This amends 2026-11-06 ("the decider decides no amounts") for the limb joints only;
+  the trunk and hips joining a far reach still take the end's needed velocity across
+  their lever, and limits and strength still stop any joint (blocked). The decider gets
+  the game's poles: `ik.kneePole` and `reach.elbowPole`, as BodyReposition did.
+- **Reason:** measured (the user's report of the arm turning the wrong way): from a
+  straight limb, bending the middle joint first moves the end away from a straight-line
+  path, so the lever projection drove the knee straight into its limit and the elbow
+  the wrong way. With the solve's angles the limb's joints turn the solve's way and
+  arrive together.
+- **Rejected:** the whole chain's Jacobian for the speeds (singular at a straight limb:
+  the same failure); clamping the projected speed's sign (a patch).

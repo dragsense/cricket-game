@@ -73,6 +73,7 @@ struct PartOrder {
     Goal goal = Goal::HandL;             // the target it serves
     bool active = false;                 // its muscle pulls now (else it waits for the parts it needs blocked first)
     float share = 1.0f;                  // its share of a motion its queue carries together (a queue's shares sum to 1)
+    float angle = 0.0f;                  // rad, a limb joint's own turn to the two-bone solve (0: none, the end's gap leads)
 };
 
 struct BodyQueue {

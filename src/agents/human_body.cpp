@@ -300,19 +300,27 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
             const math::Vec3 gap = math::rotationVector(t.rotation * math::inverse(rot(turned)));
             speed = math::dot(t.angularVelocity + gap / std::max(timing.fittsA, 1e-3f), o.direction);
         } else {
-            // A point target (hand, foot): the end's needed velocity (its gap
-            // in Fitts' time plus the target's own motion) across this joint's lever.
+            // A point target (hand, foot), in Fitts' time for the end's gap.
+            // A limb joint (shoulder, elbow, hip, knee) closes its own angle to
+            // the two-bone solve, so the joints turn the solve's way and arrive
+            // together; the target's own motion across the joint's lever adds.
+            // Others (trunk, hips joining a far reach) take the end's needed
+            // velocity across their lever.
             const int h = o.goal == motion::Goal::HandL ? 0 : o.goal == motion::Goal::HandR ? 1 : -1;
             const int f = o.goal == motion::Goal::FootL ? 0 : o.goal == motion::Goal::FootR ? 1 : -1;
             const motion::BodyGoals::Point* g = h >= 0 ? &goals.hand[h] : f >= 0 ? &goals.foot[f] : nullptr;
             const int end = h >= 0 ? joints.arms[h].end : f >= 0 ? joints.legs[f].end : -1;
             if (!g || end < 0) continue;
             const math::Vec3 gapVec = g->position - pos(end);
-            const float time = motion::movementTime(math::length(gapVec), timing.fittsWidth, timing.fittsA, timing.fittsB);
-            const math::Vec3 need = g->velocity + gapVec / std::max(time, 1e-3f);
+            const float time = std::max(
+                motion::movementTime(math::length(gapVec), timing.fittsWidth, timing.fittsA, timing.fittsB), 1e-3f);
             const math::Vec3 lever = math::cross(o.direction, pos(end) - pos(o.joint));
             const float reach = math::dot(lever, lever);
-            if (reach > 1e-6f) speed = math::dot(need, lever) / reach;
+            if (o.angle > 0.0f) {
+                speed = o.angle / time + (reach > 1e-6f ? math::dot(g->velocity, lever) / reach : 0.0f);
+            } else if (reach > 1e-6f) {
+                speed = math::dot(g->velocity + gapVec / time, lever) / reach;
+            }
         }
         omega_[static_cast<size_t>(part)] += o.direction * (o.share * speed);
         ordered_[static_cast<size_t>(part)] = 1;

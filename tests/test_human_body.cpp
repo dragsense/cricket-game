@@ -121,6 +121,7 @@ struct MuscleRig {
     std::vector<math::Mat4> models;
     rig::Pose pose;
     agents::MuscleTiming timing;
+    motion::BodyDeciderSettings settings;  // the game's poles (config)
 
     agents::Balancer balancer;
     bool balance = false;  // the balancer stands the body (else the test holds the pelvis)
@@ -150,6 +151,8 @@ struct MuscleRig {
         timing.fittsA = s.joints.getFloat("reach.fittsA", timing.fittsA);
         timing.fittsB = s.joints.getFloat("reach.fittsB", timing.fittsB);
         timing.fittsWidth = s.joints.getFloat("reach.fittsWidth", timing.fittsWidth);
+        settings.kneePole = s.joints.getVec3("ik.kneePole", settings.kneePole);
+        settings.elbowPole = s.joints.getVec3("reach.elbowPole", settings.elbowPole);
         if (!decider.init(rig, joints)) return false;
         agents::HumanBody& body = s.human.humanBody();
         body.setPhysics(s.world, true);
@@ -166,7 +169,7 @@ struct MuscleRig {
         agents::HumanBody& body = s.human.humanBody();
         s.human.physicalModels(s.world, 1.0f, models);
         s.human.rig().modelToLocal(models, pose);
-        decider.decide(pose, goals, blocked, motion::BodyDeciderSettings{}, queue);
+        decider.decide(pose, goals, blocked, settings, queue);
         const uint8_t* owned = nullptr;
         if (balance) {
             balancer.plan(s.world, body, goals.down);
@@ -328,4 +331,62 @@ TEST_CASE("human: physics on in the game loop, it stands 5 s") {
     MESSAGE("game loop, physics on: centre of mass ", start, " m, lowest ", lowest, " m in 5 s");
     CHECK(standing);
     CHECK(lowest > 0.95f * start);
+}
+
+namespace {
+
+float bendAngle(const MuscleRig& r, const ik::TwoBoneChain& c) {
+    const math::Vec3 a = r.pos(c.mid) - r.pos(c.start), b = r.pos(c.end) - r.pos(c.mid);
+    return math::degrees(std::acos(std::clamp(math::dot(math::normalize(a), math::normalize(b)), -1.0f, 1.0f)));
+}
+
+// The left hand or foot to `offset` from its limb's first joint (shoulder or
+// hip), pelvis held, 2 s; the rig after it.
+void reachLimb(MuscleRig& r, bool arm, math::Vec3 offset) {
+    r.s.human.physicalModels(r.s.world, 1.0f, r.models);
+    const ik::TwoBoneChain& c = arm ? r.joints.arms[0] : r.joints.legs[0];
+    motion::BodyGoals goals;
+    motion::BodyGoals::Point& p = arm ? goals.hand[0] : goals.foot[0];
+    p.active = true;
+    p.position = r.pos(c.start) + offset;
+    if (!arm) goals.down[0] = false;
+    for (int i = 0; i < 2 * 120; ++i) r.step(goals);
+}
+
+} // namespace
+
+// Was failing (2026-11-07): the knee was pushed straight into its -3 deg limit
+// and the foot dragged 0.3 m short. The muscles took each joint's speed from
+// the end's straight-line gap across its lever; from a straight leg bending the
+// knee first moves the foot back, so the knee turned against the IK. Now each
+// limb joint closes its own angle to the two-bone solve.
+TEST_CASE("human body muscles: a raised foot target bends the knee, pelvis held") {
+    MuscleRig r;
+    REQUIRE(r.make());
+    const math::Vec3 offset(0.0f, -0.5f, 0.3f);  // from the hip: knee up, foot ahead
+    reachLimb(r, false, offset);
+    const ik::TwoBoneChain& leg = r.joints.legs[0];
+    const float miss = math::distance(r.pos(leg.end), r.pos(leg.start) + offset);
+    const float bend = bendAngle(r, leg);
+    MESSAGE("raised foot: ankle ", miss, " m from it after 2 s, knee bent ", bend, " deg");
+    CHECK(miss < 0.03f);
+    CHECK(bend > 60.0f);
+}
+
+// Was failing (2026-11-07): the elbow went over the head and the hand swung
+// about the target: the game gave the decider the default elbow pole (back
+// only) instead of reach.elbowPole (down, out and back), and the muscles turned
+// against the IK (see the knee test).
+TEST_CASE("human body muscles: a hand up at the face bends the elbow, elbow below the hand") {
+    MuscleRig r;
+    REQUIRE(r.make());
+    const math::Vec3 offset(-0.05f, 0.2f, 0.2f);  // from the shoulder: up, ahead, in
+    reachLimb(r, true, offset);
+    const ik::TwoBoneChain& arm = r.joints.arms[0];
+    const float miss = math::distance(r.pos(arm.end), r.pos(arm.start) + offset);
+    MESSAGE("hand at the face: wrist ", miss, " m from it after 2 s, elbow bent ", bendAngle(r, arm), " deg, elbow ",
+            r.pos(arm.mid).y, " m, wrist ", r.pos(arm.end).y, " m high");
+    CHECK(miss < 0.04f);
+    CHECK(bendAngle(r, arm) > 90.0f);
+    CHECK(r.pos(arm.mid).y < r.pos(arm.end).y);
 }
