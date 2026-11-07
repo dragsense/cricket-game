@@ -293,6 +293,18 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   straight overhead is slow (3.7 s, 2.7 cm): the clavicle has no body to lift the
   shoulder; idle joints and the trunk joining a far reach still use velocity motors;
   the stiffness and damping values are estimates to check.
+  **Elbow's side (the user's screenshot: the hand turned over beside the thigh):** the
+  fixed pole `reach.elbowPole` (out, down, back) twisted a nearly straight arm 30 deg
+  inward. Now the elbow's side follows the arm's shortest swing from hanging off the
+  chest (no added twist; exactly overhead through the front). The decider no longer
+  has an elbow pole setting. Measured, both arms through the game loop: thigh 1.2 mm,
+  twist 0.03 deg, palm to the thigh; hanging behind, face, side, low behind, overhead
+  forward within 2 mm; a sweep front-low to back-low through straight down does not
+  flip the elbow. The user checked it in the game: good. **Known:** straight overhead
+  and overhead out stop 6-7 cm short with the shoulder's twist at its 90 deg limit
+  (the clavicle has no body to lift the shoulder); across the body at chest height
+  stops 25 cm short (the shoulder's swing range: flexion and adduction together; to
+  check with the joint numbers).
   **Talks 2026-11-07:** balance may be redesigned as one centre-of-mass controller
   (capture point -> ground force -> joint torques through the stance legs, Jᵀ) instead
   of per-case joints; the user's call pending. Yesterday's uncommitted one-foot work

@@ -121,7 +121,7 @@ struct MuscleRig {
     std::vector<math::Mat4> models;
     rig::Pose pose;
     agents::MuscleTiming timing;
-    motion::BodyDeciderSettings settings;  // the game's poles (config)
+    motion::BodyDeciderSettings settings;  // the game's knee pole (config)
 
     agents::Balancer balancer;
     bool balance = false;  // the balancer stands the body (else the test holds the pelvis)
@@ -152,7 +152,6 @@ struct MuscleRig {
         timing.fittsB = s.joints.getFloat("reach.fittsB", timing.fittsB);
         timing.fittsWidth = s.joints.getFloat("reach.fittsWidth", timing.fittsWidth);
         settings.kneePole = s.joints.getVec3("ik.kneePole", settings.kneePole);
-        settings.elbowPole = s.joints.getVec3("reach.elbowPole", settings.elbowPole);
         if (!decider.init(rig, joints)) return false;
         agents::HumanBody& body = s.human.humanBody();
         body.setPhysics(s.world, true);
@@ -374,9 +373,9 @@ TEST_CASE("human body muscles: a raised foot target bends the knee, pelvis held"
 }
 
 // Was failing (2026-11-07): the elbow went over the head and the hand swung
-// about the target: the game gave the decider the default elbow pole (back
-// only) instead of reach.elbowPole (down, out and back), and the muscles turned
-// against the IK (see the knee test).
+// about the target: a fixed elbow pole (back only), and the muscles turned
+// against the IK (see the knee test). The elbow's side now follows the
+// arm's shortest swing from hanging.
 TEST_CASE("human body muscles: a hand up at the face bends the elbow, elbow below the hand") {
     MuscleRig r;
     REQUIRE(r.make());
@@ -424,4 +423,43 @@ TEST_CASE("human: through the game loop a hand at the face stays on its target")
             s.human.balancer().standing());
     CHECK(worstLate < 0.01f);
     CHECK(s.human.balancer().standing());
+}
+
+// Was failing (2026-11-07, the user's screenshot: the hand turned over beside
+// the thigh): a fixed elbow pole (out, down, back) made a nearly straight arm
+// twist 30 deg inward to point its elbow out. The elbow's side now follows
+// the arm's shortest swing from hanging: no twist, the palm stays to the thigh.
+TEST_CASE("human: through the game loop a hand beside the thigh does not twist the arm") {
+    Scene s;
+    REQUIRE(makeScene(s));
+    s.human.setPhysicsOn(true);
+    for (int i = 0; i < 60; ++i) {
+        s.human.tick(kTick);
+        s.world.step(kTick);
+    }
+    const rig::Rig& rig = s.human.rig();
+    const int shoulder = rig.findJoint("upper_arm_l"), wrist = rig.findJoint("hand_l");
+    std::vector<math::Mat4> m(static_cast<size_t>(rig.numJoints()));
+    auto model = [&](int j) {
+        s.human.physicalModels(s.world, 1.0f, m);
+        return math::toTransform(m[static_cast<size_t>(j)]);
+    };
+    const math::Vec3 goal = model(shoulder).position + math::Vec3(-0.02f, -0.6f, 0.1f);
+    s.human.setPoseHand(true, s.human.root().transformPoint(goal));
+    for (int i = 0; i < 3 * 120; ++i) {
+        s.human.tick(kTick);
+        s.world.step(kTick);
+    }
+    const agents::HumanBody& body = s.human.humanBody();
+    const agents::HumanBody::Part& p = body.parts()[static_cast<size_t>(body.partOf(shoulder))];
+    math::Quat swing, twist;
+    math::swingTwist(math::inverse(boneRotation(s.world, body.parts()[static_cast<size_t>(p.parent)])) * boneRotation(s.world, p),
+                     math::kUp, swing, twist);
+    const float twistDeg = std::fabs(math::degrees(math::rotationVector(twist).y));
+    const float palmToThigh = math::dot(model(wrist).rotation * math::Vec3(-1.0f, 0.0f, 0.0f), math::Vec3(-1.0f, 0.0f, 0.0f));
+    const float miss = math::distance(model(wrist).position, goal);
+    MESSAGE("hand beside the thigh: wrist ", miss, " m off, shoulder twist ", twistDeg, " deg, palm toward the thigh ", palmToThigh);
+    CHECK(miss < 0.01f);
+    CHECK(twistDeg < 5.0f);
+    CHECK(palmToThigh > 0.95f);
 }

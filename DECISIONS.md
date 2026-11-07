@@ -424,3 +424,9 @@ Dated log. Format: decision, reason, alternatives rejected.
   scaled by each part's inertia); stiffness mode has real units.
 - **Not yet:** idle joints and the trunk joining a far reach keep velocity motors;
   the stiffness and damping values are [E] estimates to check against the papers.
+- **Later (the user's screenshot):** the arm's IK pole is no fixed direction: the
+  elbow's side follows the arm's shortest swing from hanging relaxed off the chest
+  (no added twist, the shoulder's neutral rotation); exactly overhead the swing goes
+  through the front. A fixed pole twists a straight arm toward it and flips the elbow
+  where the arm points along it. The decider's elbow pole setting is removed
+  (`reach.elbowPole` stays for the kinematic reach).

@@ -1269,8 +1269,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         muscleTiming_.fittsB = jointsConfig_->getFloat("reach.fittsB", muscleTiming_.fittsB);
         muscleTiming_.fittsWidth = jointsConfig_->getFloat("reach.fittsWidth", muscleTiming_.fittsWidth);
         deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
-        deciderSettings_.kneePole = ik_.kneePole;       // as BodyReposition: knees forward
-        deciderSettings_.elbowPole = reach_.elbowPole;  // elbows down, out and back
+        deciderSettings_.kneePole = ik_.kneePole;  // as BodyReposition: knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
             auto bands = d->find("lumbarHipBandsDeg");

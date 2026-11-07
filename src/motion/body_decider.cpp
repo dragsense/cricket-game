@@ -42,8 +42,14 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints) {
         if (leg.start >= 0)
             legLength_[i] = math::distance(pos(leg.start), pos(leg.mid)) + math::distance(pos(leg.mid), pos(leg.end));
         const ik::TwoBoneChain& arm = joints.arms[i];
-        if (arm.start >= 0)
+        if (arm.start >= 0) {
             armLength_[i] = math::distance(pos(arm.start), pos(arm.mid)) + math::distance(pos(arm.mid), pos(arm.end));
+            const math::Quat toChest = joints.spine[2] >= 0 ? math::inverse(rot(joints.spine[2])) : math::identityQuat();
+            const math::Vec3 hang = math::safeNormalize(pos(arm.end) - pos(arm.start), -math::kUp);
+            const math::Vec3 back = -math::kForward - hang * math::dot(-math::kForward, hang);
+            hangDir_[i] = toChest * hang;
+            hangBend_[i] = toChest * math::safeNormalize(back, -math::kForward);
+        }
     }
     if (joints.legs[0].start >= 0 && joints.legs[1].start >= 0) {
         const math::Vec3 mid = 0.5f * (pos(joints.legs[0].start) + pos(joints.legs[1].start));
@@ -109,11 +115,21 @@ void BodyDecider::handOrders(int h, const BodyGoals::Point& goal, const std::vec
     const Goal which = h == 0 ? Goal::HandL : Goal::HandR;
     const math::Vec3 shoulder = pos(arm.start), target = goal.position;
 
-    // Shoulder and elbow, elbow back and out (square to the shoulder-to-hand line).
-    const math::Vec3 dir = math::safeNormalize(target - shoulder, -math::kUp);
-    const math::Vec3 side(h == 0 ? s.elbowPole.x : -s.elbowPole.x, s.elbowPole.y, s.elbowPole.z);
-    const math::Vec3 pole = math::safeNormalize(side - dir * math::dot(side, dir), side);
-    limbOrders(arm, target, pole, goal.velocity, which, out);
+    // Shoulder and elbow. The elbow's side (the solve's pole): the arm turns
+    // from hanging relaxed off the chest to the target by the shortest swing,
+    // adding no twist (the shoulder's neutral rotation), and the elbow's bend
+    // turns with it: beside the thigh it points back (palm to the thigh), at
+    // the face below and ahead, behind the back back and up, overhead ahead.
+    // No fixed direction, so none the arm can line up with (a fixed pole flips
+    // the elbow where the arm points along it). Exactly overhead the swing
+    // goes through the front (shoulder flexion).
+    const math::Quat chest = joints_.spine[2] >= 0 ? rot(joints_.spine[2]) : math::identityQuat();
+    const math::Vec3 hang = chest * hangDir_[h], bend = chest * hangBend_[h];
+    const math::Vec3 dir = math::safeNormalize(target - shoulder, hang);
+    const math::Quat swing = math::dot(hang, dir) < -0.9999f
+                                 ? math::fromAxisAngle(math::safeNormalize(math::cross(hang, -bend), math::kRight), math::kPi)
+                                 : math::fromTo(hang, dir);
+    limbOrders(arm, target, swing * bend, goal.velocity, which, out);
 
     // Out of the arm's reach every part of the queue moves from the start,
     // shared by its place (shareQueue). The queue is led by where the target

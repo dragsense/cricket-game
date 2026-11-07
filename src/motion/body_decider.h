@@ -98,7 +98,6 @@ struct BodyDeciderJoints {
 
 struct BodyDeciderSettings {
     math::Vec3 kneePole{0.0f, 0.0f, 1.0f};    // knees point this way (pelvis frame)
-    math::Vec3 elbowPole{0.3f, 0.0f, -1.0f};  // left elbow points this way (mirrored for the right; +X is left)
     // human_joints.json "decider.queueShare": each next part in a queue
     // carries this times the share of the part before it.
     float queueShare = 0.5f;
@@ -145,6 +144,10 @@ private:
     float armLength_[2]{};  // upper arm + forearm
     float legLength_[2]{};  // thigh + shin
     math::Vec3 hipCentre_{0.0f};  // between the hips, from the pelvis (rest)
+    // The relaxed arm, in the chest's frame (rest): shoulder-to-wrist
+    // direction and the way its elbow points when it bends from there (back:
+    // the forearm flexes forward).
+    math::Vec3 hangDir_[2]{}, hangBend_[2]{};
     rig::Pose scratch_;           // the pose a two-bone solve would give (for its directions only)
     std::vector<math::Mat4> models_, solved_;
 };
