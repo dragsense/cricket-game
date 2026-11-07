@@ -200,11 +200,17 @@
     // 1985, Gomi & Osu 1998); knee and hip toward walking quasi-stiffness
     // (hundreds of N m/rad: Shamaei 2013-2015). To be checked against the
     // papers' tables.
-    "stiffness": { "upper_arm": 40, "forearm": 20, "thigh": 200, "shin": 200 },
-    // Damping, N m s/rad [E]: about critical (2 sqrt(K I)) for the limb beyond
+    // Trunk [E]: the three spine joints in series give the trunk ~200 N m/rad
+    // (measured trunk bending stiffness: hundreds of N m/rad, Cholewicki et
+    // al.; to check).
+    "stiffness": { "upper_arm": 40, "forearm": 20, "thigh": 200, "shin": 200,
+                   "spine_01": 600, "spine_02": 600, "chest": 600 },
+    // Damping, N m s/rad [E]: about critical (2 sqrt(K I)) for the part beyond
     // the joint (I ~ 0.33 kg m2 arm at the shoulder, 0.065 forearm and hand at
-    // the elbow, 1.35 leg at the hip, 0.28 shank and foot at the knee).
-    "jointDamping": { "upper_arm": 7.3, "forearm": 2.3, "thigh": 33, "shin": 15 }
+    // the elbow, 1.35 leg at the hip, 0.28 shank and foot at the knee, ~2 the
+    // upper body at each spine joint).
+    "jointDamping": { "upper_arm": 7.3, "forearm": 2.3, "thigh": 33, "shin": 15,
+                      "spine_01": 70, "spine_02": 70, "chest": 70 }
   },
 
   // Balance (BIOMECHANICS 3; DECISIONS 2026-11-07 "One centre-of-mass

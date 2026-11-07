@@ -75,6 +75,9 @@ public:
         float damping = 0.0f;              // N m s/rad, that spring's damping
     };
     const std::vector<Part>& parts() const { return parts_; }
+    // Per rig joint (`numJoints`): its part's mass (kg, 0 if none of its own)
+    // and that mass's centre in the bone's frame. Load time.
+    void jointMasses(int numJoints, std::vector<float>& mass, std::vector<math::Vec3>& centre) const;
     float totalMass() const { return totalMass_; }
 
     // The planned pose (`models`, character space, the rig's joints) as each

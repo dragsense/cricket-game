@@ -152,7 +152,13 @@ struct MuscleRig {
         timing.fittsB = s.joints.getFloat("reach.fittsB", timing.fittsB);
         timing.fittsWidth = s.joints.getFloat("reach.fittsWidth", timing.fittsWidth);
         settings.kneePole = s.joints.getVec3("ik.kneePole", settings.kneePole);
-        if (!decider.init(rig, joints)) return false;
+        if (!decider.init(rig, joints, &s.human.jointLimits())) return false;
+        {
+            std::vector<float> mass;
+            std::vector<math::Vec3> centre;
+            s.human.humanBody().jointMasses(rig.numJoints(), mass, centre);
+            decider.setMasses(mass, centre);
+        }
         agents::HumanBody& body = s.human.humanBody();
         body.setPhysics(s.world, true);
         if (!balance) {
