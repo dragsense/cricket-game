@@ -152,7 +152,13 @@ struct MuscleRig {
         timing.fittsB = s.joints.getFloat("reach.fittsB", timing.fittsB);
         timing.fittsWidth = s.joints.getFloat("reach.fittsWidth", timing.fittsWidth);
         settings.kneePole = s.joints.getVec3("ik.kneePole", settings.kneePole);
-        if (!decider.init(rig, joints)) return false;
+        if (!decider.init(rig, joints, &s.human.jointLimits())) return false;
+        {
+            std::vector<float> mass;
+            std::vector<math::Vec3> centre;
+            s.human.humanBody().jointMasses(rig.numJoints(), mass, centre);
+            decider.setMasses(mass, centre);
+        }
         agents::HumanBody& body = s.human.humanBody();
         body.setPhysics(s.world, true);
         if (!balance) {
@@ -161,7 +167,7 @@ struct MuscleRig {
         }
         const int foot[2] = {rig.findJoint("foot_l"), rig.findJoint("foot_r")};
         const int toe[2] = {rig.findJoint("toe_l"), rig.findJoint("toe_r")};
-        return balancer.init(body, foot, toe, agents::readBalanceSettings(s.joints));
+        return balancer.init(s.world, body, foot, toe, agents::readBalanceSettings(s.joints));
     }
 
     void step(const motion::BodyGoals& wanted) {
@@ -169,18 +175,19 @@ struct MuscleRig {
         s.human.physicalModels(s.world, 1.0f, models);
         s.human.rig().modelToLocal(models, pose);
         motion::BodyGoals goals = wanted;
-        const uint8_t* owned = nullptr;
-        const uint8_t* driven = nullptr;
         if (balance) {
-            balancer.plan(s.world, body, goals.down);
-            owned = balancer.owned();
-            driven = balancer.driven();
+            balancer.plan(s.world, body, goals.down, kTick);
             for (int f = 0; f < 2; ++f) goals.foot[f].active = goals.foot[f].active && balancer.liftReady(f);
         }
         decider.decide(pose, goals, blocked, settings, queue);
-        body.compensateGravity(s.world, owned);
-        body.drive(s.world, queue, goals, joints, models, timing, driven);
-        if (balance) balancer.apply(s.world, body);
+        body.compensateGravity(s.world);
+        body.drive(s.world, queue, goals, joints, models, timing, kTick, balance ? balancer.free() : nullptr);
+        if (balance) {
+            const math::Quat planned = queue.plan ? math::toTransform((*queue.plan)[static_cast<size_t>(joints.pelvis)]).rotation
+                                                  : math::identityQuat();
+            balancer.setPelvisTarget(s.human.root().rotation * planned);
+            balancer.apply(s.world, body);
+        }
         s.world.step(kTick);
         s.human.physicalModels(s.world, 1.0f, models);
         body.blockedJoints(s.world, queue, models, s.human.jointLimits(), kTick, blocked);
@@ -263,14 +270,14 @@ TEST_CASE("balance: the body stands on its own for 5 s, physics on, nothing held
     }
     const float endHeight = body.height(r.s.world);
     MESSAGE("standing 5 s: centre of mass ", startHeight, " -> ", endHeight, " m; worst off the ankles after 1 s ",
-            worstOff, " m; ground force across now ", std::hypot(r.balancer.groundForce().x, r.balancer.groundForce().z), " N; lowest part ",
+            worstOff, " m; hover ", r.balancer.hoverForce().y, " N; lowest part ",
             lowestPart(r), " m");
     CHECK(alwaysStanding);
     CHECK(endHeight > 0.95f * startHeight);  // did not fall or slump
     CHECK(worstOff < 0.05f);                 // over the feet
 }
 
-TEST_CASE("balance: pushed forward, the ankles bring it back over the feet") {
+TEST_CASE("balance: pushed forward, the assists bring it back over the feet") {
     MuscleRig r;
     REQUIRE(r.make(true));
     const agents::HumanBody& body = r.s.human.humanBody();
@@ -367,7 +374,7 @@ TEST_CASE("balance: the weight shifts over one foot, the other lifts, it stands 
             worstAhead = std::max(worstAhead, std::fabs(math::dot(off, ahead)));
         }
         if (i % 30 == 0)
-            MESSAGE("t ", t, " left down ", r.balancer.footDown(0), " share L ", r.balancer.footShare(0), " lift ",
+            MESSAGE("t ", t, " left down ", r.balancer.footDown(0), " lift ",
                     r.balancer.liftReady(0), " off aim ", offSupport(r), " m; foot rise ",
                     r.pos(r.joints.legs[0].end).y - footStart, " m");
     }
@@ -414,15 +421,30 @@ void reachLimb(MuscleRig& r, bool arm, math::Vec3 offset) {
 // the end's straight-line gap across its lever; from a straight leg bending the
 // knee first moves the foot back, so the knee turned against the IK. Now each
 // limb joint closes its own angle to the two-bone solve.
-TEST_CASE("human body muscles: a raised foot target bends the knee, pelvis held") {
+// 2026-11-08 (the user's call): the hips are free and the balancer on. The
+// plan keeps its centre of mass over the standing foot, so the hips shift over
+// it; a test that pinned the pelvis aimed the leg from a hip that never got
+// there. The foot's point is fixed in the world from the hip at the start.
+TEST_CASE("human body muscles: a raised foot target bends the knee, the body balancing on the other foot") {
     MuscleRig r;
-    REQUIRE(r.make());
-    const math::Vec3 offset(0.0f, -0.5f, 0.3f);  // from the hip: knee up, foot ahead
-    reachLimb(r, false, offset);
+    REQUIRE(r.make(true));
+    for (int i = 0; i < 60; ++i) r.step(motion::BodyGoals{});
     const ik::TwoBoneChain& leg = r.joints.legs[0];
-    const float miss = math::distance(r.pos(leg.end), r.pos(leg.start) + offset);
+    const math::Vec3 target = r.pos(leg.start) + math::Vec3(0.0f, -0.5f, 0.3f);  // knee up, foot ahead
+    motion::BodyGoals goals;
+    goals.foot[0].active = true;
+    goals.foot[0].position = target;
+    goals.down[0] = false;
+    goals.down[1] = true;
+    bool standing = true;
+    for (int i = 0; i < 3 * 120; ++i) {
+        r.step(goals);
+        standing = standing && r.balancer.standing();
+    }
+    const float miss = math::distance(r.pos(leg.end), target);
     const float bend = bendAngle(r, leg);
-    MESSAGE("raised foot: ankle ", miss, " m from it after 2 s, knee bent ", bend, " deg");
+    MESSAGE("raised foot: ankle ", miss, " m from it after 3 s, knee bent ", bend, " deg, standing ", standing);
+    CHECK(standing);
     CHECK(miss < 0.03f);
     CHECK(bend > 60.0f);
 }
@@ -517,4 +539,76 @@ TEST_CASE("human: through the game loop a hand beside the thigh does not twist t
     CHECK(miss < 0.01f);
     CHECK(twistDeg < 5.0f);
     CHECK(palmToThigh > 0.95f);
+}
+
+// A strong push (1 m/s forward, the capture point well past the toes): the
+// balancer asks for a step, the game loop takes it, and the body stands again.
+TEST_CASE("balance: a strong push forward, it steps and stands") {
+    Scene s;
+    REQUIRE(makeScene(s));
+    s.human.setPhysicsOn(true);
+    const agents::HumanBody& body = s.human.humanBody();
+    for (int i = 0; i < 60; ++i) {
+        s.human.tick(kTick);
+        s.world.step(kTick);
+    }
+    const float start = body.height(s.world);
+    const math::Vec3 ahead = s.human.root().rotation * math::kForward;
+    for (const agents::HumanBody::Part& p : body.parts())
+        s.world.addImpulse(p.body, p.mass * 1.0f * ahead, s.world.transform(p.body).position);
+    bool stepped = false;
+    float lowest = start;
+    for (int i = 0; i < 4 * 120; ++i) {
+        s.human.tick(kTick);
+        s.world.step(kTick);
+        const agents::Balancer& b = s.human.balancer();
+        stepped = stepped || !b.footDown(0) || !b.footDown(1);
+        lowest = std::min(lowest, body.height(s.world));
+    }
+    const agents::Balancer& b = s.human.balancer();
+    const float speed = math::length(body.centreOfMassVelocity(s.world));
+    MESSAGE("push 1 m/s: stepped ", stepped, "; centre of mass ", start, " -> lowest ", lowest, " m; after 4 s lost ",
+            b.lost(), ", moving ", speed, " m/s");
+    CHECK(stepped);
+    CHECK(lowest > 0.85f * start);
+    CHECK_FALSE(b.lost());
+    CHECK(speed < 0.1f);
+}
+
+// A knock to strength 0: the feet let go and no assist holds the body; the
+// strength climbs back at recoverRate and the feet lock again.
+TEST_CASE("balance: a knock drops the strength, it recovers and the feet lock again") {
+    MuscleRig r;
+    REQUIRE(r.make(true));
+    for (int i = 0; i < 60; ++i) r.step(motion::BodyGoals{});
+    CHECK(r.balancer.footLocked(0));
+    CHECK(r.balancer.footLocked(1));
+    r.balancer.knock(1.0f);
+    r.step(motion::BodyGoals{});
+    const bool letGo = !r.balancer.footLocked(0) && !r.balancer.footLocked(1);
+    const float weak = r.balancer.strength();
+    CHECK(letGo);
+    CHECK(weak < 0.05f);
+    for (int i = 0; i < 120; ++i) r.step(motion::BodyGoals{});
+    MESSAGE("knock: let go ", letGo, ", strength ", weak, " -> ", r.balancer.strength(), " after 1 s");
+    CHECK(r.balancer.strength() == doctest::Approx(1.0f));
+}
+
+// Locked feet hold: pushed sideways, the planted feet do not slide.
+TEST_CASE("balance: locked feet do not slide under a side push") {
+    MuscleRig r;
+    REQUIRE(r.make(true));
+    for (int i = 0; i < 60; ++i) r.step(motion::BodyGoals{});
+    const agents::HumanBody& body = r.s.human.humanBody();
+    const physics::BodyId foot = body.parts()[static_cast<size_t>(body.partOf(r.joints.legs[0].end))].body;
+    const math::Vec3 before = r.s.world.transform(foot).position;
+    const math::Vec3 side = math::cross(math::kUp, r.s.human.root().rotation * math::kForward);
+    for (const agents::HumanBody::Part& p : body.parts())
+        r.s.world.addImpulse(p.body, p.mass * 0.3f * side, r.s.world.transform(p.body).position);
+    for (int i = 0; i < 120; ++i) r.step(motion::BodyGoals{});
+    const math::Vec3 now = r.s.world.transform(foot).position;
+    const float slid = std::hypot(now.x - before.x, now.z - before.z);
+    MESSAGE("side push 0.3 m/s: left foot slid ", slid, " m; standing ", r.balancer.standing());
+    CHECK(slid < 0.005f);
+    CHECK(r.balancer.standing());
 }

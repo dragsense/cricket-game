@@ -26,6 +26,14 @@ Swing swingToward(math::Vec3 pivot, math::Vec3 end, math::Vec3 target, float rea
     return s;
 }
 
+float dropToward(math::Vec3 end, math::Vec3 target, float reach) {
+    const math::Vec3 v = target - end;
+    if (v.y >= 0.0f || math::length(v) - reach <= kReachEpsilon) return 0.0f;
+    // |v + d up|^2 = reach^2: d^2 + 2 v.y d + |v|^2 - reach^2 = 0.
+    const float disc = v.y * v.y - math::dot(v, v) + reach * reach;
+    return disc < 0.0f ? -v.y : -v.y - std::sqrt(disc);
+}
+
 math::Quat clampRotationVector(math::Quat q, math::Vec3 min, math::Vec3 max) {
     const math::Vec3 c = math::clamp(math::rotationVector(q), min, max);
     const float angle = math::length(c);

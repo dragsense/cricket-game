@@ -40,6 +40,39 @@ bool readRange(const nlohmann::json& j, const char* key, float& lo, float& hi) {
     return lo <= hi;
 }
 
+bool parseBound(const std::string& s, LimitCoupling::Bound& out) {
+    using B = LimitCoupling::Bound;
+    static const std::pair<const char*, B> kNames[] = {{"twistMin", B::TwistMin},   {"twistMax", B::TwistMax},
+                                                        {"swing1Min", B::Swing1Min}, {"swing1Max", B::Swing1Max},
+                                                        {"swing2Min", B::Swing2Min}, {"swing2Max", B::Swing2Max}};
+    for (const auto& [name, b] : kNames)
+        if (s == name) {
+            out = b;
+            return true;
+        }
+    return false;
+}
+
+float& boundOf(JointLimit& l, LimitCoupling::Bound b) {
+    using B = LimitCoupling::Bound;
+    switch (b) {
+    case B::TwistMin: return l.twistMin;
+    case B::TwistMax: return l.twistMax;
+    case B::Swing1Min: return l.swing1Min;
+    case B::Swing1Max: return l.swing1Max;
+    case B::Swing2Min: return l.swing2Min;
+    default: return l.swing2Max;
+    }
+}
+
+// The limit's own axis that a bound is on (0 = x, 1 = y, 2 = z).
+int boundAxis(const JointLimit& l, LimitCoupling::Bound b) {
+    using B = LimitCoupling::Bound;
+    if (b == B::TwistMin || b == B::TwistMax) return l.axis;
+    if (b == B::Swing1Min || b == B::Swing1Max) return swingAxis1(l.axis);
+    return swingAxis2(l.axis);
+}
+
 bool parseLimit(const nlohmann::json& j, JointLimit& out) {
     std::string type = j.value("type", "");
     if (type == "hinge") {
@@ -61,6 +94,21 @@ bool parseLimit(const nlohmann::json& j, JointLimit& out) {
 }
 
 } // namespace
+
+float hingeAngle(math::Quat local, const JointLimit& hinge) {
+    math::Quat q = math::normalize(local);
+    if (q.w < 0.0f) q = -q;
+    return twistAngle(q, unitAxis(hinge.axis));
+}
+
+JointLimit coupledLimit(const JointLimit& limit, float angle) {
+    const LimitCoupling& c = limit.coupling;
+    if (c.joint < 0 || c.angle1 == c.angle0) return limit;
+    const float t = std::clamp((angle - c.angle0) / (c.angle1 - c.angle0), 0.0f, 1.0f);
+    JointLimit out = limit;
+    boundOf(out, c.bound) = c.value0 + (c.value1 - c.value0) * t;
+    return out;
+}
 
 math::Quat clampRotation(math::Quat q, const JointLimit& lim) {
     if (lim.type == LimitType::Free) return q;
@@ -130,6 +178,16 @@ JointLimit mirrored(const JointLimit& lim) {
     if (lim.axis != 0) flip(m.twistMin, m.twistMax);
     if (swingAxis1(lim.axis) != 0) flip(m.swing1Min, m.swing1Max);
     if (swingAxis2(lim.axis) != 0) flip(m.swing2Min, m.swing2Max);
+    // A coupled bound on a flipped axis: min and max swap, the values negate
+    // (the coupled hinge is resolved per side by the caller).
+    LimitCoupling& c = m.coupling;
+    if (c.joint >= 0 && boundAxis(lim, c.bound) != 0) {
+        using B = LimitCoupling::Bound;
+        const B swapped[] = {B::TwistMax, B::TwistMin, B::Swing1Max, B::Swing1Min, B::Swing2Max, B::Swing2Min};
+        c.bound = swapped[static_cast<int>(c.bound)];
+        c.value0 = -c.value0;
+        c.value1 = -c.value1;
+    }
     return m;
 }
 
@@ -159,17 +217,63 @@ bool JointLimits::load(const core::Config& config, const rig::Rig& rig) {
             limits_[static_cast<size_t>(joint)] = l;
             ++count;
         };
-        set(plain, lim);
-        set(left, lim);
-        set(right, mirrored(lim));
+        // Optional "coupledTo": {"bone", "bound", "angleDeg": [a0, a1],
+        // "valueDeg": [v0, v1]}: one bound set by another hinge's angle,
+        // resolved per side (foot_l's by shin_l).
+        int coupledPlain = -1, coupledLeft = -1, coupledRight = -1;
+        if (auto cj = j.find("coupledTo"); cj != j.end() && cj->is_object()) {
+            const std::string bone = cj->value("bone", "");
+            const auto a = cj->find("angleDeg"), v = cj->find("valueDeg");
+            if (!parseBound(cj->value("bound", ""), lim.coupling.bound) || a == cj->end() || v == cj->end() ||
+                !a->is_array() || !v->is_array() || a->size() != 2 || v->size() != 2) {
+                LOG_ERROR("joint limits: invalid coupledTo on '{}'", name);
+                return false;
+            }
+            coupledPlain = rig.findJoint(bone);
+            coupledLeft = rig.findJoint(bone + "_l");
+            coupledRight = rig.findJoint(bone + "_r");
+            lim.coupling.angle0 = math::radians((*a)[0].get<float>());
+            lim.coupling.angle1 = math::radians((*a)[1].get<float>());
+            lim.coupling.value0 = math::radians((*v)[0].get<float>());
+            lim.coupling.value1 = math::radians((*v)[1].get<float>());
+            lim.coupling.joint = 0;  // set per side below
+            boundOf(lim, lim.coupling.bound) = lim.coupling.value0;
+        }
+        auto coupled = [](JointLimit l, int joint) {
+            if (l.coupling.joint >= 0) l.coupling.joint = joint;
+            return l;
+        };
+        set(plain, coupled(lim, coupledPlain));
+        set(left, coupled(lim, coupledLeft));
+        set(right, coupled(mirrored(lim), coupledRight));
+    }
+    // A coupled joint must be a hinge about X (its angle, the same sign on
+    // both sides, is the coupling's input).
+    for (const JointLimit& l : limits_) {
+        const int cj = l.coupling.joint;
+        if (cj < 0) continue;
+        const JointLimit& h = limits_[static_cast<size_t>(cj)];
+        if (h.type != LimitType::Hinge || h.axis != 0) {
+            LOG_ERROR("joint limits: a coupled joint must be a hinge about x");
+            return false;
+        }
     }
     LOG_INFO("joint limits: {} joints limited", count);
     return true;
 }
 
+JointLimit JointLimits::limitIn(int joint, const rig::Pose& pose) const {
+    const JointLimit& l = limits_[static_cast<size_t>(joint)];
+    const int cj = l.coupling.joint;
+    if (cj < 0 || static_cast<size_t>(cj) >= pose.locals.size()) return l;
+    return coupledLimit(l, hingeAngle(pose.locals[static_cast<size_t>(cj)].rotation, limits_[static_cast<size_t>(cj)]));
+}
+
 void JointLimits::apply(rig::Pose& pose) const {
+    // Parents come first in the rig, so a coupled joint (the knee) is
+    // clamped before the joint it bounds (the ankle).
     for (size_t i = 0; i < limits_.size() && i < pose.locals.size(); ++i)
-        pose.locals[i].rotation = clampRotation(pose.locals[i].rotation, limits_[i]);
+        pose.locals[i].rotation = clampRotation(pose.locals[i].rotation, limitIn(static_cast<int>(i), pose));
 }
 
 } // namespace ik

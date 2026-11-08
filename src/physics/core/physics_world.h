@@ -22,7 +22,6 @@ using SpringId = uint32_t;
 constexpr SpringId kInvalidSpring = 0xffffffffu;
 using JointId = uint32_t;
 constexpr JointId kInvalidJoint = 0xffffffffu;
-
 // config/physics_world.json "world": shared by Jolt and the ball solver.
 struct WorldSettings {
     math::Vec3 gravity{0.0f, -9.81f, 0.0f};
@@ -121,6 +120,7 @@ public:
     bool ready() const { return impl_ != nullptr; }
 
     const WorldSettings& world() const { return world_; }
+    const PhysicsSettings& settings() const;
 
     // Load time only (allocates). Returns kInvalidBody when full.
     BodyId createBody(const BodyDesc& desc);
@@ -138,6 +138,11 @@ public:
     void addImpulse(BodyId id, math::Vec3 impulse, math::Vec3 point);
     // Torque (world, N m) on the body for the next step.
     void addTorque(BodyId id, math::Vec3 torque);
+    // Force (world, N) at the body's centre of mass for the next step (wakes it).
+    void addForce(BodyId id, math::Vec3 force);
+    // The body's friction and restitution (Jolt combines two bodies' friction
+    // by their geometric mean, restitution by the larger).
+    void setMaterial(BodyId id, float friction, float restitution);
     math::Vec3 angularVelocity(BodyId id) const;  // world, rad/s
     // A moving body switches between kinematic (moved only by moveKinematic)
     // and dynamic (gravity, forces, joints, contacts), keeping its mass and
@@ -162,6 +167,8 @@ public:
     JointId createHinge(BodyId a, BodyId b, const HingeDesc& d);
     JointId createSwingTwist(BodyId a, BodyId b, const SwingTwistDesc& d);
     JointId createSixDof(BodyId a, BodyId b, const SixDofDesc& d);
+    // A joint on (solved) or off (the two bodies move freely), e.g. a foot lock.
+    void setJointEnabled(JointId id, bool enabled);
     // Motor on (driving to the target set below) or off (the joint is free
     // within its limits).
     void setJointMotor(JointId id, const MotorDesc& motor, bool on);
@@ -176,28 +183,21 @@ public:
     // frame as created (clamped by the limits); current rotation.
     void setSixDofTarget(JointId id, math::Quat rotation);
     math::Quat sixDofRotation(JointId id) const;
+    // SixDOF: its rotation ranges (rad, per axis of its frame as created),
+    // changed while it runs (a range set by another joint's angle).
+    void setSixDofLimits(JointId id, math::Vec3 minAngles, math::Vec3 maxAngles);
     // Velocity motors (a muscle turning its joint): the motor turns the joint
     // at this angular velocity, as fast as its torque limit allows, and holds
     // it at 0. Switches the motor from its target (setJointMotor) to velocity.
     // Hinge: about its axis (rad/s). SixDOF: in the joint's frame on body b.
     void setHingeVelocity(JointId id, float angularVelocity);
     void setSixDofVelocity(JointId id, math::Vec3 angularVelocity);
-    // A spring on one rotation axis of the joint's frame (SixDOF; Jolt's
-    // stiffness-and-damping motor, solved with the contacts): it pulls the
-    // axis toward `offset` rad from where it is now with `stiffness` N m/rad
-    // and `damping` N m s/rad, never harder than `maxTorque`. The other axes
-    // keep their motor. Hinge: its one axis.
-    void setSixDofAxisSpring(JointId id, int axis, float offset, float stiffness, float damping, float maxTorque);
-    void setHingeSpring(JointId id, float offset, float stiffness, float damping, float maxTorque);
     // A spring on every rotation axis toward a target (Jolt's position motor,
     // stiffness-and-damping mode): `rotation` as setSixDofTarget, `angle` as
     // setHingeTarget; `stiffness` N m/rad, `damping` N m s/rad, never harder
     // than `maxTorque`.
     void setSixDofSpringTarget(JointId id, math::Quat rotation, float stiffness, float damping, float maxTorque);
     void setHingeSpringTarget(JointId id, float angle, float stiffness, float damping, float maxTorque);
-    // SixDOF: the motor off on one rotation axis of the joint's frame (it
-    // turns freely within its limits); the other axes keep their motor.
-    void setSixDofAxisFree(JointId id, int axis);
     // The torque (N m) the joint's motor applied in the last step of `dt` s.
     float jointMotorTorque(JointId id, float dt) const;
 

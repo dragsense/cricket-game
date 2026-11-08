@@ -351,8 +351,141 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   across the body (wrist 0.33 -> 0.26 m while the target went 0.5 -> 0.75 m): the
   plan's chest turn jumped tick to tick (-0.3, -5.8, -17.8, -2.4 deg) and the body's
   shoulder swung inward chasing it. Back to the arm aiming from the real body.
-  **Next (the user's call):** stepping (a far foot target: the body moves and the other
-  foot follows instead of the foot hanging at the leg's length).
+  **Slice 2, WIP not committed (2026-11-08): the body follows a hand target and the
+  reach completes.** Saved as `wip/whole_body_plan_v4.patch` (the working tree minus
+  `config/engine.json` and `src/main.cpp`, which are the user's). It contains: the plan
+  made independent of the real body (planted-foot anchors, trunk reset once a tick, no
+  physics blocked flags), a completion loop (`planTrunk` + `planLegs`, 16 rounds, 1 mm),
+  toe support only at the ball edge, and `Balancer::setPosture` (virtual model control:
+  the plan's pelvis held through torque-driven stance legs). Its TEMP tests ("TEMP
+  arrows and reaches", "TEMP ground plan vs body") are not to be committed.
+  **What failed:** torque-driven legs. For the ground reach ahead the plan is steady
+  (hips 0.89 m up, 0.11 m back, knee 61 deg, lean 92 deg, wrist 1 mm off), but the body
+  keeps its knee straight (3 deg; a force through a straight knee has no lever), its
+  hips run back (-0.29 -> -1.13 m) and it falls at about 2.5 s; the leg springs also
+  saturate the muscles. Before the posture, with the legs following the plan's angles by
+  springs, the body tracked well (knee 51/51 deg, lean 61-64/65 deg) and stood; it fell
+  only once the plan "completed" the low reach with a 92 deg lean and 9 cm hip drop.
+  **Done (2026-11-08, the user's yes; still WIP, saved as `wip/whole_body_plan_v5.patch`):**
+  torque-driven legs removed (`Balancer::setPosture`, `legStiffness`); the legs follow
+  the plan by springs again. A low target's queue is led by the hips' drop (hips lower,
+  pelvis tilt, spine_01 ...), and the drop is the one that alone brings the shoulder
+  within reach (`motion::dropToward`; it closed only dir.y^2 of its share before). A
+  planted leg's knee tracks its foot (pole carried with the foot from standing): the
+  knees forward over toed-out feet put the ankles 18 deg out (range 15) and the plan
+  raised the hips. Measured, game loop (TEMP arrows, both sides alike): far ahead
+  1.1-1.6 cm standing; low behind 4-5 cm standing; hand forward 12 cm, back 25, out 16,
+  up 22-24 (overhead known), down-forward 45 cm (lean 72), feet 0.1-42 cm, all
+  standing; across L 1.1 m (hips 55 cm down) / R 0.55 m standing. **Still falling:**
+  ground ahead, ground beside, hand straight down: backward, sitting. Cause measured
+  (MuscleRig, goal set at once): the knees reach the plan's bend in ~0.1 s while the
+  trunk lags (15 deg of a planned 61 at 0.125 s) and the ankle is the balancer's only
+  (no plan ankle angle): the shank stays upright, the hips go 10-15 cm behind the plan,
+  the centre of mass passes the heels. Compared: tilt-first order (also falls across
+  and low behind) and the old drop (also falls across): both worse. `motion_tests`:
+  2 decider cases fail from the WIP's design (blocked parts no longer zero a share; the
+  plan starts upright, not from the bent pose): to update or restore with the user.
+  **Real values (2026-11-08, the user's call: no estimates):** muscles.stiffness is
+  now base + stiffnessPerTorque x the torque held (gravity hold + the balancer's stance
+  torques; Gomi & Osu 1998, Huang 2020, Granata 2002), trunk 590 N m/rad whole
+  (Cholewicki 2010), measured damping (0.63-100), and the ankle's dorsiflexion follows
+  the knee (25 deg straight, 39 from 20 deg bend, weight-bearing, Baumbach 2014;
+  `ik::LimitCoupling`, Jolt's SixDOF range updated each tick). Measured: worse; most
+  hand cases and every low reach now fall or sit (hips 0.8 m down); far ahead 13 cm.
+  Each change alone also worse (config swaps): the deeper ankle lets the plan squat to
+  the ground, which the body cannot hold; the measured (low) damping rings; the
+  stiffness alone falls too. Reading: the measured values are a body with reflexes
+  and whole-body control around them; ours has neither yet. Not committed.
+  **Speed (the user: the limb test is slow):** measured, ground reach: decide 0.59 ms
+  per tick release, 8.0 ms debug (worst 26 ms; the 120 Hz budget is 8.3 ms) against
+  0.003 ms with no hand goal: the plan's loops (16 completion rounds x trunk passes x
+  the legs' 24 raise steps) each recompute the whole rig (localToModel). Debug runs
+  slower than real time.
+  **Speed (cont.):** `Rig::localToModel(pose, out, from)` (ozz's from/to: one joint's
+  subtree), the plan's centre of mass by matrix x point, a pelvis move without a turn
+  shifts the planned body (`movePlannedPelvis`, no skeleton pass): decide 0.52-0.59 ->
+  0.36-0.38 ms release (ground reach). Same maths; float rounding grows only in falls.
+  **Foot reach on the plan (the user's yes):** a lifted foot is an end like a hand
+  (`footTrunk`: the stance leg lowers the hips, the pelvis tilts on the stance hip,
+  Robinson & Gribble 2008; the leg solved from the planned hip; the old pelvis orders,
+  which did nothing on the physics body, removed). Measured with the real values:
+  foot forward / out / back now fall (stance leg sits), foot up 0.5 m short; the pinned
+  pelvis test "a raised foot target bends the knee" fails (12 cm: the plan shifts its
+  pelvis over the stance foot, the pinned real pelvis does not follow).
+  **Next (to decide):** the whole body balanced at every tick, not only the end pose:
+  either the plan's ankle angle as the balance loop's reference, or a whole-body
+  controller (task-space QP: centre of mass, hand, joint limits together; a solver
+  library would need the add-library ask). The user's check in the game first.
+  **Then:** slice 3, stepping (a far foot target: the body moves and the other foot
+  follows). Later, the same rule (put a support under the capture point) carried on to
+  falls: hands or knees go where the body is heading; in the air nothing pushes (plan
+  and ask first).
+  **Whole-body QP trial, session 1 of 2 (2026-11-08, the user's call; not committed,
+  saved as `wip/whole_body_qp_trial_v1.patch`):** libraries approved (add-library: RBDL
+  v3.3.1 zlib, OSQP v1.0.0 Apache-2.0 with its QDLDL v0.1.8, Eigen 3.4.0 MPL-2.0; TSID
+  rejected: always links LGPL eiquadprog, Pinocchio needs compiled Boost), pinned and
+  cloned into third_party/deps (no configure-time download). `agents::WholeBodyController`:
+  an RBDL tree of the Jolt body (free pelvis, ball joints, hinges, Jolt masses/inertias;
+  `PhysicsWorld::inertia`, `groundFriction`), one OSQP program per tick (equations of
+  motion, strength, friction pyramid at the Balancer's sole corners; costs: soles still,
+  the centre of mass by the Balancer's unclamped pressure point, joints to the plan),
+  torques through each joint's Jolt spring at its measured stiffness (ankle: Peterka KP).
+  `balance.controller` "qp" / "jt" (set back to "jt"). Measured: the tree matches Jolt
+  (rotations and ball-joint spin exact, positions mm); OSQP solves every tick; **it falls
+  after ~1-1.5 s** (stand, one foot, push all fail). Leads, in order: (1) the program
+  misses its own centre-of-mass goal from tick 1 (asked -0.008, gives +0.075 m/s^2): the
+  costs' weights conflict (held hands/head 100 = centre of mass 100, soles 1e4) -> try
+  strict priorities (balance first, posture in what is left; Lee & Goswami 2012);
+  (2) Jolt's feet respond differently from the tree (toes worst; toes now rigid with the
+  foot in the tree, no change). Session 2: (1) then re-measure; if it does not stand, drop
+  the QP. With "jt" the old balancer passes stand/push/game loop; the one-foot test ends
+  3.8 cm off the ankle (limit 3 cm), believed from the uncommitted real values (not
+  verified).
+  **Session 2 (2026-11-08, saved as `wip/whole_body_qp_trial_v2.patch`):** lead (1)
+  confirmed: with the centre of mass far above the held joints (comWeight 1e6,
+  heldWeight 1) the program meets its own balance goal every tick and the body stands
+  5 s, but sinks 8 cm (0.99 -> 0.91 m), its trunk bends forward and its centre of mass
+  ends ~14 cm ahead of the ankles, tipping. One foot and the side push still fall.
+  Measured cause: Jolt gives the ankles about half the program's torque (spring aimed
+  from where the joint is; the joint turns within the step; 26.5 -> 11.5 N m), spine
+  65-90 %, hips and knees 80-100 %. Tried and reverted: exact torque + spring aimed at
+  the plan's end of step (fell at once). Controller set back to "jt".
+  **QP dropped (2026-11-08 night, the user's call; DECISIONS "Whole-body QP tried and
+  dropped"):** WholeBodyController, its test, RBDL / OSQP / QDLDL / Eigen (pins, clones,
+  build folders), `balance.controller` / `balance.qp`, `PhysicsWorld::inertia` /
+  `groundFriction()`, the Balancer's wantedPressure / supportPoints / supportPart and
+  HumanBody::drive's `external` / `commanded()` removed; `springTorque` kept; the trial
+  stays in `wip/whole_body_qp_trial_v1/v2.patch`. Release build clean. Balance tests:
+  standing 0.17 cm off the ankles (0.992 -> 0.992 m); push 0.15 m/s 2.5 cm furthest,
+  0.18 cm after 3 s; forward reach hips back 2.0 cm, wrist 5.5 mm; game loop lowest
+  0.988 m; **one foot fails:** lift at 1.09 s, foot up 11.6 cm, off the stance ankle
+  0.9 cm at 1.5 s growing steadily to 3.77 cm at 4 s (side 3.2, ahead/back 3.1; limit
+  3 cm). Next: the hip strategy + stepping plan (for the user's approval).
+  **Balance by visible assists (2026-11-08 night, the user's call; DECISIONS same name), not
+  committed yet:** measured (release): standing 0.19 cm off the ankles; push 0.15 m/s 0.7 cm
+  furthest, 0.14 cm after 3 s; forward reach hips back 2.1 cm, wrist 1 cm; one foot 2.2 cm worst,
+  0.45 cm at the end; 1 m/s push: steps and stands; locked foot slides 0.04 mm under a side push;
+  knock -> feet let go, strength back to 1 in 1 s; game loop stands. **Still failing:** raised
+  foot target 8.8 cm short (knee 91 deg); game-loop hand at the face 12 mm (limit 10). Next: the
+  user's in-game check (limb-test arrows, see the drawn assists), then those two, then commit.
+  **Delivery fix (2026-11-08 night, DECISIONS "Joint solver 40 steps"):** measured
+  (TEMP one-foot drift test, Jolt's motor torque per axis, `jointMotorTorqueAxes`): the
+  foot stays flat; the stance ankle's roll spring gave ~80 % of its asked torque (Jolt's
+  solver not converging through the light foot). `jolt.jointVelocitySteps` 20 -> 40,
+  SixDOF axis spring target in Jolt's own error frame. One foot now passes: 2.7 cm at
+  the end (worst side 1.9, ahead/back 3.1). Standing 1.2 mm, push 2.3 cm / 1.3 mm after
+  3 s, forward reach hips back 1.9 cm, game loop lowest 0.991 m. Cost 0.22 -> 0.30 ms
+  per human per tick. **Tried and rejected:** the stance hip holding the pelvis upright
+  in the world (SIMBICON torso control): one foot 7.0 cm (worse); saved in
+  `wip/torso_hold_trick2.patch`. Still failing: "a raised foot target bends the knee"
+  (9.6 cm, known), the 2 decider tests (known); the arrow-key limb cases are poor in the
+  WIP state at both 20 and 40 steps (hand fwd, hand out, hand down and ground reaches
+  fall or end 0.4-2 m off; 40 vs 20: 3 cases now stand, 4 now fall). Committed alone on
+  HEAD as 3643ebd (all suites passed there; one foot 1.4 cm).
+  **Assist string (2026-11-08 night, DECISIONS "The assist string"):** PhysicsWorld
+  ropes + the hips' string in Human, drawn in the game; physics_world.json "string" (off
+  by default). Rope test passes. Not committed (it sits on the WIP). Next: arrow-key
+  cases (measured with the string), then relaxed idle muscles + release on a fall.
   Balance is part of M6 (the user's call). The backups were deleted; the formula
   repositioning that jog, run, jump, pick, throw and bowl still use now lives in
   `agents::Human` (unchanged; `tests/test_reposition.cpp` removed with it).

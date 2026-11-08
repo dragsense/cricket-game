@@ -35,6 +35,8 @@ public:
     float height() const { return height_; }
     int numJoints() const { return static_cast<int>(parents_.size()); }
     int parent(int joint) const { return parents_[static_cast<size_t>(joint)]; }
+    // One past the last joint below `joint` (its descendants follow it in one run).
+    int subtreeEnd(int joint) const { return subtreeEnd_[static_cast<size_t>(joint)]; }
     const std::string& jointName(int joint) const { return names_[static_cast<size_t>(joint)]; }
     int findJoint(const std::string& name) const;  // -1 if missing
     int boneDefIndex(int joint) const { return defIndex_[static_cast<size_t>(joint)]; }
@@ -47,6 +49,10 @@ public:
     // Model-space (relative to the character root) matrices for every joint.
     // `out` must already hold numJoints() entries. Returns false on error.
     bool localToModel(const Pose& pose, std::vector<math::Mat4>& out) const;
+    // Only `from` and the joints below it (ozz's from/to range): the rest of
+    // `out` is kept, and `from`'s parent in `out` must be up to date. For a
+    // change to one joint's local (a leg, a spine joint). No allocations.
+    bool localToModel(const Pose& pose, std::vector<math::Mat4>& out, int from) const;
     // The inverse: each joint's local transform from model-space matrices
     // (e.g. a physics body's bones). `pose` must already hold numJoints()
     // locals. No allocations.
@@ -58,6 +64,7 @@ private:
     float height_ = 0.0f;
     float legLength_ = 0.0f;
     std::vector<int> parents_;
+    std::vector<int> subtreeEnd_;  // per joint: one past its last descendant (ozz orders joints depth-first)
     std::vector<int> defIndex_;
     std::vector<std::string> names_;
     Pose rest_;

@@ -1,36 +1,25 @@
 #pragma once
-// The body's balancer (DESIGN "Physics body and balance"; DECISIONS
-// 2026-11-06, 2026-11-07 "One centre-of-mass controller"): one controller of
-// the centre of mass for every stance, no per-case joints.
-//  1. The support: the soles of the foot parts that touch the ground (Jolt's
-//     contacts), their convex hull seen from above.
-//  2. Where to press (the centre of pressure p): Peterka 2002's measured
-//     ankle feedback T = KP theta + KD theta' written as the pressure point it
-//     makes (statics: T = m g (p - aim)): p = aim + (KP (x - aim) + KD v) /
-//     (m g h); KD/KP ~ 1/omega0, so it acts on the capture point
-//     xi = x + v / omega0 (Hof 2008). p is kept inside the support.
-//  3. The ground force: the inverted pendulum's (LIPM, Kajita 2003):
-//     m omega0^2 (x - p) across, m g up; it passes through the centre of mass.
-//  4. Two feet share it by where p lies between their ankles (each its own
-//     pressure point inside its own foot): side to side the weight goes from
-//     one leg to the other (Winter 1995's load/unload).
-//  5. Joint torques through each stance leg (J^T, statics): at its ankle,
-//     knee and hip, -(p_i - joint) x F_i minus the weight of the leg below the
-//     joint (the stance legs' support torque, Coros et al. 2010), no harder
-//     than the joint's strength, as equal and opposite torques on the two parts.
-// The axes the pressure moves the body with are the balancer's: the stance
-// ankles' plantar/dorsiflexion and inversion, and on two feet the hips'
-// ab/adduction (the parallelogram over the feet). The ankle's torque goes
-// through its Jolt springs, solved with the foot's contacts (slope Peterka's
-// KP, aim set to give the torque now; an added torque on the light foot made
-// it chatter and spin on the ground); the hips' axes keep only the passive
-// damping B. The other axes stay their muscles' (holding their angle); the
-// knee and hip torques ride on top as added torques.
-// While a foot is meant to lift but still carries, the aim is the other ankle:
-// the weight goes over it first (the anticipatory shift, BIOMECHANICS 3.1),
-// then the foot may lift (liftReady) and carries nothing more.
-// Not yet: the hip strategy (p held at the support's edge), stepping, release
-// to free fall.
+// The body's balancer by visible assists (the user's call, DECISIONS
+// 2026-11-08 "Balance by visible assists"): outside forces stand the physics
+// body; the muscles only shape it. All scaled by one balance strength (0..1).
+//  1. The support: the soles of the foot parts touching the ground (Jolt's
+//     contacts), their convex hull seen from above; the capture point
+//     xi = x + v / omega0 (Hof 2008) against it.
+//  2. Hover: an upward spring-damper force on the hips toward the stand
+//     height, carrying a share of the weight (the feet press the rest, so they
+//     keep their friction). Only while a foot touches the ground.
+//  3. Upright: a torque on the pelvis tilting its up toward the plan's pelvis
+//     up (e.g. over a stance hip), sized by the body's inertia about its
+//     centre of mass; its turn about up stays free.
+//  4. Pull: a horizontal force on the hips bringing the centre of mass over
+//     the stance ankles (over the other ankle while one is meant to lift).
+//  5. Foot lock: a planted foot is held to the ground by a locked Jolt joint to
+//     a hidden kinematic anchor (perfect grip, no sliding or rolling), let go
+//     while it lifts or the strength is low. Its ankle is left free (free()):
+//     the body pivots over it and the pull places it (a held ankle on a
+//     locked foot made the body a rigid statue the pull could not move).
+//  6. Step: the capture point outside the support on two feet: a step for
+//     the foot that gets there, placed past the capture point (Human moves it).
 // No allocations after init().
 
 #include "agents/human_body.h"
@@ -46,78 +35,107 @@ class Config;
 
 namespace agents {
 
-// config/human_joints.json "balance" (converted to radians).
+// config/human_joints.json "balance". Feel tunables, not body values.
 struct BalanceSettings {
-    float ankleStiffness = 1066.0f;  // KP, N m/rad (Peterka 2002: 18.6 N m/deg)
-    float ankleDamping = 332.0f;     // active KD on the body's sway rate, N m s/rad (5.8 N m s/deg)
-    float passiveDamping = 24.6f;    // the joint's own damping B, N m s/rad (0.43 N m s/deg)
+    float hoverShare = 0.7f, hoverMaxShare = 0.95f;  // of the body's weight
+    float hoverFrequency = 2.0f, hoverDamping = 1.0f;  // Hz, ratio
+    float uprightFrequency = 2.0f, uprightDamping = 1.0f, uprightMaxTorque = 600.0f;
+    float pullFrequency = 1.0f, pullDamping = 1.0f, pullMaxForce = 250.0f;
+    float footFriction = 1.0f, footRestitution = 0.0f;
+    float lockMinStrength = 0.5f;
+    float shiftTime = 0.6f;  // s
+    float stepMargin = 0.05f, stepMaxLength = 0.6f, stepMinWidth = 0.12f, stepClearance = 0.08f;  // m
+    float recoverRate = 1.0f;  // 1/s
 };
-// Reads "balance" from human_joints.json (N m/deg there).
 BalanceSettings readBalanceSettings(const core::Config& joints);
 
 class Balancer {
 public:
     // `foot` and `toe`: the rig joints of the left and right foot (its joint is
-    // the ankle) and toe. False if one has no part of its own.
-    bool init(const HumanBody& body, const int foot[2], const int toe[2], const BalanceSettings& s);
+    // the ankle) and toe. Sets the feet's material and makes their locks
+    // (two anchor bodies and joints). The body must stand at rest (its stand
+    // height is measured). False if a foot has no part or the world is full.
+    bool init(physics::PhysicsWorld& world, const HumanBody& body, const int foot[2], const int toe[2],
+              const BalanceSettings& s);
 
-    // Before the decider, HumanBody::compensateGravity and drive: which feet
-    // stand (touching the ground), the support, the pressure point, the
-    // ground force and each foot's share. `down`: the feet meant to stay
-    // down; a foot meant to lift that still touches carries on while the
-    // weight shifts over the other (liftReady). No allocations.
-    void plan(const physics::PhysicsWorld& world, const HumanBody& body, const bool down[2]);
-    // The foot may leave the ground now: it is off already, or the pressure
-    // the feedback asks for lies inside the other foot (the shift is done:
-    // that foot alone can hold the body).
+    // Before the decider: the support, the capture point, which feet carry,
+    // lifts and the step wanted. `down`: the feet meant to stay down; one
+    // meant to lift waits (at most shiftTime) for the weight to go over the
+    // other. `dt`: this step (s). No allocations.
+    void plan(const physics::PhysicsWorld& world, const HumanBody& body, const bool down[2], float dt);
+    // The plan's pelvis bone rotation (world; only its up is used): set before
+    // apply each step.
+    void setPelvisTarget(math::Quat rotation) { pelvisTarget_ = rotation; }
+    // After the muscles: the assists' forces and the feet's locks.
+    void apply(physics::PhysicsWorld& world, const HumanBody& body);
+    // Physics off or the body reset: the locks let go, the lifts forgotten.
+    void release(physics::PhysicsWorld& world);
+
+    // A hit: the strength drops by `amount` (0..1) and climbs back at recoverRate.
+    void knock(float amount);
+    float strength() const { return strength_; }
+    const BalanceSettings& settings() const { return settings_; }
+
+    // The foot may leave the ground now (it is off already, or the weight is over the other).
     bool liftReady(int foot) const { return liftReady_[foot & 1]; }
-    // After drive: the balancer's axes to passive damping, the stance legs'
-    // torques on.
-    void apply(physics::PhysicsWorld& world, const HumanBody& body) const;
-
-    // Per part: non-zero where the balancer carries the joint's load (the
-    // stance legs; pass to compensateGravity).
-    const uint8_t* owned() const { return owned_.data(); }
-    // Per part: non-zero where the balancer drives an axis of its joint this
-    // step (pass to HumanBody::drive: a joint let go holds its angle then).
-    const uint8_t* driven() const { return driven_.data(); }
     bool standing() const { return stanceCount_ > 0; }
-    bool footDown(int foot) const { return stance_[foot & 1]; }  // carrying: touching the ground, not lifting (last plan)
-    math::Vec3 supportCentre() const { return centre_; }   // world, mean of the soles' corners
-    math::Vec3 pivot() const { return aim_; }              // world: where the centre of mass is kept (ground height)
-    math::Vec3 capturePoint() const { return capture_; }   // world, at the ground's height
-    math::Vec3 pressurePoint() const { return pressure_; } // world: the centre of pressure asked for (inside the support)
-    math::Vec3 groundForce() const { return force_; }      // N, on the body from the ground (all stance feet)
-    float footShare(int foot) const { return share_[foot & 1]; }  // of the ground force
+    // Balance lost: nothing to stand on, or the capture point outside the
+    // support (a step is needed: Hof et al. 2005's margin of stability < 0).
+    bool lost() const { return lost_; }
+    bool footDown(int foot) const { return stance_[foot & 1]; }  // carrying (last plan)
+    bool footLocked(int foot) const { return locked_[foot & 1]; }
+    // Per part: non-zero for a joint left free this step (a locked foot's
+    // ankle; pass to HumanBody::drive). Set by plan.
+    const uint8_t* free() const { return free_.data(); }
+    // A step wanted (two feet down, capture point outside): which foot and
+    // where its ankle goes (world). False if none.
+    bool stepWanted(int& foot, math::Vec3& target) const {
+        foot = stepFoot_;
+        target = stepTarget_;
+        return stepFoot_ >= 0;
+    }
+    math::Vec3 pivot() const { return aim_; }              // world, ground height: where the centre of mass is pulled
+    math::Vec3 capturePoint() const { return capture_; }   // world, ground height
+    // The assists' last push (world), for drawing.
+    math::Vec3 hoverForce() const { return hover_; }       // N, on the hips
+    math::Vec3 pullForce() const { return pull_; }         // N, on the hips
+    math::Vec3 uprightTorque() const { return upright_; }  // N m, on the pelvis
+    math::Vec3 footAnchor(int foot) const { return anchorAt_[foot & 1]; }  // world, where a locked foot is held
 
 private:
-    static constexpr int kPointsPerFoot = 16;  // foot and toe soles (or contacts)
-    // A convex polygon seen from above (x, z), at most kHullPoints corners.
+    static constexpr int kPointsPerFoot = 16;
     static constexpr int kHullPoints = 2 * kPointsPerFoot + 1;
+    // A convex polygon seen from above (x, z), at most kHullPoints corners.
     struct Hull {
         math::Vec2 corner[kHullPoints];
         int count = 0;
         void build(const math::Vec3* points, int n);  // Andrew's monotone chain
         bool contains(math::Vec2 q) const;
-        math::Vec2 closest(math::Vec2 q) const;  // q if inside, else the nearest point on the edge
     };
     BalanceSettings settings_;
     int footPart_[2] = {-1, -1}, toePart_[2] = {-1, -1};
-    int shinPart_[2] = {-1, -1}, thighPart_[2] = {-1, -1};
-    // Joint-frame axes the balancer drives (-1: a hinge): ankle
-    // plantar/dorsiflexion and inversion, hip ab/adduction.
-    int ankleAheadAxis_[2] = {-1, -1}, ankleSideAxis_[2] = {-1, -1}, hipSideAxis_[2] = {-1, -1};
-    std::vector<uint8_t> owned_, driven_;
+    physics::BodyId anchor_[2] = {physics::kInvalidBody, physics::kInvalidBody};
+    physics::JointId lock_[2] = {physics::kInvalidJoint, physics::kInvalidJoint};
+    bool locked_[2] = {false, false};
+    std::vector<uint8_t> free_;  // per part
+    math::Vec3 anchorAt_[2] = {math::Vec3(0.0f), math::Vec3(0.0f)};
+    float standHeight_ = 0.9f;  // m, the hips above the ground at rest
+    float strength_ = 1.0f;
+    math::Quat pelvisTarget_ = math::identityQuat();
+    bool down_[2] = {true, true};
     bool stance_[2] = {false, false};
     bool liftReady_[2] = {false, false};
     bool lifting_[2] = {false, false};  // a lift under way (until the foot is meant down)
+    float shiftTimer_[2] = {0.0f, 0.0f};
+    bool lost_ = false;
+    int stanceCount_ = 0;
     math::Vec3 footPoint_[2][kPointsPerFoot];
     int footPoints_[2] = {0, 0};
     Hull footHull_[2];
-    int stanceCount_ = 0;
-    math::Vec3 centre_{0.0f}, aim_{0.0f}, capture_{0.0f}, pressure_{0.0f}, force_{0.0f};
-    float share_[2] = {0.0f, 0.0f};
-    math::Vec3 footPressure_[2] = {math::Vec3(0.0f), math::Vec3(0.0f)};  // each stance foot's own pressure point (world)
+    math::Vec3 aim_{0.0f}, capture_{0.0f};
+    int stepFoot_ = -1;
+    math::Vec3 stepTarget_{0.0f};
+    math::Vec3 hover_{0.0f}, pull_{0.0f}, upright_{0.0f};
 };
 
 } // namespace agents

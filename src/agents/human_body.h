@@ -11,7 +11,7 @@
 // Muscles (BIOMECHANICS 14; DECISIONS 2026-11-06): each joint's velocity
 // motor turns it the way the decider's queue says, no harder than that
 // joint's real strength, after holding the weight beyond it (gravity
-// compensation). Nothing balances the body yet: it can tip over.
+// compensation). The balancer's assists stand it (agents::Balancer).
 // Load-time allocation only.
 
 #include "ik/joint_limits.h"
@@ -37,7 +37,9 @@ struct MuscleSettings {
     std::vector<std::pair<std::string, float>> maxTorque;
     // A limb joint following its target pose: the spring's stiffness (N m/rad)
     // and damping (N m s/rad) by bone name (human_joints.json "muscles").
-    std::vector<std::pair<std::string, float>> stiffness, jointDamping;
+    // Stiffness rises with the torque the joint holds: stiffness +
+    // stiffnessPerTorque |torque| (measured linear, e.g. Gomi & Osu 1998).
+    std::vector<std::pair<std::string, float>> stiffness, stiffnessPerTorque, jointDamping;
 };
 
 // How fast a muscle closes its target's gap: Fitts' law movement time
@@ -71,10 +73,16 @@ public:
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame
         bool muscle = false;               // its motor is on
         float strength = 0.0f;             // N m, its muscle's strongest torque (human_joints.json "muscles")
-        float stiffness = 0.0f;            // N m/rad, its spring toward a target pose (0: none)
+        float stiffness = 0.0f;            // N m/rad, its spring toward a target pose at no torque (0: none)
+        float stiffnessPerTorque = 0.0f;   // 1/rad: N m/rad more per N m the joint holds
         float damping = 0.0f;              // N m s/rad, that spring's damping
+        ik::JointLimit limit;              // its range (a coupled bound follows its coupled joint)
+        int coupledPart = -1;              // the part whose hinge sets that bound (-1: none)
     };
     const std::vector<Part>& parts() const { return parts_; }
+    // Per rig joint (`numJoints`): its part's mass (kg, 0 if none of its own)
+    // and that mass's centre in the bone's frame. Load time.
+    void jointMasses(int numJoints, std::vector<float>& mass, std::vector<math::Vec3>& centre) const;
     float totalMass() const { return totalMass_; }
 
     // The planned pose (`models`, character space, the rig's joints) as each
@@ -97,10 +105,9 @@ public:
     // Each muscle holds the weight of every part beyond it, away from the
     // pelvis (a torque on the part and the opposite on its parent), no harder
     // than its strength. Right for limbs held off the trunk; standing legs
-    // carry the body from the feet (the balance's job, later). Call before
-    // drive. `owned` (one entry per part, may be null): parts whose joint
-    // the balancer drives (a stance ankle), left out. No allocations.
-    void compensateGravity(physics::PhysicsWorld& world, const uint8_t* owned = nullptr) const;
+    // carry the body from the feet (the balancer's assists). Call before
+    // drive. No allocations.
+    void compensateGravity(physics::PhysicsWorld& world) const;
 
     // The muscles from the decider's queue. Each active turn order turns its
     // joint along its direction at its share of the speed that closes its
@@ -111,14 +118,14 @@ public:
     // Each motor pulls no harder than the strength left after holding the
     // weight. A joint riding its parent (clavicle, neck) has no muscle of its
     // own; the hips' moves are the legs' and the balance's. `models`: the
-    // physics body now (character space). `driven` (one entry per part, may
-    // be null): joints with an axis the balancer drives this step
-    // (Balancer::driven); one it lets go of holds the angle it has then. No
+    // physics body now (character space). `free` (one entry per part, may be
+    // null): joints left free this step (the balancer's stance ankles): motor
+    // off; held again later, they take the angle they have then. No
     // allocations.
+    // `dt`: this step (s), for the planned joints' paths.
     void drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
                const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
-               const MuscleTiming& timing, const uint8_t* driven = nullptr);
-
+               const MuscleTiming& timing, float dt, const uint8_t* free = nullptr);
     // The joints that cannot go further the way their orders pull: at their
     // limit (measured the way Jolt's joints are, ik::clampRotation), with no
     // muscle of their own, or with the muscle at its full strength in the last
@@ -148,7 +155,6 @@ private:
     // Per part: holding an angle (no order since it was taken) and the angle
     // (joint frame as created: SixDOF rotation, hinge angle).
     std::vector<uint8_t> holding_;
-    std::vector<uint8_t> wasDriven_;  // per part: the balancer drove an axis of it last step
     std::vector<math::Quat> heldRotation_;
     std::vector<float> heldAngle_;
     // Scratch, sized at init (no per-step allocation; mutable: not the body's state).
@@ -156,6 +162,16 @@ private:
     std::vector<uint8_t> ordered_;                  // per part: an order turns it this step
     std::vector<uint8_t> targeted_;                 // per part: it pulls to a target pose this step
     std::vector<math::Quat> targetLocal_;           // per part: that target (its bone on its parent's)
+    // Per part: its muscle's commanded angle on its way to the plan's target
+    // (a minimum-jerk path in Fitts' time, as the hand's point: Flash 1987's
+    // virtual trajectory), so a jump in the plan never snaps the joint.
+    struct JointPath {
+        math::Quat from = math::identityQuat(), to = math::identityQuat(), at = math::identityQuat();
+        float time = 0.0f, duration = 0.0f;
+        bool on = false;
+    };
+    std::vector<JointPath> paths_;
+    std::vector<float> lever_;  // per part: its bone's length (m), the arc its angle moves the tip along
     mutable std::vector<float> hold_;               // per part: the torque its muscle spends holding the weight (N m)
     mutable std::vector<float> beyondMass_;         // per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // per part: their mass x centre of mass (world)

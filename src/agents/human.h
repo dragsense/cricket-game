@@ -149,8 +149,8 @@ public:
     bool attachPhysics(physics::PhysicsWorld& world);
     // Physics on: the body moves only by its muscles and the balancer
     // (DESIGN "Physics body and balance"): each tick the decider reads the
-    // physics body and the limb test's targets, the balancer stands it on
-    // the feet, the muscles turn the joints, Jolt moves it. Off: the body is
+    // physics body and the limb test's targets, the balancer's assists stand
+    // it on the feet (and step), the muscles turn the joints, Jolt moves it. Off: the body is
     // kinematic, placed at the planned pose. Needs attachPhysics().
     void setPhysicsOn(bool on);
     bool physicsOn() const { return physicsOn_; }
@@ -521,6 +521,14 @@ private:
     int posedFoot_ = -1;  // limb test: the foot last placed (motion::Foot), -1 none
     bool poseHandLast_ = false;  // limb test: the hand was moved after the foot (physics: only it has a target)
     math::Vec3 poseFootGoal_{0.0f};  // limb test ankle goal, world space
+    // Limb test: the targets were let go when balance was lost (posture
+    // before the task); a new target given while standing takes them back.
+    bool targetsReleased_ = false;
+    // A lifted foot's ankle stays at least this high (character space): its
+    // standing height plus the minimum toe clearance (locomotion.json
+    // "step.toeClearance"), so its target never runs along or into the ground.
+    float toeClearance_ = 0.012f;
+    float liftedAnkleMin_ = 0.0f;
     // Physics: a hand's or foot's commanded point travels from where it was
     // to its goal in Fitts' time on a minimum-jerk path (Flash & Hogan 1985);
     // the IK solves for it (character space). A goal moved mid-way retargets.
@@ -549,6 +557,15 @@ private:
     motion::BodyDeciderSettings deciderSettings_;
     motion::BodyQueue queue_;
     Balancer balancer_;
+    // A balance step under way (the balancer asked: capture point outside
+    // the feet): the foot travels raised to its target (world), then down.
+    struct BalanceStep {
+        int foot = -1;
+        math::Vec3 target{0.0f};
+        float time = 0.0f;  // s since it started
+    };
+    BalanceStep balanceStep_;
+    static constexpr float kStepMaxTime = 1.0f;  // s: a step that has not landed by then ends
     MuscleTiming muscleTiming_;
     std::vector<uint8_t> blocked_;            // per rig joint, from the last step
     std::vector<math::Mat4> physicsModels_;   // the physics body now (character space)

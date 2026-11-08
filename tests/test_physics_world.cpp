@@ -123,3 +123,4 @@ TEST_CASE("physics world: one ground; the query and colliding bodies both stay a
     for (int i = 0; i < 3 * 120; ++i) w.step(kTick);
     CHECK(w.transform(id).position.y == doctest::Approx(0.30f).scale(0.0).epsilon(0.01));
 }
+

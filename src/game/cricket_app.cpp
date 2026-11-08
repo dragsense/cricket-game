@@ -6,6 +6,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <chrono>
 #include <random>
 #include <cmath>
@@ -113,7 +114,7 @@ bool CricketApp::init() {
     wd.width = e.getInt("window.width", wd.width);
     wd.height = e.getInt("window.height", wd.height);
     wd.resizable = e.getBool("window.resizable", true);
-#ifdef NDEBUG
+#ifndef CRICKET_DEV_BUILD
     wd.dock = e.getString("window.dockRelease", "fullscreen");
 #else
     wd.dock = e.getString("window.dockDebug", wd.dock);
@@ -911,6 +912,28 @@ void CricketApp::drawDebugGeometry(float alpha) {
     // (motor) has a red ring.
     drawHumanBody(sim_.fielder().humanBody(), alpha);
     if (!limbTest_) drawHumanBody(sim_.bowler().humanBody(), alpha);
+
+    // The balance assists (DECISIONS 2026-11-08 "Balance by visible
+    // assists"), while physics is on: from the hips the hover (green, up) and
+    // the pull (orange, across), 0.5 m per body weight; the upright torque
+    // (magenta, along its axis, 0.3 m at its most); each locked foot (blue
+    // ring at its anchor); the capture point (red ring).
+    auto drawAssists = [&](const agents::Human& h) {
+        if (!h.physicsOn() || !h.humanBody().ready()) return;
+        const physics::PhysicsWorld& world = sim_.physicsWorld();
+        const agents::Balancer& b = h.balancer();
+        const math::Vec3 hips = world.interpolated(h.humanBody().parts()[0].body, alpha).position;
+        const float weight = std::max(h.humanBody().totalMass() * -world.world().gravity.y, 1.0f);
+        dd.line(hips, hips + b.hoverForce() * (0.5f / weight), render::colors::kGreen);
+        dd.line(hips, hips + b.pullForce() * (0.5f / weight), render::rgba(255, 150, 30));
+        dd.line(hips, hips + b.uprightTorque() * (0.3f / std::max(b.settings().uprightMaxTorque, 1.0f)),
+                render::rgba(230, 60, 230));
+        for (int f = 0; f < 2; ++f)
+            if (b.footLocked(f)) dd.circle(b.footAnchor(f), math::kUp, 0.06f, render::colors::kBlue, 12);
+        dd.circle(b.capturePoint() + math::kUp * 0.005f, math::kUp, 0.04f, render::colors::kRed, 12);
+    };
+    drawAssists(sim_.fielder());
+    if (!limbTest_) drawAssists(sim_.bowler());
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

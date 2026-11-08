@@ -66,23 +66,33 @@ float valueOf(const std::vector<std::pair<std::string, float>>& list, const std:
 // rotation) as its joint's target: a hinge's angle, a SixDOF's rotation in
 // the joint's frame.
 void setJointTarget(physics::PhysicsWorld& world, const HumanBody::Part& p, math::Quat local, bool spring,
-                    float maxTorque) {
+                    float maxTorque, float stiffness = 0.0f) {
     math::Quat q = math::normalize(local);
     if (q.w < 0.0f) q = -q;
     const math::Vec3 v(q.x, q.y, q.z);
     if (p.hinge) {
         const float angle = 2.0f * std::atan2(math::dot(v, p.frameX), q.w);
         if (spring)
-            world.setHingeSpringTarget(p.link, angle, p.stiffness, p.damping, maxTorque);
+            world.setHingeSpringTarget(p.link, angle, stiffness, p.damping, maxTorque);
         else
             world.setHingeTarget(p.link, angle);
         return;
     }
     const math::Quat inFrame(q.w, math::dot(v, p.frameX), math::dot(v, p.frameY), math::dot(v, p.frameZ));
     if (spring)
-        world.setSixDofSpringTarget(p.link, inFrame, p.stiffness, p.damping, maxTorque);
+        world.setSixDofSpringTarget(p.link, inFrame, stiffness, p.damping, maxTorque);
     else
         world.setSixDofTarget(p.link, inFrame);
+}
+
+// A swing-twist limit as a SixDOF joint's ranges in its frame (X = the
+// twist axis, Y = the first swing axis, Z = X x Y: the second swing axis or
+// its opposite, then its range flips).
+void sixDofRanges(const ik::JointLimit& lim, int a1, int a2, math::Vec3& lo, math::Vec3& hi) {
+    const math::Vec3 x = axisVec(lim.axis), y = axisVec(a1);
+    const bool flip = math::dot(math::cross(x, y), axisVec(a2)) < 0.0f;
+    lo = math::Vec3(lim.twistMin, lim.swing1Min, flip ? -lim.swing2Max : lim.swing2Min);
+    hi = math::Vec3(lim.twistMax, lim.swing1Max, flip ? -lim.swing2Min : lim.swing2Max);
 }
 
 } // namespace
@@ -158,11 +168,9 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             if (lim.type == ik::LimitType::SwingTwist) {
                 swingAxes(lim.axis, a1, a2);
                 const math::Vec3 x = axisVec(lim.axis), y = axisVec(a1);
-                const bool flip = math::dot(math::cross(x, y), axisVec(a2)) < 0.0f;
                 d.axisX = root.transformDirection(x);
                 d.axisY = root.transformDirection(y);
-                d.minAngles = math::Vec3(lim.twistMin, lim.swing1Min, flip ? -lim.swing2Max : lim.swing2Min);
-                d.maxAngles = math::Vec3(lim.twistMax, lim.swing1Max, flip ? -lim.swing2Min : lim.swing2Max);
+                sixDofRanges(lim, a1, a2, d.minAngles, d.maxAngles);
                 p.frameX = x;
                 p.frameY = y;
                 p.frameZ = math::cross(x, y);
@@ -185,7 +193,9 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         const std::string& bone = def.bones[static_cast<size_t>(rig.boneDefIndex(p.joint))].name;
         const float strength = valueOf(muscles.maxTorque, bone);
         p.stiffness = valueOf(muscles.stiffness, bone);
+        p.stiffnessPerTorque = valueOf(muscles.stiffnessPerTorque, bone);
         p.damping = valueOf(muscles.jointDamping, bone);
+        p.limit = lim;
         if (strength > 0.0f) {
             physics::MotorDesc m;
             m.frequency = 1.0f / (math::kTwoPi * std::max(muscles.activationTime, 1e-3f));
@@ -196,12 +206,23 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             p.strength = strength;
         }
     }
+    for (Part& p : parts_)
+        if (p.limit.coupling.joint >= 0) p.coupledPart = partOf_[static_cast<size_t>(p.limit.coupling.joint)];
     omega_.assign(parts_.size(), math::Vec3(0.0f));
     ordered_.assign(parts_.size(), 0);
     targeted_.assign(parts_.size(), 0);
     targetLocal_.assign(parts_.size(), math::identityQuat());
+    paths_.assign(parts_.size(), JointPath{});
+    // Each bone's length: to its farthest child joint at rest (its tip).
+    lever_.assign(parts_.size(), 0.0f);
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        const int j = parts_[i].joint;
+        const math::Vec3 at(models[static_cast<size_t>(j)][3]);
+        for (int c = 0; c < rig.numJoints(); ++c)
+            if (rig.parent(c) == j)
+                lever_[i] = std::max(lever_[i], math::distance(at, math::Vec3(models[static_cast<size_t>(c)][3])));
+    }
     holding_.assign(parts_.size(), 0);
-    wasDriven_.assign(parts_.size(), 0);
     heldRotation_.assign(parts_.size(), math::identityQuat());
     heldAngle_.assign(parts_.size(), 0.0f);
     hold_.assign(parts_.size(), 0.0f);
@@ -246,6 +267,16 @@ void HumanBody::boneModels(const physics::PhysicsWorld& world, float alpha, cons
     }
 }
 
+void HumanBody::jointMasses(int numJoints, std::vector<float>& mass, std::vector<math::Vec3>& centre) const {
+    mass.assign(static_cast<size_t>(std::max(numJoints, 0)), 0.0f);
+    centre.assign(mass.size(), math::Vec3(0.0f));
+    for (const Part& p : parts_) {
+        if (p.joint < 0 || static_cast<size_t>(p.joint) >= mass.size()) continue;
+        mass[static_cast<size_t>(p.joint)] = p.mass;
+        centre[static_cast<size_t>(p.joint)] = p.shape.position;
+    }
+}
+
 math::Vec3 HumanBody::centreOfMass(const physics::PhysicsWorld& world) const {
     math::Vec3 sum(0.0f);
     for (const Part& p : parts_) sum += world.transform(p.body).position * p.mass;
@@ -269,7 +300,7 @@ void HumanBody::setPhysics(physics::PhysicsWorld& world, bool on) {
     std::fill(holding_.begin(), holding_.end(), uint8_t{0});
 }
 
-void HumanBody::compensateGravity(physics::PhysicsWorld& world, const uint8_t* owned) const {
+void HumanBody::compensateGravity(physics::PhysicsWorld& world) const {
     const math::Vec3 g = world.world().gravity;
     // Every part's weight, then (children come after parents) each part's
     // added into its parent's: the mass beyond each joint.
@@ -286,7 +317,7 @@ void HumanBody::compensateGravity(physics::PhysicsWorld& world, const uint8_t* o
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         hold_[i] = 0.0f;
-        if (p.parent < 0 || !p.muscle || beyondMass_[i] <= 0.0f || (owned && owned[i])) continue;
+        if (p.parent < 0 || !p.muscle || beyondMass_[i] <= 0.0f) continue;
         // The joint (the bone's origin) and gravity's torque about it.
         const math::Vec3 pivot = (world.transform(p.body) * math::inverse(p.shape)).position;
         const math::Vec3 centre = beyondMoment_[i] / beyondMass_[i];
@@ -301,29 +332,49 @@ void HumanBody::compensateGravity(physics::PhysicsWorld& world, const uint8_t* o
 
 void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& queue, const motion::BodyGoals& goals,
                       const motion::BodyDeciderJoints& joints, const std::vector<math::Mat4>& models,
-                      const MuscleTiming& timing, const uint8_t* driven) {
+                      const MuscleTiming& timing, float dt, const uint8_t* free) {
     auto pos = [&](int j) { return math::Vec3(models[static_cast<size_t>(j)][3]); };
+    // A range set by another joint (the ankle's dorsiflexion by the knee: the
+    // gastrocnemius) follows that joint's angle now.
+    for (const Part& p : parts_) {
+        if (p.coupledPart < 0 || p.hinge || p.limit.type != ik::LimitType::SwingTwist) continue;
+        const Part& c = parts_[static_cast<size_t>(p.coupledPart)];
+        if (!c.hinge) continue;
+        int a1 = 0, a2 = 0;
+        swingAxes(p.limit.axis, a1, a2);
+        math::Vec3 lo, hi;
+        sixDofRanges(ik::coupledLimit(p.limit, world.hingeAngle(c.link)), a1, a2, lo, hi);
+        world.setSixDofLimits(p.link, lo, hi);
+    }
     auto rot = [&](int j) { return math::toTransform(models[static_cast<size_t>(j)]).rotation; };
     for (math::Vec3& w : omega_) w = math::Vec3(0.0f);
     std::fill(ordered_.begin(), ordered_.end(), uint8_t{0});
     std::fill(targeted_.begin(), targeted_.end(), uint8_t{0});
 
+    // The brain's target pose: each planned joint's bone on its parent part's
+    // bone, both as planned (the clavicle rides the chest: the shoulder's
+    // parent part).
+    if (queue.plan) {
+        const std::vector<math::Mat4>& plan = *queue.plan;
+        auto planRot = [&](int j) { return math::toTransform(plan[static_cast<size_t>(j)]).rotation; };
+        for (size_t i = 0; i < parts_.size(); ++i) {
+            const Part& p = parts_[i];
+            if (p.parent < 0 || !p.muscle || p.stiffness <= 0.0f || p.joint >= motion::BodyQueue::kMaxJoints ||
+                !queue.planned[static_cast<size_t>(p.joint)])
+                continue;
+            targetLocal_[i] = math::inverse(planRot(parts_[static_cast<size_t>(p.parent)].joint)) * planRot(p.joint);
+            targeted_[i] = 1;
+            ordered_[i] = 1;
+        }
+    }
+
     for (int k = 0; k < queue.count; ++k) {
         const motion::PartOrder& o = queue.orders[static_cast<size_t>(k)];
         if (!o.active || o.kind != motion::PartMove::Turn || o.joint < 0) continue;
         const int part = partOf_[static_cast<size_t>(o.joint)];
-        if (part < 0) continue;
+        if (part < 0 || targeted_[static_cast<size_t>(part)]) continue;  // no body, or it follows the plan
         const Part& p = parts_[static_cast<size_t>(part)];
         if (p.joint != o.joint || !p.muscle) continue;  // rides its parent, or no muscle (the pelvis)
-        if (o.hasTarget && p.stiffness > 0.0f) {
-            // A target pose (a limb's IK): the bone on its parent part's bone
-            // (the clavicle rides the chest: the shoulder's parent part).
-            const math::Quat parent = rot(parts_[static_cast<size_t>(p.parent)].joint);
-            targetLocal_[static_cast<size_t>(part)] = math::inverse(parent) * o.rotation;
-            targeted_[static_cast<size_t>(part)] = 1;
-            ordered_[static_cast<size_t>(part)] = 1;
-            continue;
-        }
         float speed = 0.0f;                              // rad/s about the order's direction
         if (o.goal == motion::Goal::Chest || o.goal == motion::Goal::Head) {
             // A turn target: its angular gap closed in fittsA, plus its own turning.
@@ -358,20 +409,51 @@ void HumanBody::drive(physics::PhysicsWorld& world, const motion::BodyQueue& que
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         if (p.parent < 0 || !p.muscle) continue;
-        // A joint the balancer let go of holds the angle it has now.
-        const uint8_t drivenNow = driven ? driven[i] : 0;
-        if (wasDriven_[i] && !drivenNow) holding_[i] = 0;
-        wasDriven_[i] = drivenNow;
         physics::MotorDesc m;
+        if (free && free[i]) {
+            world.setJointMotor(p.link, m, false);
+            holding_[i] = 0;
+            paths_[i].on = false;
+            continue;
+        }
         m.maxTorque = std::max(p.strength - hold_[i], 0.0f);
         world.setJointMotor(p.link, m, true);
         if (targeted_[i]) {
             // Its target pose: a spring on every axis (Jolt's position motor),
             // no harder than the strength left after holding the weight.
+            // Its commanded angle travels to the target on a minimum-jerk path
+            // in Fitts' time for the arc the bone's tip moves; a target that
+            // moves by less than the target width keeps its path (retargeted),
+            // more starts a new one from where the command is (as GoalPath).
+            JointPath& path = paths_[i];
+            const float lever = std::max(lever_[i], 1e-3f);
+            const float width = timing.fittsWidth / lever;  // rad: the target's width at the tip
+            auto startPath = [&](math::Quat from) {
+                path.from = from;
+                path.to = targetLocal_[i];
+                path.time = 0.0f;
+                path.duration = motion::movementTime(math::angleBetween(from, path.to) * lever, timing.fittsWidth,
+                                                     timing.fittsA, timing.fittsB);
+                path.on = true;
+            };
+            if (!path.on) {
+                const math::Quat parentNow = rot(parts_[static_cast<size_t>(p.parent)].joint);
+                startPath(math::normalize(math::inverse(parentNow) * rot(p.joint)));
+            } else if (math::angleBetween(targetLocal_[i], path.to) > width) {
+                startPath(path.at);
+            } else {
+                path.to = targetLocal_[i];
+            }
+            path.time += dt;
+            const float s = std::clamp(path.time / std::max(path.duration, 1e-3f), 0.0f, 1.0f);
+            path.at = math::slerp(path.from, path.to, s * s * s * (10.0f + s * (6.0f * s - 15.0f)));  // minimum jerk
+            // Its stiffness rises with the torque it holds (measured linear).
             holding_[i] = 0;
-            setJointTarget(world, p, targetLocal_[i], true, m.maxTorque);
+            const float torque = hold_[i];
+            setJointTarget(world, p, path.at, true, m.maxTorque, p.stiffness + p.stiffnessPerTorque * torque);
             continue;
         }
+        paths_[i].on = false;
         if (!ordered_[i]) {
             // The held angle is a turn target: its gap closed in fittsA (as
             // any turn target), at full strength by the velocity motor.

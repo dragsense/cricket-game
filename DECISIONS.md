@@ -452,3 +452,76 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** keeping per-case springs (ankle, hip parallelogram, one-foot hip);
   lift on "centre of mass and capture point inside the foot" (lifted at the edge).
 
+
+## 2026-11-08 (night): Whole-body QP tried and dropped; our Balancer stays
+- **Decision (the user's call, after the agreed two-session timebox):** the whole-body
+  program (`agents::WholeBodyController`: an RBDL tree of the Jolt body, one OSQP
+  program per tick with the equations of motion, strength and friction pyramids; costs
+  soles still, centre of mass by the Balancer's pressure point, joints to the plan) is
+  removed with RBDL v3.3.1, OSQP v1.0.0, QDLDL v0.1.8 and Eigen 3.4.0. Balance stays on
+  `agents::Balancer` (capture point -> pressure -> ground force -> J^T, 05a7db3). The
+  trial is kept as `wip/whole_body_qp_trial_v1.patch` / `_v2.patch`.
+- **Reason (measured):** the tree itself matched Jolt (rotations and ball-joint spin
+  exact, positions within mm), but the program's plan is not what Jolt does with it:
+  - Torque delivery: the torques go through Jolt springs aimed from where the joint is;
+    the joint turns within the step, so Jolt gives the ankles about half the planned
+    torque (26.5 -> 11.5 N m), spine 65-90 %, hips and knees 80-100 %. Exact torques
+    with springs aimed at the plan's end of step fell at once.
+  - Contact split: Jolt's feet share the ground force differently from the program's
+    contacts (toes worst; toes made rigid with the foot in the tree: no change).
+  - Session 1 (balance and held joints at equal weight): the program missed its own
+    centre-of-mass goal from tick 1 (asked -0.008, got +0.075 m/s^2); stand, one foot
+    and push all fell after ~1-1.5 s.
+  - Session 2 (balance first: comWeight 1e6, held 1): it met its own goal every tick and
+    stood 5 s, but sank 8 cm (0.99 -> 0.91 m), bent its trunk forward and ended with the
+    centre of mass ~14 cm ahead of the ankles, tipping; one foot and the side push fell.
+- **Would need, to retry:** torques applied as Jolt sees them (the program and the
+  solver on the same contacts and the same step), i.e. a controller built around Jolt's
+  own constraint solve, not a separate tree. Not planned.
+
+## 2026-11-08 (night, later): Joint solver 40 steps (the ankle's torque reaches the ground); torso hold rejected
+- **Decision (the user's call: "apply first and see"):** `jolt.jointVelocitySteps` 20 -> 40
+  (config/physics_world.json). `setSixDofAxisSpring` now builds its target the way Jolt
+  measures a motor's error (now^-1 * target, in the joint's frame).
+- **Reason (measured, one-foot stance, per joint axis with Jolt's motor lambdas):** the
+  body leaned out over a flat foot (no foot roll, 4 contacts over 10 cm) because the
+  ankle's roll spring delivered ~80 % of the asked torque: effective stiffness ~853 N
+  m/rad against the body's own m g h ~709, nearly neutral, so it drifted. The cause is
+  the solver's convergence through the light foot (1 kg between the shin and the ground
+  contacts), not our maths: 20 steps 80 %, 60 96 %, 200 99.5 %. The target-frame fix
+  was real but small (no measurable change alone). One foot: 3.8 cm -> 2.7 cm at the end
+  (worst side 3.3 -> 1.9 cm), passes. Cost per human per tick (release): 0.22 -> 0.30 ms
+  (60 steps: 0.37). Mobile: to re-measure on the device.
+- **Rejected (measured):** the stance hip holding the pelvis at its world aim
+  (SIMBICON's torso control, Yin et al. 2007), saved in `wip/torso_hold_trick2.patch`.
+  The pelvis stayed more upright (tilt 2.35 -> 1.4 deg), but the hip's reaction leaned
+  the stance leg out: one foot 3.8 -> 7.0 cm at 20 steps, 2.5 -> 3.95 cm at 60. In
+  SIMBICON a stiff ankle absorbs that reaction and stepping balances; our ankle is the
+  balancer's torque source, so holding the trunk uses the same narrow pressure range
+  that keeps the centre of mass over the foot. The trunk's moment has to be budgeted in
+  the balancer (the hip-strategy plan: pressure point vs force line split), not added.
+
+## 2026-11-08 (night): The assist string
+- **Decision (the user's idea and call):** a rope from straight above a physics human's
+  hips (`PhysicsWorld` ropes: tension only, spring + damping beyond its length, capped;
+  applied in `step`, its pull readable). Anchored 1 m above the hips when physics turns
+  on or R resets; slack while standing. Settings in physics_world.json "string" (off by
+  default; on live by saving). Drawn while on: grey slack, yellow to red toward its cap.
+- **Reason:** a measuring tool: its pull shows how much the body's own muscles and
+  balance miss, case by case. Capped at half the body's weight so it never carries it.
+- **Exception** to DESIGN's "no outside forces" (recorded there).
+
+## 2026-11-08 (night, last): Balance by visible assists (replaces the centre-of-mass controller)
+- **Decision (the user's call):** the 2026-11-05 rule "no outside forces, real values only" is
+  reversed for balance. `agents::Balancer` now stands the physics body with visible assists,
+  scaled by one balance strength (0..1): hover (70 % of the weight + a height spring on the
+  hips, at most 95 %, only with a foot on the ground), upright torque on the pelvis (tilt only,
+  by the body's tilt inertia), a horizontal pull of the centre of mass over the stance ankles,
+  locked planted feet (a fixed Jolt SixDOF to a hidden kinematic anchor, made at load time,
+  enabled on plant; the ankle of a locked foot is left free so the body pivots over it), and a
+  step when the capture point leaves the support (Human moves the foot). Gains are feel
+  tunables in human_joints.json "balance" (Hz / damping ratio), not body values. Drawn in game.
+- **Removed:** the J^T stance torques, Peterka ankle springs, hip damping, owned/driven/held,
+  `HumanBody::springTorque`, Jolt axis-spring helpers, `jointMotorTorqueAxes`, the assist string
+  and the rope API (and their tests), the TEMP tests. Feet: friction 1.0, restitution 0 (they had
+  0.3 bounce from the defaults). Masses unchanged (real values kept).

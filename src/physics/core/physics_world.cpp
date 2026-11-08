@@ -361,9 +361,34 @@ void PhysicsWorld::addImpulse(BodyId id, math::Vec3 impulse, math::Vec3 point) {
     impl_->system.GetBodyInterface().AddImpulse(impl_->slots[id].body, toJolt(impulse), JPH::RVec3(toJolt(point)));
 }
 
+const PhysicsSettings& PhysicsWorld::settings() const {
+    static const PhysicsSettings kNone;
+    return impl_ ? impl_->settings : kNone;
+}
+
 void PhysicsWorld::addTorque(BodyId id, math::Vec3 torque) {
     if (!impl_ || !impl_->slot(id)) return;
     impl_->system.GetBodyInterface().AddTorque(impl_->slots[id].body, toJolt(torque));
+}
+
+void PhysicsWorld::addForce(BodyId id, math::Vec3 force) {
+    if (!impl_ || !impl_->slot(id)) return;
+    impl_->system.GetBodyInterface().AddForce(impl_->slots[id].body, toJolt(force), JPH::EActivation::Activate);
+}
+
+void PhysicsWorld::setMaterial(BodyId id, float friction, float restitution) {
+    if (!impl_ || !impl_->slot(id)) return;
+    JPH::BodyInterface& bi = impl_->system.GetBodyInterface();
+    bi.SetFriction(impl_->slots[id].body, friction);
+    bi.SetRestitution(impl_->slots[id].body, restitution);
+}
+
+void PhysicsWorld::setJointEnabled(JointId id, bool enabled) {
+    if (!impl_ || id >= impl_->hinges.size()) return;
+    JPH::Constraint* c = impl_->hinges[id] ? static_cast<JPH::Constraint*>(impl_->hinges[id].GetPtr())
+                         : impl_->swingTwists[id] ? static_cast<JPH::Constraint*>(impl_->swingTwists[id].GetPtr())
+                         : static_cast<JPH::Constraint*>(impl_->sixDofs[id].GetPtr());
+    if (c) c->SetEnabled(enabled);
 }
 
 math::Vec3 PhysicsWorld::angularVelocity(BodyId id) const {
@@ -537,6 +562,11 @@ JointId PhysicsWorld::createSixDof(BodyId a, BodyId b, const SixDofDesc& d) {
     return static_cast<JointId>(m.hinges.size() - 1);
 }
 
+void PhysicsWorld::setSixDofLimits(JointId id, math::Vec3 minAngles, math::Vec3 maxAngles) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
+    impl_->sixDofs[id]->SetRotationLimits(toJolt(minAngles), toJolt(maxAngles));
+}
+
 void PhysicsWorld::setSixDofTarget(JointId id, math::Quat rotation) {
     if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
     impl_->sixDofs[id]->SetTargetOrientationCS(toJolt(math::normalize(rotation)));
@@ -594,49 +624,6 @@ JPH::MotorSettings springMotor(float stiffness, float damping, float maxTorque) 
 }
 
 } // namespace
-
-void PhysicsWorld::setSixDofAxisSpring(JointId id, int axis, float offset, float stiffness, float damping,
-                                       float maxTorque) {
-    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id] || axis < 0 || axis > 2) return;
-    JPH::SixDOFConstraint* c = impl_->sixDofs[id];
-    using A = JPH::SixDOFConstraintSettings::EAxis;
-    const A a = static_cast<A>(static_cast<int>(A::RotationX) + axis);
-    const bool othersHeld = [&] {  // another axis drives toward the target orientation
-        for (int k = 0; k < 3; ++k)
-            if (k != axis && c->GetMotorState(static_cast<A>(static_cast<int>(A::RotationX) + k)) == JPH::EMotorState::Position)
-                return true;
-        return false;
-    }();
-    c->GetMotorSettings(a) = springMotor(stiffness, damping, maxTorque);
-    c->SetMotorState(a, JPH::EMotorState::Position);
-    // Target: this axis turned by `offset` from now. The target orientation
-    // is shared by the axes: those driving to a position keep what they have
-    // still to go. Measured the way Jolt measures a motor's error (the turn
-    // from now to the target in the joint's own frame, now^-1 * target), so
-    // each axis gets its own offset at any joint angle (adding to the
-    // rotation's components instead leaked the torque to the other axes:
-    // the one-foot ankle got ~80 % of its roll torque, 2026-11-08).
-    const JPH::Quat now = c->GetRotationInConstraintSpace();
-    math::Vec3 toGo(0.0f);
-    if (othersHeld) toGo = math::rotationVector(fromJolt(now.Conjugated() * c->GetTargetOrientationCS()));
-    toGo[axis] = offset;
-    const float angle = math::length(toGo);
-    c->SetTargetOrientationCS(now * toJolt(angle > 1e-6f ? math::fromAxisAngle(toGo / angle, angle) : math::identityQuat()));
-}
-
-void PhysicsWorld::setSixDofAxisFree(JointId id, int axis) {
-    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id] || axis < 0 || axis > 2) return;
-    using A = JPH::SixDOFConstraintSettings::EAxis;
-    impl_->sixDofs[id]->SetMotorState(static_cast<A>(static_cast<int>(A::RotationX) + axis), JPH::EMotorState::Off);
-}
-
-void PhysicsWorld::setHingeSpring(JointId id, float offset, float stiffness, float damping, float maxTorque) {
-    if (!impl_ || id >= impl_->hinges.size() || !impl_->hinges[id]) return;
-    JPH::HingeConstraint* h = impl_->hinges[id];
-    h->GetMotorSettings() = springMotor(stiffness, damping, maxTorque);
-    h->SetMotorState(JPH::EMotorState::Position);
-    h->SetTargetAngle(h->GetCurrentAngle() + offset);
-}
 
 void PhysicsWorld::setSixDofSpringTarget(JointId id, math::Quat rotation, float stiffness, float damping,
                                          float maxTorque) {

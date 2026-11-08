@@ -5,44 +5,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace agents {
 
 namespace {
-
-// The joint-frame axis (0 x, 1 y, 2 z) of a SixDOF part most along `dir` at
-// rest (the bone frame then has the character's axes); -1 for a hinge.
-int axisAlong(const HumanBody::Part& p, math::Vec3 dir) {
-    if (p.hinge) return -1;
-    const float a[3] = {std::fabs(math::dot(p.frameX, dir)), std::fabs(math::dot(p.frameY, dir)),
-                        std::fabs(math::dot(p.frameZ, dir))};
-    return a[0] >= a[1] && a[0] >= a[2] ? 0 : a[1] >= a[2] ? 1 : 2;
-}
-
-// Jolt treats a spring of zero stiffness as a rigid lock: a passive joint
-// axis gets this (N m/rad, nothing next to the body's weight) with its damping.
-constexpr float kNoStiffness = 1e-3f;
-
-math::Vec3 frameAxis(const HumanBody::Part& p, int axis) {
-    return axis == 0 ? p.frameX : axis == 1 ? p.frameY : p.frameZ;
-}
-
-// One joint axis as a spring (Jolt's stiffness-and-damping motor, solved
-// with the contacts) that gives `torque` (world, on the part, from its
-// parent) along that axis now: its aim set `torque / stiffness` from where
-// the joint is. Stiffness kNoStiffness and no torque: only the joint's own
-// (passive) damping holds it. Never harder than the joint's muscle.
-void axisSpring(physics::PhysicsWorld& world, const HumanBody::Part& p, int axis, math::Vec3 torque, float stiffness,
-                float damping) {
-    const math::Quat bone = world.transform(p.body).rotation * math::inverse(p.shape.rotation);
-    const math::Vec3 along = bone * (p.hinge ? p.frameX : frameAxis(p, axis));
-    const float offset = stiffness > kNoStiffness ? math::dot(torque, along) / stiffness : 0.0f;
-    if (p.hinge) {
-        world.setHingeSpring(p.link, offset, stiffness, damping, p.strength);
-        return;
-    }
-    if (axis >= 0) world.setSixDofAxisSpring(p.link, axis, offset, stiffness, damping, p.strength);
-}
 
 float cross2(math::Vec2 o, math::Vec2 a, math::Vec2 b) {
     return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -69,14 +36,36 @@ int soleCorners(const physics::PhysicsWorld& world, const HumanBody::Part& p, ma
     return n;
 }
 
+math::Vec3 jointOf(const physics::PhysicsWorld& world, const HumanBody::Part& p) {
+    return (world.transform(p.body) * math::inverse(p.shape)).position;
+}
+
+constexpr float kTwoPi = 6.2831853f;
+
 } // namespace
 
-BalanceSettings readBalanceSettings(const core::Config& joints) {
+BalanceSettings readBalanceSettings(const core::Config& c) {
     BalanceSettings s;
-    const float perDeg = math::degrees(1.0f);  // N m/deg -> N m/rad
-    s.ankleStiffness = joints.getFloat("balance.ankleStiffness", s.ankleStiffness / perDeg) * perDeg;
-    s.ankleDamping = joints.getFloat("balance.ankleDamping", s.ankleDamping / perDeg) * perDeg;
-    s.passiveDamping = joints.getFloat("balance.passiveDamping", s.passiveDamping / perDeg) * perDeg;
+    auto f = [&](const char* key, float& v) { v = c.getFloat(std::string("balance.") + key, v); };
+    f("hoverShare", s.hoverShare);
+    f("hoverMaxShare", s.hoverMaxShare);
+    f("hoverFrequency", s.hoverFrequency);
+    f("hoverDamping", s.hoverDamping);
+    f("uprightFrequency", s.uprightFrequency);
+    f("uprightDamping", s.uprightDamping);
+    f("uprightMaxTorque", s.uprightMaxTorque);
+    f("pullFrequency", s.pullFrequency);
+    f("pullDamping", s.pullDamping);
+    f("pullMaxForce", s.pullMaxForce);
+    f("footFriction", s.footFriction);
+    f("footRestitution", s.footRestitution);
+    f("lockMinStrength", s.lockMinStrength);
+    f("shiftTime", s.shiftTime);
+    f("stepMargin", s.stepMargin);
+    f("stepMaxLength", s.stepMaxLength);
+    f("stepMinWidth", s.stepMinWidth);
+    f("stepClearance", s.stepClearance);
+    f("recoverRate", s.recoverRate);
     return s;
 }
 
@@ -116,233 +105,243 @@ bool Balancer::Hull::contains(math::Vec2 q) const {
     return true;
 }
 
-math::Vec2 Balancer::Hull::closest(math::Vec2 q) const {
-    if (count == 0) return q;
-    if (count == 1) return corner[0];
-    if (contains(q)) return q;
-    math::Vec2 best = corner[0];
-    float bestDist = 1e30f;
-    for (int k = 0; k < count; ++k) {
-        const math::Vec2 a = corner[k], b = corner[(k + 1) % count];
-        const math::Vec2 ab = b - a;
-        const float len2 = math::dot(ab, ab);
-        const float t = len2 > 0.0f ? std::clamp(math::dot(q - a, ab) / len2, 0.0f, 1.0f) : 0.0f;
-        const math::Vec2 c = a + t * ab;
-        const float d = math::dot(q - c, q - c);
-        if (d < bestDist) {
-            bestDist = d;
-            best = c;
-        }
-    }
-    return best;
-}
-
-bool Balancer::init(const HumanBody& body, const int foot[2], const int toe[2], const BalanceSettings& s) {
+bool Balancer::init(physics::PhysicsWorld& world, const HumanBody& body, const int foot[2], const int toe[2],
+                    const BalanceSettings& s) {
     settings_ = s;
+    const std::vector<HumanBody::Part>& parts = body.parts();
+    if (parts.empty()) return false;
     for (int i = 0; i < 2; ++i) {
         footPart_[i] = body.partOf(foot[i]);
         toePart_[i] = body.partOf(toe[i]);
-        if (footPart_[i] < 0 || body.parts()[static_cast<size_t>(footPart_[i])].joint != foot[i] ||
-            body.parts()[static_cast<size_t>(footPart_[i])].parent < 0) {
+        if (footPart_[i] < 0 || parts[static_cast<size_t>(footPart_[i])].joint != foot[i]) {
             LOG_ERROR("balancer: foot joint {} has no part of its own", foot[i]);
             return false;
         }
-        // The shin and the thigh: the two parts up from the foot (their
-        // joints: knee, hip).
-        shinPart_[i] = body.parts()[static_cast<size_t>(footPart_[i])].parent;
-        thighPart_[i] = body.parts()[static_cast<size_t>(shinPart_[i])].parent;
-        if (thighPart_[i] < 0 || body.parts()[static_cast<size_t>(thighPart_[i])].parent < 0) {
-            LOG_ERROR("balancer: foot joint {} has no thigh above its shin", foot[i]);
-            return false;
-        }
-        // Ankle: plantar/dorsiflexion (side to side at rest) and inversion
-        // (along the foot); hip: ab/adduction (along the facing).
-        const HumanBody::Part& f = body.parts()[static_cast<size_t>(footPart_[i])];
-        ankleAheadAxis_[i] = axisAlong(f, math::kRight);
-        ankleSideAxis_[i] = axisAlong(f, math::kForward);
-        hipSideAxis_[i] = axisAlong(body.parts()[static_cast<size_t>(thighPart_[i])], math::kForward);
+        if (toePart_[i] >= 0 && parts[static_cast<size_t>(toePart_[i])].joint != toe[i]) toePart_[i] = -1;
+        for (int part : {footPart_[i], toePart_[i]})
+            if (part >= 0) world.setMaterial(parts[static_cast<size_t>(part)].body, s.footFriction, s.footRestitution);
+        // The lock: a hidden kinematic anchor on the foot, joined with every
+        // axis fixed, off until the foot plants (then the anchor is moved onto
+        // the foot, so the joint holds it where it is).
+        const physics::BodyId f = parts[static_cast<size_t>(footPart_[i])].body;
+        physics::BodyDesc d;
+        d.shape = physics::ShapeType::Sphere;
+        d.radius = 0.01f;
+        d.mass = 1.0f;
+        d.kinematic = true;
+        d.collides = false;
+        d.pose = world.transform(f);
+        anchor_[i] = world.createBody(d);
+        if (anchor_[i] == physics::kInvalidBody) return false;
+        physics::SixDofDesc j;
+        j.pivot = d.pose.position;
+        lock_[i] = world.createSixDof(anchor_[i], f, j);  // min = max = 0: every axis fixed
+        if (lock_[i] == physics::kInvalidJoint) return false;
+        world.setJointEnabled(lock_[i], false);
+        locked_[i] = false;
     }
-    owned_.assign(body.parts().size(), 0);
-    driven_.assign(body.parts().size(), 0);
+    free_.assign(parts.size(), 0);
+    const math::Vec3 hips = world.transform(parts[0].body).position;
+    standHeight_ = hips.y - world.groundHeightAt(hips);
+    strength_ = 1.0f;
     return true;
 }
 
-void Balancer::plan(const physics::PhysicsWorld& world, const HumanBody& body, const bool down[2]) {
-    std::fill(owned_.begin(), owned_.end(), uint8_t{0});
-    std::fill(driven_.begin(), driven_.end(), uint8_t{0});
-    stanceCount_ = 0;
-    force_ = math::Vec3(0.0f);
-    share_[0] = share_[1] = 0.0f;
-
-    // 1. The support: every foot that touches the ground (Jolt's contacts),
-    // also one meant to lift that has not started to (it still carries). A
-    // foot lifting carries nothing even while its toes still drag.
-    for (int i = 0; i < 2; ++i)
-        if (down[i]) lifting_[i] = false;  // a lift once started goes on until the foot is meant down again
-    math::Vec3 sum(0.0f), ankle[2];
-    float groundY[2] = {0.0f, 0.0f};
-    int points = 0;
+void Balancer::release(physics::PhysicsWorld& world) {
     for (int i = 0; i < 2; ++i) {
-        // A touching part can press anywhere on its sole (pressing a raised
-        // side brings it back down), so the foot's support is the soles of
-        // its touching parts, not only the corners touching this step (a
-        // tilted foot would then press its own edge and stay tilted).
+        if (lock_[i] != physics::kInvalidJoint) world.setJointEnabled(lock_[i], false);
+        locked_[i] = false;
+        lifting_[i] = false;
+        shiftTimer_[i] = 0.0f;
+    }
+    std::fill(free_.begin(), free_.end(), uint8_t{0});
+    stepFoot_ = -1;
+    hover_ = pull_ = upright_ = math::Vec3(0.0f);
+}
+
+void Balancer::knock(float amount) { strength_ = std::clamp(strength_ - amount, 0.0f, 1.0f); }
+
+void Balancer::plan(const physics::PhysicsWorld& world, const HumanBody& body, const bool down[2], float dt) {
+    strength_ = std::min(1.0f, strength_ + settings_.recoverRate * dt);
+    stanceCount_ = 0;
+    stepFoot_ = -1;
+    const std::vector<HumanBody::Part>& parts = body.parts();
+
+    // 1. The support: the soles of every touching foot part (a touching part
+    // can press anywhere on its sole); the toes only at the ball's edge (they
+    // carry little). A lifting foot carries nothing.
+    math::Vec3 ankle[2];
+    for (int i = 0; i < 2; ++i) {
+        down_[i] = down[i];
+        if (down[i]) {
+            lifting_[i] = false;
+            shiftTimer_[i] = 0.0f;
+        }
         footPoints_[i] = 0;
         int contacts = 0;
         for (int part : {footPart_[i], toePart_[i]}) {
             if (part < 0 || lifting_[i]) continue;
-            const HumanBody::Part& p = body.parts()[static_cast<size_t>(part)];
+            const HumanBody::Part& p = parts[static_cast<size_t>(part)];
             math::Vec3 touch[kPointsPerFoot];
             const int n = world.groundContacts(p.body, touch, kPointsPerFoot);
             if (n == 0) continue;
-            for (int k = 0; k < n; ++k) groundY[i] += touch[k].y;
             contacts += n;
-            const int sole = footPoints_[i] + 4 <= kPointsPerFoot ? soleCorners(world, p, footPoint_[i] + footPoints_[i]) : 0;
+            math::Vec3 corners[4];
+            const int sole = footPoints_[i] + 4 <= kPointsPerFoot ? soleCorners(world, p, corners) : 0;
+            if (sole > 0 && part == toePart_[i]) {
+                const math::Vec3 ball = jointOf(world, p);
+                std::sort(corners, corners + 4, [&](math::Vec3 a, math::Vec3 b) {
+                    return math::distance(flat(a), flat(ball)) < math::distance(flat(b), flat(ball));
+                });
+                for (int k = 0; k < 2; ++k) footPoint_[i][footPoints_[i]++] = corners[k];
+                continue;
+            }
             if (sole > 0) {
-                footPoints_[i] += sole;
+                for (int k = 0; k < sole; ++k) footPoint_[i][footPoints_[i]++] = corners[k];
                 continue;
             }
             for (int k = 0; k < n && footPoints_[i] < kPointsPerFoot; ++k) footPoint_[i][footPoints_[i]++] = touch[k];
         }
-        for (int k = 0; k < footPoints_[i]; ++k) sum += footPoint_[i][k];
-        points += footPoints_[i];
         stance_[i] = contacts > 0;
-        if (stance_[i]) groundY[i] /= static_cast<float>(contacts);
+        free_[static_cast<size_t>(footPart_[i])] = stance_[i] && down[i] && strength_ >= settings_.lockMinStrength;
         footHull_[i].build(footPoint_[i], footPoints_[i]);
-        const HumanBody::Part& foot = body.parts()[static_cast<size_t>(footPart_[i])];
-        ankle[i] = (world.transform(foot.body) * math::inverse(foot.shape)).position;  // the foot's joint
+        ankle[i] = jointOf(world, parts[static_cast<size_t>(footPart_[i])]);
         if (stance_[i]) ++stanceCount_;
     }
-    for (int i = 0; i < 2; ++i) liftReady_[i] = lifting_[i] || !stance_[i];
-    if (stanceCount_ == 0) return;  // nothing to stand on: no balance torque
-    for (int i = 0; i < 2; ++i) {
-        if (!stance_[i]) continue;
-        // The stance leg carries the body from the foot (its support torque,
-        // not the hanging-limb hold).
-        for (int part : {footPart_[i], shinPart_[i], thighPart_[i]}) owned_[static_cast<size_t>(part)] = 1;
-        // The axes the pressure moves the body with: the ankle's, and on two
-        // feet the hip's ab/adduction (the parallelogram over the feet).
-        driven_[static_cast<size_t>(footPart_[i])] = 1;
-        if (stanceCount_ == 2) driven_[static_cast<size_t>(thighPart_[i])] = 1;
-    }
-    centre_ = sum / static_cast<float>(points);
 
-    // The aim: between the stance ankles; while one foot is meant to lift but
-    // still carries, over the other's ankle alone (the weight shifts first).
-    const int unloading = stanceCount_ == 2 && !down[0] && down[1] ? 0 : stanceCount_ == 2 && !down[1] && down[0] ? 1 : -1;
-    const math::Vec3 aimAnkle = unloading >= 0     ? ankle[1 - unloading]
-                                : stanceCount_ == 2 ? 0.5f * (ankle[0] + ankle[1])
-                                                    : ankle[stance_[0] ? 0 : 1];
-    aim_ = math::Vec3(aimAnkle.x, centre_.y, aimAnkle.z);
-
-    // 2. The capture point and the pressure point.
     const math::Vec3 com = body.centreOfMass(world);
     const math::Vec3 vel = body.centreOfMassVelocity(world);
-    const float mass = body.totalMass();
+    const float ground = world.groundHeightAt(com);
     const float g = std::max(-world.world().gravity.y, 0.0f);
-    const float h = std::max(com.y - centre_.y, 0.1f);
-    const float omega0 = std::sqrt(g / h);
-    const math::Vec3 rate(vel.x, 0.0f, vel.z);
-    capture_ = math::Vec3(com.x, centre_.y, com.z) + (omega0 > 0.0f ? rate / omega0 : math::Vec3(0.0f));
-    // Peterka's feedback as the pressure point it makes (the ankle torque
-    // KP theta + KD theta' = m g (p - aim), theta = (x - aim) / h), kept
-    // inside the support: the hull of every stance contact.
-    const float weightLever = std::max(mass * g * h, 1e-3f);
-    const math::Vec3 off(com.x - aim_.x, 0.0f, com.z - aim_.z);
-    const math::Vec3 still = aim_ + settings_.ankleStiffness * off / weightLever;  // for the position alone
-    const math::Vec3 want = still + settings_.ankleDamping * rate / weightLever;
-    // The unloading foot may lift once the other alone can hold the body,
-    // where it is and as it moves: the pressure the feedback asks for, for
-    // its position and for its position and motion, lies inside that foot.
-    if (unloading >= 0 && footHull_[1 - unloading].contains(flat(still)) &&
-        footHull_[1 - unloading].contains(flat(want)))
-        lifting_[unloading] = liftReady_[unloading] = true;
-    math::Vec3 all[2 * kPointsPerFoot];
-    int n = 0;
-    for (int i = 0; i < 2; ++i)
+    const float omega0 = std::sqrt(g / std::max(com.y - ground, 0.1f));
+    capture_ = math::Vec3(com.x + vel.x / omega0, ground, com.z + vel.z / omega0);
+
+    // Lifts: a foot meant to lift waits for the weight over the other (its
+    // centre of mass inside that foot), at most shiftTime.
+    for (int i = 0; i < 2; ++i) {
+        if (down[i] || lifting_[i]) continue;
+        const int o = 1 - i;
+        shiftTimer_[i] += dt;
+        if (!stance_[i] || !stance_[o] || footHull_[o].contains(flat(com)) || shiftTimer_[i] >= settings_.shiftTime)
+            lifting_[i] = true;
+    }
+    for (int i = 0; i < 2; ++i) liftReady_[i] = lifting_[i] || !stance_[i];
+    lost_ = stanceCount_ == 0;
+    if (stanceCount_ == 0) return;
+
+    // The aim: over the stance ankles (where a standing body rests: the
+    // centre of mass a few cm ahead of the ankle, the soles reaching on to the
+    // toes); over the other ankle while one foot is meant to lift.
+    const int unloading = !down[0] && down[1] && stance_[1] ? 0 : !down[1] && down[0] && stance_[0] ? 1 : -1;
+    math::Vec3 all[2 * kPointsPerFoot], sum(0.0f);
+    int n = 0, aimFeet = 0;
+    for (int i = 0; i < 2; ++i) {
+        if (!stance_[i]) continue;
         for (int k = 0; k < footPoints_[i]; ++k) all[n++] = footPoint_[i][k];
+        if (i == unloading) continue;
+        sum += ankle[i];
+        ++aimFeet;
+    }
+    const math::Vec3 centre = aimFeet > 0 ? sum / static_cast<float>(aimFeet) : com;
+    aim_ = math::Vec3(centre.x, ground, centre.z);
     Hull support;
     support.build(all, n);
-    const math::Vec2 p = support.closest(flat(want));
-    pressure_ = math::Vec3(p.x, centre_.y, p.y);
+    lost_ = !support.contains(flat(capture_));
 
-    // 3. The ground force: the inverted pendulum's across, the weight up.
-    const float pull = mass * omega0 * omega0;
-    force_ = math::Vec3(pull * (com.x - pressure_.x), mass * g, pull * (com.z - pressure_.z));
-
-    // 4. Each foot's share and its own pressure point: two feet by where p
-    // lies between their ankles, the rest of p's offset on each foot.
-    if (stanceCount_ == 2) {
-        const math::Vec2 a0 = flat(ankle[0]), a1 = flat(ankle[1]);
-        const math::Vec2 d = a1 - a0;
-        const float len2 = math::dot(d, d);
-        const float t = len2 > 1e-6f ? std::clamp(math::dot(p - a0, d) / len2, 0.0f, 1.0f) : 0.5f;
-        share_[0] = 1.0f - t;
-        share_[1] = t;
-        const math::Vec2 rest = p - (a0 + t * d);
-        for (int i = 0; i < 2; ++i) {
-            const math::Vec2 q = footHull_[i].closest(flat(ankle[i]) + rest);
-            footPressure_[i] = math::Vec3(q.x, groundY[i], q.y);
+    // 6. A step: on two feet with the capture point outside the support, the
+    // foot whose step is shorter goes past it, to its own side of the other.
+    if (!lost_ || stanceCount_ != 2 || !down[0] || !down[1]) return;
+    float best = 1e30f;
+    for (int i = 0; i < 2; ++i) {
+        const int o = 1 - i;
+        math::Vec2 dir = flat(capture_) - flat(aim_);
+        const float len = math::length(dir);
+        dir = len > 1e-4f ? dir / len : math::Vec2(0.0f);
+        math::Vec2 t = flat(capture_) + settings_.stepMargin * dir;
+        const math::Vec2 stance = flat(ankle[o]);
+        math::Vec2 side = flat(ankle[i]) - stance;
+        const float sideLen = math::length(side);
+        side = sideLen > 1e-4f ? side / sideLen : math::Vec2(0.0f);
+        const float out = math::dot(t - stance, side);
+        if (out < settings_.stepMinWidth) t += (settings_.stepMinWidth - out) * side;  // no crossing
+        const math::Vec2 reach = t - stance;
+        const float r = math::length(reach);
+        if (r > settings_.stepMaxLength) t = stance + reach * (settings_.stepMaxLength / r);
+        const float travel = math::distance(t, flat(ankle[i]));
+        if (travel < best) {
+            best = travel;
+            stepFoot_ = i;
+            stepTarget_ = math::Vec3(t.x, ankle[i].y, t.y);
         }
-    } else {
-        const int i = stance_[0] ? 0 : 1;
-        share_[i] = 1.0f;
-        const math::Vec2 q = footHull_[i].closest(p);
-        footPressure_[i] = math::Vec3(q.x, groundY[i], q.y);
     }
 }
 
-void Balancer::apply(physics::PhysicsWorld& world, const HumanBody& body) const {
-    if (stanceCount_ == 0) return;
+void Balancer::apply(physics::PhysicsWorld& world, const HumanBody& body) {
+    hover_ = pull_ = upright_ = math::Vec3(0.0f);
     const std::vector<HumanBody::Part>& parts = body.parts();
-    const math::Vec3 g = world.world().gravity;
-    // Peterka's KP and passive damping B are for the stance ankles together.
-    const float stiffness = settings_.ankleStiffness / static_cast<float>(stanceCount_);
-    const float damping = settings_.passiveDamping / static_cast<float>(stanceCount_);
-    for (int i = 0; i < 2; ++i) {
-        if (!stance_[i]) continue;
-        if (stanceCount_ == 2)
-            axisSpring(world, parts[static_cast<size_t>(thighPart_[i])], hipSideAxis_[i], math::Vec3(0.0f), kNoStiffness,
-                       damping);
 
-        // 5. J^T through the leg, from the foot up: each joint holds the
-        // ground's force at this foot's pressure point and the weight of the
-        // leg below it (statics), as equal and opposite torques.
-        const math::Vec3 force = share_[i] * force_;
-        float below = 0.0f;
-        math::Vec3 belowMoment(0.0f);
-        auto carry = [&](int part) {
-            if (part < 0) return;
-            const HumanBody::Part& p = parts[static_cast<size_t>(part)];
-            below += p.mass;
-            belowMoment += p.mass * world.transform(p.body).position;
-        };
-        auto torqueAt = [&](const HumanBody::Part& p) {
-            const math::Vec3 joint = (world.transform(p.body) * math::inverse(p.shape)).position;
-            math::Vec3 t = -math::cross(footPressure_[i] - joint, force) - math::cross(belowMoment - below * joint, g);
-            const float size = math::length(t);
-            if (size > p.strength) t *= p.strength / size;  // no stronger than the muscle
-            return t;
-        };
-        auto torque = [&](int part) {
-            const HumanBody::Part& p = parts[static_cast<size_t>(part)];
-            const math::Vec3 t = torqueAt(p);
-            world.addTorque(p.body, t);
-            world.addTorque(parts[static_cast<size_t>(p.parent)].body, -t);
-        };
-        carry(toePart_[i]);
-        carry(footPart_[i]);
-        // The ankle: through its springs, solved with the foot's contacts (an
-        // added torque on the light foot made it chatter and spin); their
-        // slope is Peterka's KP, their aim gives the torque above now.
-        const HumanBody::Part& foot = parts[static_cast<size_t>(footPart_[i])];
-        const math::Vec3 ankleTorque = torqueAt(foot);
-        axisSpring(world, foot, ankleAheadAxis_[i], ankleTorque, stiffness, damping);
-        if (!foot.hinge) axisSpring(world, foot, ankleSideAxis_[i], ankleTorque, stiffness, damping);
-        carry(shinPart_[i]);
-        torque(shinPart_[i]);   // knee
-        carry(thighPart_[i]);
-        torque(thighPart_[i]);  // hip
+    // 5. The feet's locks: a carrying foot meant down is held while the
+    // strength allows; a lifting one, or a weak body, lets go.
+    for (int i = 0; i < 2; ++i) {
+        const bool hold = stance_[i] && down_[i] && strength_ >= settings_.lockMinStrength;
+        if (hold && !locked_[i]) {
+            world.resetBody(anchor_[i], world.transform(parts[static_cast<size_t>(footPart_[i])].body));
+            world.setJointEnabled(lock_[i], true);
+        } else if (!hold && locked_[i]) {
+            world.setJointEnabled(lock_[i], false);
+        }
+        locked_[i] = hold;
+        anchorAt_[i] = world.transform(anchor_[i]).position;
+    }
+    if (stanceCount_ == 0 || strength_ <= 0.0f) return;  // in the air or knocked out: nothing holds it
+
+    const float mass = body.totalMass();
+    const float g = std::max(-world.world().gravity.y, 0.0f);
+    const math::Vec3 com = body.centreOfMass(world);
+    const math::Vec3 vel = body.centreOfMassVelocity(world);
+    const HumanBody::Part& pelvis = parts[0];
+    const math::Transform hipsNow = world.transform(pelvis.body);
+
+    // 2. Hover: a share of the weight, plus a spring on the hips' height.
+    {
+        const float w = kTwoPi * settings_.hoverFrequency;
+        const float height = hipsNow.position.y - world.groundHeightAt(hipsNow.position);
+        const float up = mass * (settings_.hoverShare * g + w * w * (standHeight_ - height) -
+                                 2.0f * settings_.hoverDamping * w * world.linearVelocity(pelvis.body).y);
+        const float most = settings_.hoverMaxShare * mass * g;
+        hover_ = math::Vec3(0.0f, std::clamp(up, 0.0f, most) * strength_, 0.0f);
+    }
+    // 4. Pull: the centre of mass over the aim, across only.
+    {
+        const float w = kTwoPi * settings_.pullFrequency;
+        math::Vec3 f = mass * (w * w * (aim_ - com) - 2.0f * settings_.pullDamping * w * vel);
+        f.y = 0.0f;
+        const float size = math::length(f), most = settings_.pullMaxForce * strength_;
+        pull_ = size > most && size > 0.0f ? f * (most / size) : f * strength_;
+    }
+    world.addForce(pelvis.body, hover_ + pull_);
+
+    // 3. Upright: the pelvis's up toward the plan's pelvis up, by the body's
+    // inertia about its centre of mass; the turn about up is left free.
+    {
+        float inertia = 0.0f;
+        for (const HumanBody::Part& p : parts) {
+            const math::Vec3 d = world.transform(p.body).position - com;
+            inertia += p.mass * math::dot(d, d);
+        }
+        const math::Vec3 boneUp = (hipsNow.rotation * math::inverse(pelvis.shape.rotation)) * math::kUp;
+        const math::Vec3 want = math::normalize(pelvisTarget_) * math::kUp;
+        const math::Vec3 axis = math::cross(boneUp, want);
+        const float s = math::length(axis);
+        const float angle = std::atan2(s, math::dot(boneUp, want));
+        const math::Vec3 err = s > 1e-6f ? axis * (angle / s) : math::Vec3(0.0f);
+        math::Vec3 spin = world.angularVelocity(pelvis.body);
+        spin -= math::kUp * math::dot(spin, math::kUp);  // the turn about up is left free
+        const float w = kTwoPi * settings_.uprightFrequency;
+        math::Vec3 t = inertia * (w * w * err - 2.0f * settings_.uprightDamping * w * spin);
+        const float size = math::length(t), most = settings_.uprightMaxTorque * strength_;
+        upright_ = size > most && size > 0.0f ? t * (most / size) : t * strength_;
+        world.addTorque(pelvis.body, upright_);
     }
 }
 

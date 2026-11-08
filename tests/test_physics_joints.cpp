@@ -301,18 +301,3 @@ TEST_CASE("physics joints: a torque spins a free body by torque / inertia") {
     CHECK(w.angularVelocity(b).y == doctest::Approx(0.5f).epsilon(0.05));  // less a little angular damping
 }
 
-TEST_CASE("physics joints: a SixDOF axis spring holds a load at k theta = torque") {
-    // The 2 kg arm (gravity's torque at the pivot 2 x 9.81 x 0.25 = 4.9 N m),
-    // its Z axis on a 100 N m/rad spring aimed level every step: it rests
-    // 4.9 / 100 = 0.049 rad low.
-    physics::PhysicsWorld w;
-    REQUIRE(makeWorld(w));
-    const physics::JointId j = unevenArm(w, math::Vec3(0.0f, 2.0f, 0.0f), 1.0f);
-    for (int i = 0; i < 3 * 120; ++i) {
-        w.setSixDofAxisSpring(j, 2, -aboutZ(w.sixDofRotation(j)), 100.0f, 10.0f, 1000.0f);
-        w.step(kTick);
-    }
-    const float z = aboutZ(w.sixDofRotation(j));
-    MESSAGE("SixDOF axis spring 100 N m/rad under 4.9 N m: rests at ", z, " rad (expected -0.049)");
-    CHECK(z == doctest::Approx(-0.049f).epsilon(0.1));
-}

@@ -39,6 +39,10 @@
 #include <cstdint>
 #include <vector>
 
+namespace ik {
+class JointLimits;
+}
+
 namespace motion {
 
 // The body's 7 targets (character space). Only active ones are followed.
@@ -73,18 +77,19 @@ struct PartOrder {
     Goal goal = Goal::HandL;             // the target it serves
     bool active = false;                 // its muscle pulls now (else it waits for the parts it needs blocked first)
     float share = 1.0f;                  // its share of a motion its queue carries together (a queue's shares sum to 1)
-    // A limb joint (shoulder, elbow, hip, knee): the bone's rotation the
-    // two-bone solve gives it (character space). Its muscle pulls it there as
-    // a spring and holds it (Jolt's position motor); `direction` is then only
-    // the way it turns now.
-    bool hasTarget = false;
-    math::Quat rotation = math::identityQuat();
 };
 
 struct BodyQueue {
     static constexpr int kCapacity = 48;
+    static constexpr int kMaxJoints = 128;
     std::array<PartOrder, kCapacity> orders{};
     int count = 0;
+    // The brain's target pose (DECISIONS 2026-11-07): the planned bone of every
+    // rig joint (character space, valid until the next decide) and which
+    // joints follow it (non-zero): their muscles pull them to it as springs
+    // (Jolt's position motors). Others keep their orders or hold.
+    const std::vector<math::Mat4>* plan = nullptr;
+    std::array<uint8_t, kMaxJoints> planned{};
 };
 
 struct BodyDeciderJoints {
@@ -110,8 +115,18 @@ struct BodyDeciderSettings {
 
 class BodyDecider {
 public:
-    // Reads the rest pose's limb lengths and hips. Load-time only.
-    bool init(const rig::Rig& rig, const BodyDeciderJoints& joints);
+    // Reads the rest pose's limb lengths and hips. `limits` (kept): the
+    // joints' real ranges the planned trunk stays within (none: unlimited).
+    // Load-time only.
+    bool init(const rig::Rig& rig, const BodyDeciderJoints& joints, const ik::JointLimits* limits = nullptr);
+    // The body's mass per rig joint (kg, 0: none) and its centre in the
+    // bone's frame: the plan keeps its centre of mass over the planted feet.
+    // Load-time only.
+    void setMasses(const std::vector<float>& mass, const std::vector<math::Vec3>& centre);
+    // After decide: the plan places the pelvis (a hand's reach), and the
+    // plan's centre of mass (character space; needs setMasses).
+    bool planning() const { return pelvisPlanned_; }
+    math::Vec3 planCentreOfMass() const;
 
     // Fills `out` from the body's current `pose` (character space) and its
     // goals. `blocked` has one entry per rig joint: non-zero when that joint
@@ -123,8 +138,24 @@ public:
 private:
     void handOrders(int h, const BodyGoals::Point& goal, const std::vector<uint8_t>& blocked,
                     const BodyDeciderSettings& s, BodyQueue& out);
+    // A hand's trunk: planned upright, bent by the queue when out of reach.
+    void handTrunk(int h, const BodyGoals::Point& goal, const std::vector<uint8_t>& blocked,
+                   const BodyDeciderSettings& s, BodyQueue& out);
+    // A hand out of reach: the trunk's queue (by where the target is) and
+    // its plan.
+    void trunkOrders(int h, const BodyGoals::Point& goal, const std::vector<uint8_t>& blocked,
+                     const BodyDeciderSettings& s, BodyQueue& out);
     void footOrders(int i, const BodyGoals& goals, const std::vector<uint8_t>& blocked, const BodyDeciderSettings& s,
                     BodyQueue& out);
+    // A lifted foot out of reach: the stance leg lowers the hips, the pelvis
+    // tilts on the stance hip (the queue and its plan).
+    void footTrunk(int i, const BodyGoals::Point& goal, const BodyDeciderSettings& s, BodyQueue& out);
+    // A reach end e: 0, 1 the hands, 2, 3 the feet. Its root (shoulder,
+    // hip), its limb's length, and where its pelvis tilt turns (plan).
+    static constexpr int kEnds = 4;
+    int endRoot(int e) const;
+    float endReach(int e) const;
+    math::Vec3 tiltPivot(int e) const;
     // Shoulder and elbow (or hip and knee) of `chain` toward `target`.
     void limbOrders(const ik::TwoBoneChain& chain, math::Vec3 target, math::Vec3 pole, math::Vec3 velocity, Goal goal,
                     BodyQueue& out);
@@ -134,22 +165,59 @@ private:
     // Shares of the queue orders [first, out.count): by place (queueShare),
     // blocked ones none, normalised to 1; a part with a share is active.
     void shareQueue(int first, const BodyDeciderSettings& s, BodyQueue& out) const;
+    // The planned trunk for an end out of reach: from upright, each part of
+    // the queue [first, end) turns (or the hips move) by its share of what
+    // brings the end's root within reach, in passes, within its range.
+    void planTrunk(int e, math::Vec3 target, int first, int end, BodyQueue& out);
+    // The planned legs under a planned pelvis: each planted foot stays where
+    // it is (two-bone solve from the planned hip, knee forward).
+    void planLegs(const BodyGoals& goals, const BodyDeciderSettings& s, BodyQueue& out);
+    // The plan's joint `j` (character space) turned by `turn`, within its range.
+    void turnPlanned(int j, math::Quat turn);
+    // The plan's pelvis placed at `t` (character space).
+    void placePlannedPelvis(const math::Transform& t);
+    // The plan's pelvis (and all below it) moved by `delta`, not turned.
+    void movePlannedPelvis(math::Vec3 delta);
+    void markPlanned(int joint, BodyQueue& out) const;
 
     math::Vec3 pos(int joint) const;
     math::Quat rot(int joint) const;
+    // The plan's model matrices from its locals (scratch_ -> solved_): all
+    // (-1), or only `from` and the joints below it (the rest stay as they are).
+    bool refreshPlan(int from = -1);
+    math::Vec3 planPos(int joint) const;   // in the plan (solved_)
+    math::Quat planRot(int joint) const;
     bool isBlocked(const std::vector<uint8_t>& blocked, int joint) const;
 
     const rig::Rig* rig_ = nullptr;
+    const ik::JointLimits* limits_ = nullptr;
+    bool pelvisPlanned_ = false;  // this decide moved or tilted the planned pelvis
     BodyDeciderJoints joints_;
     float armLength_[2]{};  // upper arm + forearm
     float legLength_[2]{};  // thigh + shin
+    // Each foot's bone to the pelvis's, standing (rest): a planted leg's knee
+    // pole is the standing one carried with its foot.
+    math::Quat footToPelvis_[2] = {math::identityQuat(), math::identityQuat()};
     math::Vec3 hipCentre_{0.0f};  // between the hips, from the pelvis (rest)
     // The relaxed arm, in the chest's frame (rest): shoulder-to-wrist
     // direction and the way its elbow points when it bends from there (back:
     // the forearm flexes forward).
     math::Vec3 hangDir_[2]{}, hangBend_[2]{};
-    rig::Pose scratch_;           // the pose a two-bone solve would give (for its directions only)
-    std::vector<math::Mat4> models_, solved_;
+    math::Transform restPelvis_{};  // the pelvis standing (rest pose, character space): where every plan starts
+    // Each planted foot where it was planted (its ankle and the foot's
+    // rotation, character space): taken while no plan runs, kept while the
+    // foot stays planted under one (a planted foot does not move; the ankle
+    // rising with the heel must not move the plan).
+    math::Vec3 anchor_[2]{};
+    math::Quat anchorRot_[2] = {math::identityQuat(), math::identityQuat()};
+    bool anchored_[2] = {false, false};
+    // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
+    int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};
+    std::vector<float> mass_;          // per rig joint (kg)
+    std::vector<math::Vec3> centre_;   // per rig joint: its mass's centre in the bone's frame
+    float totalMass_ = 0.0f;
+    rig::Pose scratch_;  // the plan (locals): the body now, with the planned parts replaced
+    std::vector<math::Mat4> models_, solved_;  // the body now; the plan (character space)
 };
 
 } // namespace motion

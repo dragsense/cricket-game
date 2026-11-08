@@ -244,6 +244,7 @@ void Human::loadLocomotion(const core::Config& c) {
     load("run", runSettings_);
     postureLean_ = math::radians(c.getFloat("walk.postureLeanDeg", math::degrees(postureLean_)));
     stepSettings_.stepLength = c.getFloat("step.stepLength", stepSettings_.stepLength);
+    toeClearance_ = c.getFloat("step.toeClearance", toeClearance_);
     stepSettings_.backStepLength = c.getFloat("step.backStepLength", stepSettings_.backStepLength);
     stepSettings_.sideStepLength = c.getFloat("step.sideStepLength", stepSettings_.sideStepLength);
     stepSettings_.stepDuration = c.getFloat("step.stepDuration", stepSettings_.stepDuration);
@@ -1217,6 +1218,13 @@ math::Vec3 Human::modelCentreOfMass() {
 }
 
 bool Human::attachPhysics(physics::PhysicsWorld& world) {
+    {
+        // The standing ankle's height (rest pose, character space: the
+        // ground at y = 0) plus the toe clearance: a lifted foot's lowest goal.
+        std::vector<math::Mat4> rest(static_cast<size_t>(rig_.numJoints()));
+        if (rig_.localToModel(rig_.restPose(), rest) && joints_.legL.end >= 0)
+            liftedAnkleMin_ = rest[static_cast<size_t>(joints_.legL.end)][3].y + toeClearance_;
+    }
     physics_ = &world;
     humanBody_ = HumanBody{};
     // The centre of mass over the root at rest (the body starts standing).
@@ -1234,7 +1242,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
                 for (auto it = t->begin(); it != t->end(); ++it)
                     if (it->is_number()) muscles.maxTorque.emplace_back(it.key(), it->get<float>());
         if (auto m = root.find("muscles"); m != root.end())
-            for (auto [key, list] : {std::pair{"stiffness", &muscles.stiffness}, std::pair{"jointDamping", &muscles.jointDamping}})
+            for (auto [key, list] : {std::pair{"stiffness", &muscles.stiffness},
+                                     std::pair{"stiffnessPerTorque", &muscles.stiffnessPerTorque},
+                                     std::pair{"jointDamping", &muscles.jointDamping}})
                 if (auto t = m->find(key); t != m->end() && t->is_object())
                     for (auto it = t->begin(); it != t->end(); ++it)
                         if (it->is_number()) list->emplace_back(it.key(), it->get<float>());
@@ -1244,7 +1254,6 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         physics_ = nullptr;
         return false;
     }
-
     // The physics loop's parts: decider, balancer, muscle timing (config).
     deciderJoints_.pelvis = joints_.pelvis;
     for (int i = 0; i < 3; ++i) deciderJoints_.spine[i] = joints_.spine[i];
@@ -1256,9 +1265,15 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
     deciderJoints_.legs[1] = joints_.legR;
     deciderJoints_.arms[0] = joints_.armL;
     deciderJoints_.arms[1] = joints_.armR;
-    if (!decider_.init(rig_, deciderJoints_)) {
+    if (!decider_.init(rig_, deciderJoints_, &limits_)) {
         LOG_ERROR("human: the body decider could not start");
         return false;
+    }
+    {
+        std::vector<float> mass;
+        std::vector<math::Vec3> centre;
+        humanBody_.jointMasses(rig_.numJoints(), mass, centre);
+        decider_.setMasses(mass, centre);
     }
     const int foot[2] = {joints_.legL.end, joints_.legR.end};
     const int toe[2] = {joints_.toeL, joints_.toeR};
@@ -1282,7 +1297,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             }
         }
     }
-    if (!balancer_.init(humanBody_, foot, toe, balance)) return false;
+    if (!balancer_.init(world, humanBody_, foot, toe, balance)) return false;
     blocked_.assign(static_cast<size_t>(rig_.numJoints()), 0);
     physicsModels_.resize(static_cast<size_t>(rig_.numJoints()));
     physicsPose_ = rig_.restPose();
@@ -1295,6 +1310,8 @@ void Human::setPhysicsOn(bool on) {
     humanBody_.setPhysics(*physics_, on);
     std::fill(blocked_.begin(), blocked_.end(), uint8_t{0});
     physicsOn_ = on;
+    balancer_.release(*physics_);
+    balanceStep_ = BalanceStep{};
 }
 
 void Human::physicsTick(float dt) {
@@ -1322,8 +1339,13 @@ void Human::physicsTick(float dt) {
         path.at = math::lerp(path.from, path.to, s * s * s * (10.0f + s * (6.0f * s - 15.0f)));  // minimum jerk
         return path.at;
     };
+    // Balance before the task: once the body cannot hold itself over its
+    // feet (the balancer's last step), the limb test's target is let go, so
+    // the body only recovers; it takes a target again once given one while
+    // standing.
+    if (balancer_.lost()) targetsReleased_ = true;
     motion::BodyGoals goals;
-    if (phase_ == Phase::Pose && poseHand_ && poseHandLast_) {
+    if (phase_ == Phase::Pose && poseHand_ && poseHandLast_ && !targetsReleased_) {
         motion::BodyGoals::Point& hand = goals.hand[reachLeft_ ? 0 : 1];
         hand.active = true;
         hand.position = travel(handPath_, math::inverse(root_).transformPoint(poseGoal_),
@@ -1331,24 +1353,50 @@ void Human::physicsTick(float dt) {
     } else {
         handPath_.on = false;
     }
-    if (phase_ == Phase::Pose && posedFoot_ >= 0 && !poseHandLast_) {
+    if (phase_ == Phase::Pose && posedFoot_ >= 0 && !poseHandLast_ && !targetsReleased_) {
         const int f = posedFoot_;
         goals.foot[f].active = true;
-        goals.foot[f].position = travel(footPath_, math::inverse(root_).transformPoint(poseFootGoal_),
-                                        f == 0 ? joints_.legL.end : joints_.legR.end);
+        math::Vec3 goal = math::inverse(root_).transformPoint(poseFootGoal_);
+        goal.y = std::max(goal.y, liftedAnkleMin_);  // lifted: it clears the ground
+        goals.foot[f].position = travel(footPath_, goal, f == 0 ? joints_.legL.end : joints_.legR.end);
         goals.down[f] = false;
     } else {
         footPath_.on = false;
     }
+    // A balance step (the balancer's last plan asked for one; none while the
+    // limb test moves a foot): the foot travels raised over its target, then
+    // down onto it; it ends once down there or after kStepMaxTime.
+    if (balanceStep_.foot < 0 && !goals.foot[0].active && !goals.foot[1].active) {
+        int f = -1;
+        math::Vec3 at(0.0f);
+        if (balancer_.stepWanted(f, at)) balanceStep_ = BalanceStep{f, at, 0.0f};
+    }
+    if (balanceStep_.foot >= 0) {
+        const int f = balanceStep_.foot;
+        const int end = f == 0 ? joints_.legL.end : joints_.legR.end;
+        const math::Vec3 ankle = root_.transformPoint(math::Vec3(physicsModels_[static_cast<size_t>(end)][3]));
+        const math::Vec3 target = balanceStep_.target;
+        const bool over = std::hypot(ankle.x - target.x, ankle.z - target.z) < 0.03f;
+        balanceStep_.time += dt;
+        goals.foot[f].active = true;
+        math::Vec3 goal = math::inverse(root_).transformPoint(target);
+        if (!over) goal.y = std::max(goal.y + balancer_.settings().stepClearance, liftedAnkleMin_);  // raised on its way
+        goals.foot[f].position = goal;
+        goals.down[f] = over;
+        if ((over && balancer_.footDown(f)) || balanceStep_.time >= kStepMaxTime) balanceStep_ = BalanceStep{};
+    }
     // The decider's queue -> balance -> muscles. Jolt steps after every human
     // has ticked (match::SimWorld).
     humanBody_.blockedJoints(*physics_, queue_, physicsModels_, limits_, dt, blocked_);
-    balancer_.plan(*physics_, humanBody_, goals.down);
+    balancer_.plan(*physics_, humanBody_, goals.down, dt);
     // A foot lifts only once the weight is over the other (the shift first).
     for (int f = 0; f < 2; ++f) goals.foot[f].active = goals.foot[f].active && balancer_.liftReady(f);
     decider_.decide(physicsPose_, goals, blocked_, deciderSettings_, queue_);
-    humanBody_.compensateGravity(*physics_, balancer_.owned());
-    humanBody_.drive(*physics_, queue_, goals, deciderJoints_, physicsModels_, muscleTiming_, balancer_.driven());
+    humanBody_.compensateGravity(*physics_);
+    humanBody_.drive(*physics_, queue_, goals, deciderJoints_, physicsModels_, muscleTiming_, dt, balancer_.free());
+    balancer_.setPelvisTarget(
+        root_.rotation * (queue_.plan ? math::toTransform((*queue_.plan)[static_cast<size_t>(joints_.pelvis)]).rotation
+                                      : math::identityQuat()));
     balancer_.apply(*physics_, humanBody_);
 }
 
@@ -1823,6 +1871,7 @@ void Human::setPoseHand(bool left, math::Vec3 world) {
     poseHandLast_ = true;
     reachLeft_ = left;
     poseGoal_ = world;
+    if (!balancer_.lost()) targetsReleased_ = false;
 }
 
 void Human::setPoseFoot(motion::Foot foot, math::Vec3 world) {
@@ -1831,6 +1880,7 @@ void Human::setPoseFoot(motion::Foot foot, math::Vec3 world) {
     posedFoot_ = static_cast<int>(foot);
     poseHandLast_ = false;
     poseFootGoal_ = world;
+    if (!balancer_.lost()) targetsReleased_ = false;
 }
 
 void Human::resetPhysicsBody() {
@@ -1838,6 +1888,8 @@ void Human::resetPhysicsBody() {
     rig_.localToModel(current_, models_);
     humanBody_.reset(*physics_, models_, root_);
     std::fill(blocked_.begin(), blocked_.end(), uint8_t{0});
+    balancer_.release(*physics_);
+    balanceStep_ = BalanceStep{};
 }
 
 void Human::clearPose() {

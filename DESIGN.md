@@ -344,7 +344,9 @@ Draw the Jolt body
   ground (knees, hands, hip). No fixed get-up.
 - **Caching:** the plan and gravity compensation are recomputed only when a target, the
   pose or a contact changes; the feedback runs every tick (tiny).
-- **Never:** outside forces on the body, placing parts while physics is on, locked axes,
+- **Never:** outside forces on the body (one exception, the user's call 2026-11-08: the
+  assist string, a capped rope from above the hips, off by default, always drawn while
+  on; a measuring tool, physics_world.json "string"), placing parts while physics is on, locked axes,
   tuned strategy thresholds (physical limits decide), per-action balance code.
 - **Measure:** hand lag behind a moving target, CPU with ~5 active players, Jolt sleep.
 

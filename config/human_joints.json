@@ -39,7 +39,13 @@
     "shin":      { "type": "hinge", "axis": "x", "min": -3, "max": 140 },
     // Ankle: foot runs along +Z. X = dorsiflexion(-)/plantarflexion(+), Y = toe in/out,
     // twist about Z = inversion(-)/eversion(+).
-    "foot":      { "type": "swingTwist", "twistAxis": "z", "twist": [-30, 15], "swing1": [-20, 50], "swing2": [-15, 15] },
+    // Dorsiflexion under the body's weight is set by the knee (the
+    // gastrocnemius spans both): 25 +- 6 deg with the knee straight, 39 +- 7
+    // from 20 deg of knee bend on, no more beyond (Baumbach et al. 2014, BMC
+    // Musculoskelet Disord 15:246, weight-bearing; non-weight-bearing 4 / 20).
+    // Between 0 and 20 deg of knee bend: linear between the two measured points.
+    "foot":      { "type": "swingTwist", "twistAxis": "z", "twist": [-30, 15], "swing1": [-25, 50], "swing2": [-15, 15],
+                   "coupledTo": { "bone": "shin", "bound": "swing1Min", "angleDeg": [0, 20], "valueDeg": [-25, -39] } },
     // Toe extension (toes up) is negative X.
     "toe":       { "type": "hinge", "axis": "x", "min": -70, "max": 40 },
 
@@ -188,40 +194,67 @@
       "hand": 18,         // wrist flexion 21-25, extension 11-13
       "thigh": 197,       // hip extension 197
       "shin": 160,        // knee extension ~205, flexion ~117 (2.3-3.4 / 1.3-1.9 N m/kg x 73 kg)
-      "foot": 80,         // ankle plantarflexion 70-86 (isokinetic; isometric likely higher)
+      "foot": 125,        // ankle plantarflexion, holding (isometric): men 20-39 y 117-131 (Moraux et al. 2013,
+                          // BMC Musculoskelet Disord 14:104, knee 90 deg; more with the knee straight, up to ~220);
+                          // 70-86 is the isokinetic (moving) value
       "toe": 8            // toe flexors: 1st 1.54, lesser 0.95 N/kg (young men) = ~180 N at the toe pads,
                           // ~4.5 cm from the joint on our skeleton [force measured, lever ours]
     },
     // A limb following its IK target pose (DECISIONS 2026-11-07): each joint's
     // muscle is a spring toward the target angle (Jolt's position motor,
     // stiffness mode; torque capped at maxTorque; gravity held separately).
-    // Stiffness, N m/rad. [E] estimates: arm joints within the measured
-    // postural range (tens of N m/rad, rising with the torque held: Mussa-Ivaldi
-    // 1985, Gomi & Osu 1998); knee and hip toward walking quasi-stiffness
-    // (hundreds of N m/rad: Shamaei 2013-2015). To be checked against the
-    // papers' tables.
-    "stiffness": { "upper_arm": 40, "forearm": 20, "thigh": 200, "shin": 200 },
-    // Damping, N m s/rad [E]: about critical (2 sqrt(K I)) for the limb beyond
-    // the joint (I ~ 0.33 kg m2 arm at the shoulder, 0.065 forearm and hand at
-    // the elbow, 1.35 leg at the hip, 0.28 shank and foot at the knee).
-    "jointDamping": { "upper_arm": 7.3, "forearm": 2.3, "thigh": 33, "shin": 15 }
+    // Measured (BIOMECHANICS 14.2): a joint's stiffness rises linearly with
+    // the torque it holds, K = stiffness + stiffnessPerTorque |torque|
+    // (torque: its gravity hold, plus the balancer's on the stance legs).
+    //  - shoulder 10.80 + 3.18 |t|, elbow 8.67 + 6.18 |t| (Gomi & Osu 1998,
+    //    J Neurosci 18, Table 2 means, no co-contraction) [P];
+    //  - hip 169.4 N m/rad relaxed + 5.15 N m/rad per N at the ankle over a
+    //    0.87 m mean leg = 5.95 per N m (Huang et al. 2020, IEEE TNSRE,
+    //    Table III; straight leg) [P];
+    //  - knee 75 relaxed (cited in Huang 2020) + 6.6 per N m of extension
+    //    moment (Granata, Wilson & Padua 2002; 3.3 in flexion, not used: the
+    //    knee mostly holds extension) [P];
+    //  - trunk: effective 590 N m/rad about L4-L5 upright (Cholewicki et al.
+    //    2010: +160 N m/rad = 27%); 785 +- 580 unloaded up to 2200 under
+    //    loads (Cholewicki 2000). Our three spine joints in series: 3 x 590
+    //    each. No per-torque slope found yet (0) [P, split ours].
+    "stiffness": { "upper_arm": 10.8, "forearm": 8.67, "thigh": 169.4, "shin": 75,
+                   "spine_01": 1770, "spine_02": 1770, "chest": 1770 },
+    "stiffnessPerTorque": { "upper_arm": 3.18, "forearm": 6.18, "thigh": 5.95, "shin": 6.6 },
+    // Damping (viscosity), N m s/rad, measured: shoulder 0.63, elbow 0.76
+    // (Gomi & Osu 1998, Table 3 intercepts); knee ~2 relaxed (cited in Huang
+    // 2020); hip 2-21 relaxed (Huang 2020) and 0.5-10 (Koopman et al. 2016),
+    // no mean published: 10, inside both; trunk 33.4 in extension (Cholewicki
+    // 2010), 3 x 33.4 per joint in series.
+    "jointDamping": { "upper_arm": 0.63, "forearm": 0.76, "thigh": 10, "shin": 2,
+                      "spine_01": 100, "spine_02": 100, "chest": 100 }
   },
 
-  // Balance (BIOMECHANICS 3; DECISIONS 2026-11-07 "One centre-of-mass
-  // controller"): the measured human ankle feedback T = KP sway + KD sway rate
-  // (+ passive joint damping B), sway = the body's angle about where the
-  // weight is kept, written as the centre of pressure it makes (T = m g (p -
-  // aim)); the ground force and the stance legs' torques (J^T) follow from it.
-  // One law in every direction (side to side was the same [E] values).
-  // Measured in quiet standing (Peterka 2002, J Neurophysiol 88, normal
-  // adults): KP 18.6 (Eq. 14: active + passive), active KD 5.8 on the body's
-  // sway rate and passive joint damping B 0.43 (Eq. 15). KD/KP = 0.31 s,
-  // about the body's own 1/omega0 (0.30 s), so it acts on the capture point.
-  // The measured feedback delay (100-200 ms) is not modelled.
+  // Balance by visible assists (the user's call, DECISIONS 2026-11-08 "Balance
+  // by visible assists"): outside forces that stand the physics body, scaled
+  // by one balance strength (0..1). Feel tunables, not body values. Springs as
+  // frequency (Hz) and damping ratio; forces scale with the whole body's mass,
+  // the upright torque with its tilt inertia, so they hold any body size.
   "balance": {
-    "ankleStiffness": 18.6,  // KP, N m/deg (the whole body; mgh of our body ~11.3 N m/deg)
-    "ankleDamping": 5.8,     // active KD, on the body's sway rate, N m s/deg
-    "passiveDamping": 0.43   // B, the joints' own damping, N m s/deg (stance ankles together; the hips' ab/adduction on two feet too [E])
+    "hoverShare": 0.7,        // of the weight the hover carries while standing (the feet press the rest: friction)
+    "hoverMaxShare": 0.95,    // the hover's most, of the weight (the feet always keep some load)
+    "hoverFrequency": 2.0,    // Hz, the hips' height spring toward the stand height
+    "hoverDamping": 1.0,
+    "uprightFrequency": 2.0,  // Hz, the pelvis's tilt back to upright (its turn about up stays free)
+    "uprightDamping": 1.0,
+    "uprightMaxTorque": 600,  // N m
+    "pullFrequency": 1.0,     // Hz, the centre of mass pulled over the support (a force on the hips, across only)
+    "pullDamping": 1.0,
+    "pullMaxForce": 250,      // N
+    "footFriction": 1.0,      // the feet's and toes' Jolt friction
+    "footRestitution": 0.0,   // no bounce (Jolt takes the larger of the two bodies')
+    "lockMinStrength": 0.5,   // a planted foot is locked to the ground while the strength is at least this
+    "shiftTime": 0.6,         // s: a foot meant to lift waits at most this for the weight to go over the other
+    "stepMargin": 0.05,       // m: a step lands this far past the capture point (Hof 2008's offset)
+    "stepMaxLength": 0.6,     // m from the stance foot
+    "stepMinWidth": 0.12,     // m: the stepping foot stays at least this far to its own side of the stance foot
+    "stepClearance": 0.08,    // m: the foot's lift while it travels
+    "recoverRate": 1.0        // 1/s: the strength climbs back to 1 after a knock
   },
 
   "reposition": {
