@@ -13,7 +13,11 @@
     "maxContactConstraints": 1024,
     "maxSprings": 32,               // Jolt distance-constraint springs (load time)
     "maxJoints": 256,               // Jolt hinge and swing-twist joints (load time)
-    "jointVelocitySteps": 20,       // solver iterations for joints (Jolt override; 0: Jolt's 10). 20/5: a muscle-less crash overshoots 12 deg (was 17)
+    // Solver iterations for joints (Jolt override; 0: Jolt's 10). 20/5: a muscle-less crash overshoots 12 deg (was 17).
+    // 40: the stance ankle's spring passes its torque through the light foot to the ground (measured one foot,
+    // roll axis: 20 steps 80 % of the asked torque, 40 ~93 %, 60 96 %, 200 99.5 %; cost per human per tick
+    // 0.22 / 0.30 / 0.37 ms release).
+    "jointVelocitySteps": 40,
     "jointPositionSteps": 5,        // > 0: (0: Jolt's 2)
     "tempAllocatorKb": 2048,        // preallocated; no heap use while stepping
     "threads": 0,                   // 0: single-threaded (tiny scene, mobile-friendly)

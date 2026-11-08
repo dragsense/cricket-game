@@ -610,19 +610,18 @@ void PhysicsWorld::setSixDofAxisSpring(JointId id, int axis, float offset, float
     c->GetMotorSettings(a) = springMotor(stiffness, damping, maxTorque);
     c->SetMotorState(a, JPH::EMotorState::Position);
     // Target: this axis turned by `offset` from now. The target orientation
-    // is shared by the axes: those driving to a position keep theirs (in
-    // rotation-vector components, the joint's own small angles).
+    // is shared by the axes: those driving to a position keep what they have
+    // still to go. Measured the way Jolt measures a motor's error (the turn
+    // from now to the target in the joint's own frame, now^-1 * target), so
+    // each axis gets its own offset at any joint angle (adding to the
+    // rotation's components instead leaked the torque to the other axes:
+    // the one-foot ankle got ~80 % of its roll torque, 2026-11-08).
     const JPH::Quat now = c->GetRotationInConstraintSpace();
-    if (!othersHeld) {
-        const JPH::Vec3 along = axis == 0 ? JPH::Vec3::sAxisX() : axis == 1 ? JPH::Vec3::sAxisY() : JPH::Vec3::sAxisZ();
-        c->SetTargetOrientationCS(now * JPH::Quat::sRotation(along, offset));
-        return;
-    }
-    math::Vec3 target = math::rotationVector(fromJolt(c->GetTargetOrientationCS()));
-    const math::Vec3 current = math::rotationVector(fromJolt(now));
-    target[axis] = current[axis] + offset;
-    const float angle = math::length(target);
-    c->SetTargetOrientationCS(toJolt(angle > 1e-6f ? math::fromAxisAngle(target / angle, angle) : math::identityQuat()));
+    math::Vec3 toGo(0.0f);
+    if (othersHeld) toGo = math::rotationVector(fromJolt(now.Conjugated() * c->GetTargetOrientationCS()));
+    toGo[axis] = offset;
+    const float angle = math::length(toGo);
+    c->SetTargetOrientationCS(now * toJolt(angle > 1e-6f ? math::fromAxisAngle(toGo / angle, angle) : math::identityQuat()));
 }
 
 void PhysicsWorld::setSixDofAxisFree(JointId id, int axis) {
