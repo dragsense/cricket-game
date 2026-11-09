@@ -525,3 +525,14 @@ Dated log. Format: decision, reason, alternatives rejected.
   `HumanBody::springTorque`, Jolt axis-spring helpers, `jointMotorTorqueAxes`, the assist string
   and the rope API (and their tests), the TEMP tests. Feet: friction 1.0, restitution 0 (they had
   0.3 bounce from the defaults). Masses unchanged (real values kept).
+
+## 2026-11-09: Capsule carries the player; walk only
+- **Decision (the user's call):** a Jolt `CharacterVirtual` capsule per player carries the
+  root over the ground (upright always; slides, steps, slopes, other capsules). The
+  procedural body is posed on it. Jog, run and the run-up delivery are removed (walk only;
+  U bowls standing). The Jolt Ragdoll for dives and falls is planned on top later.
+- **Reason:** a week of self-balancing physics-body attempts gave no solid result; a
+  capsule keeps the player standing by construction, which is how sports games do it.
+- **Kept, unused by the capsule:** `agents::Balancer` and the physics limb test (still
+  run when physics is on).
+

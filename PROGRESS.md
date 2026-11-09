@@ -546,6 +546,20 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   picks a foot, arrows move its target, Shift + Up/Down raise/lower it, R resets. Tests
   not rerun since the simplification (watch running).
 
+- [~] **Capsule + ragdoll** (2026-11-09, the user's call; DECISIONS 2026-11-09):
+  - [x] **A. Walk only** (b55c2ff): jog, run and the U run-up delivery (bound, run-on,
+    check stops) removed; U bowls a random action standing. Shift/Ctrl stay as held
+    modifiers (`ModShift`/`ModCtrl`).
+  - [x] **B. Capsule** (1973a0f): Jolt `CharacterVirtual` per player (`PhysicsWorld`
+    createCharacter/moveCharacter, physics_world.json "character"); `Human::followCapsule`
+    moves the root through it each tick. Measured: 1.5 m/s for 1 s = 1.5 m on the ground;
+    stops at a wall (face - radius - padding) and slides along it; lands from a 2 m drop.
+  - [ ] **C. Jolt Ragdoll** for the physics body: on hold, waiting on the user's call.
+    Jolt 5.3's `Ragdoll::DriveToPoseUsingMotors` drives only SwingTwist joints (it
+    asserts on any other type), but our joints are hinges and SixDOF with the real uneven
+    ranges. `DriveToPoseUsingKinematics` is what `HumanBody::follow` already does.
+  Known failing tests unchanged (as 6c9db7f).
+
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 
 Goal: a standing bowler (no run-up) delivers the ball. The bowling hand makes a full
