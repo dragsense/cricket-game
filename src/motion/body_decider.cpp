@@ -38,6 +38,14 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
     const size_t n = static_cast<size_t>(rig.numJoints());
     models_.resize(n);
     solved_.resize(n);
+    lastCentre_.assign(n, math::Vec3(0.0f));
+    armOf_.assign(n, -1);
+    for (int j = 0; j < static_cast<int>(n); ++j)
+        for (int a = j; a >= 0; a = rig.parent(a))
+            if (a == joints.arms[0].start || a == joints.arms[1].start) {
+                armOf_[static_cast<size_t>(j)] = static_cast<int8_t>(a == joints.arms[0].start ? 0 : 1);
+                break;
+            }
     scratch_ = rig.restPose();
     if (!rig.localToModel(rig.restPose(), models_)) return false;
     restPelvis_ = math::toTransform(models_[static_cast<size_t>(joints.pelvis)]);
@@ -46,6 +54,7 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
         if (leg.start >= 0) {
             legLength_[i] = math::distance(pos(leg.start), pos(leg.mid)) + math::distance(pos(leg.mid), pos(leg.end));
             footToPelvis_[i] = math::inverse(rot(leg.end)) * rot(joints.pelvis);
+            restFoot_[i] = rot(leg.end);
         }
         const ik::TwoBoneChain& arm = joints.arms[i];
         if (arm.start >= 0) {
@@ -57,6 +66,9 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
             hangBend_[i] = toChest * math::safeNormalize(back, -math::kForward);
         }
     }
+    if (joints.head >= 0) restHead_ = rot(joints.head);
+    for (int h = 0; h < 2; ++h)
+        if (joints.arms[h].end >= 0) restHand_[h] = pos(joints.arms[h].end);
     if (joints.legs[0].start >= 0 && joints.legs[1].start >= 0) {
         const math::Vec3 mid = 0.5f * (pos(joints.legs[0].start) + pos(joints.legs[1].start));
         hipCentre_ = math::inverse(rot(joints.pelvis)) * (mid - pos(joints.pelvis));
@@ -158,7 +170,11 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
         if (!planted || !planning) anchored_[i] = false;
         if (planted && !anchored_[i]) {
             anchor_[i] = pos(ankle);
-            anchorRot_[i] = rot(ankle);
+            // Flat on the ground and facing the body's way, as standing (the
+            // plan's foot, not the body's: a foot the body twisted or tilted
+            // on its way down is not pinned so; that carried from step to
+            // step). The root turning later leaves it where it is (rebase).
+            anchorRot_[i] = restFoot_[i];
             anchored_[i] = true;
         }
         if (planted && goals.foot[i].active) anchor_[i] = goals.foot[i].position;  // pinned on its given spot
@@ -205,35 +221,94 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
     }
     // The hips travel to their new place (any goal's: a step's balance, a
     // reach's lean) on a minimum-jerk path in Fitts' time, from where the
-    // body has them; a new place mid-way retargets the same path. The legs
-    // follow them to the planted feet.
-    if (planning && pelvisPlanned_ && goals.dt > 0.0f) {
+    // body has them; a new place mid-way re-aims the rest of the path from
+    // where the hips are (no jump). A moving foot's target already carries
+    // the hips smoothly (planLegs): they are where it puts them. The legs follow them to the
+    // planted feet.
+    const bool footMoving = moving(0) || moving(1);
+    if (planning && pelvisPlanned_ && goals.dt > 0.0f && !footMoving) {
         const math::Vec3 want = planPos(joints_.pelvis);
         constexpr float kRetarget = 1e-3f;  // m: a new place
+        constexpr float kReaim = 0.95f;     // path share after which the rest is not re-aimed
+        auto timeFor = [&](float distance) {
+            return movementTime(distance, s.fittsWidth, s.fittsA, s.fittsB);
+        };
+        auto share = [](float time, float duration) {
+            const float u = std::clamp(time / std::max(duration, 1e-3f), 0.0f, 1.0f);
+            return u * u * u * (10.0f + u * (6.0f * u - 15.0f));  // minimum jerk
+        };
         if (!hips_.on) {
             hips_.from = hips_.at = pos(joints_.pelvis);
             hips_.to = want;
             hips_.time = 0.0f;
-            hips_.duration = movementTime(math::distance(hips_.from, want), s.fittsWidth, s.fittsA, s.fittsB);
+            hips_.duration = timeFor(math::distance(hips_.from, want));
             hips_.on = true;
-        } else if (math::distance(want, hips_.to) > kRetarget) {
+        } else {
+            const bool moved = math::distance(want, hips_.to) > kRetarget;
             if (hips_.time >= hips_.duration) {
-                hips_.from = hips_.at;
-                hips_.time = 0.0f;
-                hips_.duration = movementTime(math::distance(hips_.at, want), s.fittsWidth, s.fittsA, s.fittsB);
+                if (moved) {
+                    hips_.from = hips_.at;
+                    hips_.time = 0.0f;
+                    hips_.duration = timeFor(math::distance(hips_.at, want));
+                    hips_.to = want;
+                }
+            } else if (moved) {
+                hips_.to = want;
+                const float w = share(hips_.time, hips_.duration);
+                if (w < kReaim) hips_.from = (hips_.at - hips_.to * w) / (1.0f - w);
             }
-            hips_.to = want;
         }
         hips_.time += goals.dt;
-        const float u = std::clamp(hips_.time / std::max(hips_.duration, 1e-3f), 0.0f, 1.0f);
-        hips_.at = math::lerp(hips_.from, hips_.to, u * u * u * (10.0f + u * (6.0f * u - 15.0f)));
+        hips_.at = math::lerp(hips_.from, hips_.to, share(hips_.time, hips_.duration));
         if (math::distance(hips_.at, want) > 1e-4f) {
             movePlannedPelvis(hips_.at - want);
             planLegs(goals, s, out, false);
         }
-    } else if (!planning) {
+    } else {
         hips_.on = false;
     }
+    if (planning && !goals.chest.active && !goals.hand[0].active && !goals.hand[1].active) {
+        // The chest's own target (standing upright, moving with the root):
+        // its passive share of the way back from where the plan bent it
+        // (with a hand's goal the trunk serves that goal fully).
+        const float k = std::clamp(s.passiveChest, 0.0f, 1.0f);
+        const rig::Pose& rest = rig_->restPose();
+        bool turned = false;
+        for (int j : joints_.spine)
+            if (j >= 0 && k > 0.0f) {
+                math::Quat& q = scratch_.locals[static_cast<size_t>(j)].rotation;
+                q = math::normalize(math::slerp(q, rest.locals[static_cast<size_t>(j)].rotation, k));
+                turned = true;
+            }
+        if (turned && joints_.spine[0] >= 0) refreshPlan(joints_.spine[0]);
+    }
+    if (planning) {
+        freeArms(goals, s, out);
+        if (!goals.head.active && joints_.head >= 0) {
+            // A head without a goal keeps the gaze level: upright, facing the
+            // chest's heading (head stabilisation in walking, Pozzo et al.
+            // 1990), not left where the body swung it.
+            const int parent = rig_->parent(joints_.head);
+            const int below = joints_.spine[2] >= 0 ? joints_.spine[2] : parent;
+            if (parent >= 0 && below >= 0) {
+                if (joints_.neck >= 0)
+                    scratch_.locals[static_cast<size_t>(joints_.neck)].rotation =
+                        rig_->restPose().locals[static_cast<size_t>(joints_.neck)].rotation;
+                refreshPlan(joints_.neck >= 0 ? joints_.neck : joints_.head);
+                const math::Vec3 f = planRot(below) * math::kForward;
+                // Level (gaze), pulled by the passive share toward its own
+                // target: standing, facing the root's way.
+                const math::Quat level = math::slerp(math::fromAxisAngle(math::kUp, std::atan2(f.x, f.z)) * restHead_, restHead_,
+                                                     std::clamp(s.passiveHead, 0.0f, 1.0f));
+                math::Quat& head = scratch_.locals[static_cast<size_t>(joints_.head)].rotation;
+                head = math::normalize(math::inverse(planRot(parent)) * level);
+                if (limits_) head = ik::clampRotation(head, limits_->limitIn(joints_.head, scratch_));
+                refreshPlan(joints_.head);
+                markPlanned(joints_.head, out);
+            }
+        }
+    }
+    else lastValid_ = false;
     for (int h = 0; h < 2; ++h)
         if (goals.hand[h].active) handOrders(h, goals.hand[h], blocked, s, out);
 
@@ -445,23 +520,139 @@ void BodyDecider::rebase(const math::Transform& toNew) {
         anchorRot_[i] = toNew.rotation * anchorRot_[i];
     }
     for (math::Vec3* p : {&hips_.from, &hips_.to, &hips_.at}) *p = toNew.transformPoint(*p);
+    for (math::Vec3& p : lastCentre_) p = toNew.transformPoint(p);
 }
 
-void BodyDecider::planLegs(const BodyGoals& /*goals*/, const BodyDeciderSettings& s, BodyQueue& out, bool balance) {
+void BodyDecider::freeArms(const BodyGoals& goals, const BodyDeciderSettings& s, BodyQueue& out) {
+    // The arm swing of walking: the arms are not held; they hang from the
+    // shoulders and swing opposite the legs because they cancel part of the
+    // body's turning about the vertical (Collins et al. 2009; Bruijn et al.
+    // 2008). Each free arm here: its swing rate takes its share (by mass and
+    // lever) of cancelling the rest of the plan's vertical angular momentum
+    // about the centre of mass; gravity takes it back toward hanging at its
+    // pendulum rate (sqrt(m g d / I) about the shoulder).
+    bool free[2];
+    for (int h = 0; h < 2; ++h) free[h] = !goals.hand[h].active && joints_.arms[h].start >= 0;
+    const rig::Pose& rest = rig_->restPose();
+    auto place = [&](int h) {  // hanging, swung by armAngle_ (forward +) within the shoulder's range
+        const ik::TwoBoneChain& c = joints_.arms[h];
+        for (int j : {joints_.clavicles[h], c.mid, c.end})
+            if (j >= 0) scratch_.locals[static_cast<size_t>(j)].rotation = rest.locals[static_cast<size_t>(j)].rotation;
+        math::Quat& shoulder = scratch_.locals[static_cast<size_t>(c.start)].rotation;
+        shoulder = rest.locals[static_cast<size_t>(c.start)].rotation * math::fromAxisAngle(math::kRight, -armAngle_[h]);
+        if (limits_) shoulder = ik::clampRotation(math::normalize(shoulder), limits_->limitIn(c.start, scratch_));
+        refreshPlan(joints_.clavicles[h] >= 0 ? joints_.clavicles[h] : c.start);
+        markPlanned(c.start, out);
+        markPlanned(c.mid, out);
+    };
+    for (int h = 0; h < 2; ++h)
+        if (free[h]) place(h);
+    if (totalMass_ <= 0.0f || goals.dt <= 0.0f) return;
+    // The plan's turning about the vertical through its centre of mass (all
+    // but the free arms), and each free arm's mass, lever and inertia about
+    // its shoulder.
+    const math::Vec3 com = planCentreOfMass();
+    float spin = 0.0f, mass[2] = {0.0f, 0.0f}, lever[2] = {0.0f, 0.0f}, inertia[2] = {0.0f, 0.0f};
+    for (size_t j = 0; j < mass_.size() && j < solved_.size() && j < centre_.size(); ++j) {
+        if (mass_[j] <= 0.0f) continue;
+        const math::Vec3 p(solved_[j] * math::Vec4(centre_[j], 1.0f));
+        const int h = armOf_[j];
+        if (h >= 0 && free[h]) {
+            const float d = math::distance(p, planPos(joints_.arms[h].start));
+            mass[h] += mass_[j];
+            lever[h] += mass_[j] * d;
+            inertia[h] += mass_[j] * d * d;
+        } else if (lastValid_) {
+            const math::Vec3 v = (p - lastCentre_[j]) / goals.dt;
+            spin += mass_[j] * ((p.z - com.z) * v.x - (p.x - com.x) * v.z);
+        }
+        lastCentre_[j] = p;
+    }
+    const bool measured = lastValid_;
+    lastValid_ = true;
+    // An arm swinging forward at rate w turns the body by k w about the
+    // vertical (k = -its side offset x its mass x lever); the free arms
+    // share cancelling `spin` at the least swing (w = -spin k / sum k^2).
+    float k[2] = {0.0f, 0.0f}, kk = 0.0f;
+    for (int h = 0; h < 2; ++h)
+        if (free[h] && mass[h] > 0.0f) {
+            k[h] = -(planPos(joints_.arms[h].start).x - com.x) * lever[h];
+            kk += k[h] * k[h];
+        }
+    for (int h = 0; h < 2; ++h) {
+        if (!free[h] || mass[h] <= 0.0f) continue;
+        const float cancel = measured && kk > 1e-9f ? -s.armCancel * spin * k[h] / kk : 0.0f;
+        const float pendulum = inertia[h] > 0.0f ? std::sqrt(std::max(0.0f, s.gravity) * lever[h] / inertia[h]) : 0.0f;
+        armAngle_[h] += (cancel - pendulum * armAngle_[h]) * goals.dt;
+        place(h);
+    }
+    passiveHands(free, s, out);
+}
+
+void BodyDecider::passiveHands(const bool free[2], const BodyDeciderSettings& s, BodyQueue& out) {
+    // A hand without a goal still has its target (hanging, as standing,
+    // moving with the root): the swing goes on, and the hand goes the
+    // passive share of the way from where the swing has it to that target
+    // (the elbow bending back, as it hangs).
+    const float k = std::clamp(s.passiveHands, 0.0f, 1.0f);
+    if (k <= 0.0f) return;
+    const math::Quat chest = joints_.spine[2] >= 0 ? planRot(joints_.spine[2]) : math::identityQuat();
+    for (int h = 0; h < 2; ++h) {
+        const ik::TwoBoneChain& arm = joints_.arms[h];
+        if (!free[h] || arm.end < 0) continue;
+        const math::Vec3 at = planPos(arm.end);
+        const math::Vec3 want = at + k * (restHand_[h] - at);
+        if (ik::solveTwoBone(arm, solved_, want, chest * hangBend_[h], 1.0f, scratch_)) {
+            if (limits_)
+                for (int j : {arm.start, arm.mid})
+                    scratch_.locals[static_cast<size_t>(j)].rotation =
+                        ik::clampRotation(math::normalize(scratch_.locals[static_cast<size_t>(j)].rotation), limits_->limitIn(j, scratch_));
+            refreshPlan(arm.start);
+            markPlanned(arm.start, out);
+            markPlanned(arm.mid, out);
+        }
+    }
+}
+
+void BodyDecider::planLegs(const BodyGoals& goals, const BodyDeciderSettings& s, BodyQueue& out, bool balance) {
     if (!pelvisPlanned_) return;
     // The planted feet stay where they are; the legs reach them from the
     // planned hips, and the hips go where the plan's centre of mass stays over
     // the feet (a bend takes the hips back: anticipatory posture, Massion
     // 1992). The hips cannot go higher than the straight legs allow.
-    math::Vec3 support(0.0f);
-    int planted = 0;
-    for (int i = 0; i < 2; ++i)
-        if (anchored_[i]) {
-            support += anchor_[i];
-            ++planted;
-        }
-    if (planted == 0) return;
-    support /= static_cast<float>(planted);
+    // The centre of mass goes between the feet's targets (planted or on
+    // their way: a moving foot's progress carries the hips with it, half its
+    // travel, as the body's centre moves one step while the foot moves a
+    // stride), toward the standing foot and back through a timed swing
+    // (hipsSway). The same for a step, both feet (a jump) or none.
+    math::Vec3 at[2];
+    bool has[2];
+    int count = 0;
+    for (int i = 0; i < 2; ++i) {
+        // A foot held up without timing bears no weight and is not on its
+        // way: the body stands on the other (all of it over that foot).
+        has[i] = anchored_[i] || (goals.foot[i].active && goals.foot[i].swing >= 0.0f);
+        at[i] = anchored_[i] ? anchor_[i] : goals.foot[i].position;
+        count += has[i] ? 1 : 0;
+    }
+    if (count == 0) return;
+    math::Vec3 support = count == 2 ? 0.5f * (at[0] + at[1]) : (has[0] ? at[0] : at[1]);
+    if (count == 2 && anchored_[0] != anchored_[1]) {
+        const int up = anchored_[0] ? 1 : 0, down = 1 - up;
+        const float share = std::sin(math::kPi * std::clamp(goals.foot[up].swing, 0.0f, 1.0f));
+        math::Vec3 side = at[down] - at[up];
+        side.y = 0.0f;
+        const float width = math::length(side);
+        if (width > 1e-4f) support += side * (std::min(s.hipsSway, 0.5f * width) * share / width);
+    }
+
+    // The hips' own target (standing, moving with the root) has its passive
+    // share when it is not the goal (a hips goal is followed exactly).
+    if (!goals.hips.active) {
+        const float k = std::clamp(s.passiveHips, 0.0f, 1.0f);
+        support.x += k * (restPelvis_.position.x - support.x);
+        support.z += k * (restPelvis_.position.z - support.z);
+    }
 
     const rig::Pose& rest = rig_->restPose();
     auto solveLegs = [&] {
@@ -507,21 +698,44 @@ void BodyDecider::planLegs(const BodyGoals& /*goals*/, const BodyDeciderSettings
         }
         return worst;
     };
-    // Legs within range: the hips rise until the legs can hold them.
-    constexpr int kRaises = 24;
-    constexpr float kRaise = 0.02f;      // m per step
-    constexpr float kInRange = 0.01f;    // rad
+    // Legs within range: the hips rise the least that lets the legs hold
+    // them (found by halving, so the height changes smoothly from tick to
+    // tick, never in fixed steps).
+    constexpr float kMaxRaise = 0.48f;  // m
+    constexpr int kHalvings = 8;        // ~2 mm
+    constexpr float kInRange = 0.01f;   // rad
     auto solveInRange = [&] {
         solveLegs();
-        for (int k = 0; k < kRaises && pastRange() > kInRange; ++k) {
-            movePlannedPelvis(math::kUp * kRaise);
+        if (pastRange() <= kInRange) return;
+        float low = 0.0f, high = kMaxRaise, at = 0.0f;
+        auto raiseTo = [&](float h) {
+            movePlannedPelvis(math::kUp * (h - at));
+            at = h;
             solveLegs();
+        };
+        raiseTo(high);
+        if (pastRange() > kInRange) return;  // no height holds them: as high as it goes
+        for (int k = 0; k < kHalvings; ++k) {
+            const float mid = 0.5f * (low + high);
+            raiseTo(mid);
+            if (pastRange() > kInRange) low = mid;
+            else high = mid;
         }
+        raiseTo(high);
     };
     constexpr int kPasses = 4;
     constexpr float kOver = 1e-3f;  // m: the centre of mass over the feet
-    if (!balance) solveInRange();
-    for (int pass = 0; balance && pass < kPasses; ++pass) {
+    // A foot on its way (a step, a jump): the hips go between the feet at
+    // once, carried by the feet's targets; the centre of mass is kept over
+    // the feet only standing (walking is not statically balanced: the body
+    // vaults over the stance leg on its own momentum).
+    const bool feetMoving = (goals.foot[0].active && !goals.down[0]) || (goals.foot[1].active && !goals.down[1]);
+    if (balance && feetMoving) {
+        const math::Vec3 hips = planPos(joints_.pelvis);
+        movePlannedPelvis(math::Vec3(support.x - hips.x, 0.0f, support.z - hips.z));
+    }
+    if (!balance || feetMoving) solveInRange();
+    for (int pass = 0; balance && !feetMoving && pass < kPasses; ++pass) {
         solveInRange();
         if (totalMass_ <= 0.0f) break;
         const math::Vec3 com = planCentreOfMass();

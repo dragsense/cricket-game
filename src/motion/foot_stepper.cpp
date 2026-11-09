@@ -22,14 +22,12 @@ float smoothstep(float x) {
     return x * x * (3.0f - 2.0f * x);
 }
 
-// Swing height share, 0 -> 1 at `peakAt` -> 0. Eases in and out on both
-// sides, so the foot never jumps up at lift-off however early the apex is.
+} // namespace
+
 float swingArc(float t, float peakAt) {
     const float p = math::clamp(peakAt, 0.1f, 0.9f);
     return t < p ? smoothstep(t / p) : smoothstep((1.0f - t) / (1.0f - p));
 }
-
-} // namespace
 
 void FootStepper::reset(math::Vec3 left, math::Vec3 right) {
     feet_[0] = left;

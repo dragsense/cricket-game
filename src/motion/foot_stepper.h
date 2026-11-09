@@ -26,6 +26,11 @@ struct StepSettings {
 
 struct GaitTiming;
 
+// Swing height share, 0 -> 1 at `peakAt` -> 0 over the swing time share t.
+// Eases in and out on both sides, so the foot never jumps up at lift-off
+// however early the apex is.
+float swingArc(float t, float peakAt);
+
 // Swing shape and foot roll for gait mode; the defaults are walking (flat
 // feet, centred arc, standing width).
 struct GaitStyle {

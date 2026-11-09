@@ -85,6 +85,13 @@ public:
     // Every muscle pulls its joint toward the pose `models` (character space,
     // the rig's joints): Jolt's Ragdoll::DriveToPoseUsingMotors. No allocations.
     void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const;
+    // The same, with the head held in space: its muscle's target is the
+    // pose's head in the world (`root`: character to world) seen from the
+    // real body it hangs from, not from the posed one (the vestibulo-collic
+    // reflex keeps the head stable in space, Pozzo et al. 1990). `headJoint`:
+    // the rig joint of the head.
+    void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
+                   int headJoint) const;
     // The body (character space of `root`) a part has in the pose `models`.
     math::Transform partPose(int part, const std::vector<math::Mat4>& models) const;
     // Every part placed at its bone in `models` (character space of `root`), at rest.

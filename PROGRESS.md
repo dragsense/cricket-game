@@ -599,6 +599,25 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
       the real chest swings 7-15 deg and the foot slides ~15 cm for ~0.5 s.
     - **Next:** one clock per step (foot + hips targets from the same phase) for a smooth landing;
       why planLegs raises the hips so often; turn the TEMP trace into a real test; hand sways in the limb test (check with the new muscles).
+  - [~] **E. Smoother walk, seven targets** (2026-11-09/10 night, the user's calls; UNCOMMITTED, user testing):
+    - Decider: hips go between the feet's targets (a moving foot carries them half its travel); through a
+      timed swing they sway toward the standing foot and back (hipsSway 2.7 cm x sin(pi x swing), Orendurff
+      2004; BodyGoals::Point::swing from the step clock). A foot held up without timing: all weight on the other.
+      Removed the step's load share and hips deadline (hipsTime). While a foot moves the static centre-of-mass
+      loop is off (walking is not statically balanced); standing reaches keep it.
+    - Seven targets always present (standing place, moving with the root): an active one is followed 100 %,
+      the others by human_joints.json decider.passiveInfluence {head 0.9, hands 0.5, hips 0.3, chest 0.5}.
+    - Head held in space: its muscle target is the plan's head in the world seen from the REAL chest
+      (vestibulo-collic reflex, Pozzo 1990; HumanBody::drivePose overload).
+    - E / Q: walking pace (locomotion.json step.speedStep/Min/Max; length x sqrt(k), duration / sqrt(k)).
+    - Measured (stepping test, 4 s): plan pelvis accel 70 -> 10 m/s^2, real 42 -> 13.5, chest 11 -> 3.7 deg,
+      foot slide 4.5 -> 1.5 cm, side sway 4.5 cm (real 3.9-7), landings within 0.3-3.8 cm.
+    - **Open (next):** late in a quick swing the real knee lags the plan 30-58 deg (muscle damping toward zero
+      speed + torque cap); this blocks faster walking (breaks at x1.2, real 1.2-1.4 m/s), an even-paced hips
+      path, and the head sway (real +-12-15 deg; neck stiffness ~55 N m/rad is already real: 22-41, Simoneau
+      2008 / Tierney 2005). Measure the knee's torque parts per tick first. Then: capture-point balance (#4)
+      or just rename the feet-moving condition. speedMax 3 is above what the body manages now.
+    - Before commit: arrow-key limb cases (a foot held up now puts all weight on the other), PROGRESS/DECISIONS.
   Known failing tests: the 2 decider tests (test_body_decider.cpp).
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)

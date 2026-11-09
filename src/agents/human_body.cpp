@@ -233,6 +233,22 @@ void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::
     world.driveRagdollToPose(ragdoll_, rotations_.data(), static_cast<int>(rotations_.size()));
 }
 
+void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
+                          int headJoint) const {
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        const Part& p = parts_[i];
+        if (p.parent < 0) continue;
+        const math::Quat child = partPose(static_cast<int>(i), models).rotation;
+        if (p.joint == headJoint) {
+            const math::Quat realParent = world.transform(parts_[static_cast<size_t>(p.parent)].body).rotation;
+            rotations_[i] = math::normalize(math::inverse(realParent) * (root.rotation * child));
+        } else {
+            rotations_[i] = math::inverse(partPose(p.parent, models).rotation) * child;
+        }
+    }
+    world.driveRagdollToPose(ragdoll_, rotations_.data(), static_cast<int>(rotations_.size()));
+}
+
 void HumanBody::reset(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root) const {
     for (size_t i = 0; i < parts_.size(); ++i)
         world.resetBody(parts_[i].body, root * partPose(static_cast<int>(i), models));

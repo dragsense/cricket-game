@@ -310,3 +310,106 @@ TEST_CASE("picking: a still ball in range is reached at once, a nearer one soone
 }
 
 
+
+// The full-physics body (Jolt): a few steps, measured.
+#include "physics/core/physics_world.h"
+#include <cstdio>
+namespace {
+// The configs stay alive: Human keeps a pointer to the joints config and the
+// physics body reads its muscles from it when attached.
+bool makeLiveHuman(agents::Human& fielder) {
+    static core::Config skeleton, joints, locomotion;
+    if (!skeleton.load(CRICKET_CONFIG_DIR "/human_skeleton.json") ||
+        !joints.load(CRICKET_CONFIG_DIR "/human_joints.json") ||
+        !locomotion.load(CRICKET_CONFIG_DIR "/locomotion.json"))
+        return false;
+    rig::SkeletonDef def;
+    return rig::loadSkeletonDef(skeleton, def) && fielder.init(def, def.height, joints, locomotion);
+}
+
+struct StepRun {
+    float chestSwing = 0.0f;   // deg: the real chest's widest lean from vertical
+    float footSlide = 0.0f;    // m: a real ankle's widest travel while its target stands still
+    float targetJerk = 0.0f;   // m/s: an ankle target's biggest speed change in one tick
+    float pelvisAccel = 0.0f;  // m/s^2: the real pelvis's biggest level acceleration (over 50 ms)
+    bool dropped = false;
+};
+
+// Steps forward, then (after `turnAt` s) to the right.
+StepRun stepRun(float seconds, float turnAt) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    std::vector<math::Mat4> planned(static_cast<size_t>(h.rig().numJoints())), real(planned.size());
+    const int chest = h.rig().findJoint("chest");
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }  // settle
+    StepRun r;
+    math::Vec3 lastT[2], lastV[2] = {math::Vec3(0.0f), math::Vec3(0.0f)}, still[2];
+    bool have = false, holding[2] = {false, false};
+    math::Vec3 pelvisHist[7], planHist[7];
+    float planAccel = 0.0f, sideMin = 9.0f, sideMax = -9.0f;
+    int pelvisCount = 0;
+    const int ticks = static_cast<int>(seconds * 120.0f);
+    for (int i = 0; i < ticks; ++i) {
+        h.setStepInput(i * kDt < turnAt ? math::Vec2(0.0f, 1.0f) : math::Vec2(1.0f, 0.0f));
+        h.tick(kDt);
+        world.step(kDt);
+        if (!h.supported()) r.dropped = true;
+        h.rig().localToModel(h.pose(), planned);
+        if (!h.physicalModels(world, 1.0f, real)) continue;
+        {
+            const math::Vec3 p = h.root().transformPoint(math::Vec3(real[0][3]));
+            if (i * kDt > 0.6f && i * kDt < turnAt) {  // walking straight: the pelvis's side sway (the body's own side)
+                sideMin = std::min(sideMin, real[0][3].x);
+                sideMax = std::max(sideMax, real[0][3].x);
+            }
+            for (int k = 6; k > 0; --k) pelvisHist[k] = pelvisHist[k - 1];
+            pelvisHist[0] = p;
+            if (h.bodyQueue().plan) {
+                for (int k = 6; k > 0; --k) planHist[k] = planHist[k - 1];
+                planHist[0] = h.root().transformPoint(math::Vec3((*h.bodyQueue().plan)[0][3]));
+                if (pelvisCount >= 7) {
+                    const math::Vec3 b = (planHist[0] - 2.0f * planHist[3] + planHist[6]) / (9.0f * kDt * kDt);
+                    planAccel = std::max(planAccel, std::sqrt(b.x * b.x + b.z * b.z));
+                }
+            }
+            if (++pelvisCount >= 7) {  // central difference over 3 ticks each side
+                const math::Vec3 a = (pelvisHist[0] - 2.0f * pelvisHist[3] + pelvisHist[6]) / (9.0f * kDt * kDt);
+                const float am = std::sqrt(a.x * a.x + a.z * a.z);
+                r.pelvisAccel = std::max(r.pelvisAccel, am);
+            }
+        }
+        const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(chest)][1]));
+        r.chestSwing = std::max(r.chestSwing, math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f))));
+        for (int f = 0; f < 2; ++f) {
+            const math::Vec3 t = h.ankle(f == 0, planned, h.root()), a = h.ankle(f == 0, real, h.root());
+            if (have) {
+                const math::Vec3 v = (t - lastT[f]) / kDt;
+                r.targetJerk = std::max(r.targetJerk, math::length(v - lastV[f]));
+                const bool stands = math::length(v) < 0.05f;
+                if (stands && !holding[f]) still[f] = a;
+                holding[f] = stands;
+                if (stands) r.footSlide = std::max(r.footSlide, math::length(math::Vec3(a.x - still[f].x, 0.0f, a.z - still[f].z)));
+                lastV[f] = v;
+            }
+            lastT[f] = t;
+        }
+        have = true;
+    }
+    std::printf("plan pelvis accel %.1f m/s^2, real pelvis side sway %.1f cm\n", planAccel, 100.0f * (sideMax - sideMin));
+    return r;
+}
+} // namespace
+
+TEST_CASE("stepping on the physics body: steady chest, planted feet, a smooth target") {
+    const StepRun r = stepRun(4.0f, 2.0f);
+    std::printf("stepping: chest swing %.1f deg, foot slide %.1f cm, target speed change %.2f m/s per tick, "
+                "real pelvis accel %.1f m/s^2, dropped %s\n",
+                r.chestSwing, 100.0f * r.footSlide, r.targetJerk, r.pelvisAccel, r.dropped ? "yes" : "no");
+    CHECK_FALSE(r.dropped);
+}

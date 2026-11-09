@@ -234,6 +234,18 @@ void Human::loadLocomotion(const core::Config& c) {
     stepSettings_.stepHeight = c.getFloat("step.stepHeight", stepSettings_.stepHeight);
     stepSettings_.peakAt = c.getFloat("step.swingPeakAt", stepSettings_.peakAt);
     stepSettings_.liftAt = c.getFloat("step.liftAt", stepSettings_.liftAt);
+    speedStep_ = c.getFloat("step.speedStep", speedStep_);
+    speedMin_ = c.getFloat("step.speedMin", speedMin_);
+    speedMax_ = c.getFloat("step.speedMax", speedMax_);
+    baseStep_ = stepSettings_;
+    speedScale_ = 1.0f;
+}
+
+void Human::changeWalkSpeed(int direction) {
+    if (direction == 0) return;
+    speedScale_ = std::clamp(speedScale_ * (direction > 0 ? speedStep_ : 1.0f / speedStep_), speedMin_, speedMax_);
+    LOG_INFO("walk pace x{:.2f} (step {:.2f} m in {:.2f} s)", speedScale_, baseStep_.stepLength * std::sqrt(speedScale_),
+             baseStep_.stepDuration / std::sqrt(speedScale_));
 }
 
 bool Human::setHeight(float height) {
@@ -495,6 +507,13 @@ void Human::walk(float dt) {
     root_.position += walker_.velocity() * dt;
     root_.rotation = math::fromAxisAngle(math::kUp, walker_.yaw());
     stepper_.rebase(from, root_);
+    {
+        // The planted feet (and a step's points) keep their place and heading
+        // in the world as the root turns; only a swinging foot turns with it.
+        const math::Transform turned = math::inverse(root_) * from;
+        for (math::Vec3* p : {&stepFrom_, &stepSpot_, &stepAim_}) *p = turned.transformPoint(*p);
+        decider_.rebase(turned);
+    }
 
     const math::Vec3 velocity = math::inverse(root_).transformDirection(walker_.velocity());
     // Below walking speed, steps keep the walk's rhythm (full size from the
@@ -511,9 +530,14 @@ void Human::walk(float dt) {
             // where it lands, re-aimed every tick as the input turns); the
             // foot's target travels there in limbTestPlan.
             if (stepFoot_ < 0) {
+                // The pace (E / Q) applies from a step's start.
+                const float k = std::sqrt(speedScale_);
+                stepSettings_.stepLength = baseStep_.stepLength * k;
+                stepSettings_.backStepLength = baseStep_.backStepLength * k;
+                stepSettings_.sideStepLength = baseStep_.sideStepLength * k;
+                stepSettings_.stepDuration = baseStep_.stepDuration / k;
                 stepFoot_ = stepper_.pickFoot(stepInput_, stepSettings_);
-                stepStage_ = 0;
-                stepWait_ = 0.0f;
+                stepTime_ = 0.0f;
             }
             if (stepFoot_ >= 0 && math::length2(stepInput_) > 1e-6f)
                 stepSpot_ = stepper_.stepSpot(static_cast<motion::Foot>(stepFoot_), stepInput_, stepSettings_);
@@ -527,7 +551,7 @@ void Human::walk(float dt) {
         stepper_.rebase(before, root_);
         // The step's points stay where they are in the world as the root moves.
         const math::Transform toNew = math::inverse(root_) * before;
-        for (math::Vec3* p : {&stepFrom_, &stepSpot_, &stepPath_.from, &stepPath_.to, &stepPath_.at}) *p = toNew.transformPoint(*p);
+        for (math::Vec3* p : {&stepFrom_, &stepSpot_, &stepAim_}) *p = toNew.transformPoint(*p);
         decider_.rebase(toNew);
         return;
     }
@@ -834,12 +858,20 @@ math::Vec3 Human::modelCentreOfMass() {
 }
 
 bool Human::attachPhysics(physics::PhysicsWorld& world) {
+    deciderSettings_.gravity = -world.world().gravity.y;  // free arms hang on it (the decider)
     {
         // The standing ankle's height (rest pose, character space: the
         // ground at y = 0) plus the toe clearance: a lifted foot's lowest goal.
         std::vector<math::Mat4> rest(static_cast<size_t>(rig_.numJoints()));
         if (rig_.localToModel(rig_.restPose(), rest) && joints_.legL.end >= 0)
             liftedAnkleMin_ = rest[static_cast<size_t>(joints_.legL.end)][3].y + toeClearance_;
+        // The ankle ahead of the ball of the foot (the toe joint), level: the
+        // foot rolls over it at push-off.
+        if (joints_.legL.end >= 0 && joints_.toeL >= 0) {
+            const math::Vec3 d = math::Vec3(rest[static_cast<size_t>(joints_.toeL)][3]) -
+                                 math::Vec3(rest[static_cast<size_t>(joints_.legL.end)][3]);
+            ballReach_ = std::sqrt(d.x * d.x + d.z * d.z);
+        }
     }
     physics_ = &world;
     capsule_ = world.createCharacter(rig_.height(), root_.position);
@@ -903,6 +935,12 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.fittsB = muscleTiming_.fittsB;
         deciderSettings_.fittsWidth = muscleTiming_.fittsWidth;
         deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
+        deciderSettings_.armCancel = jointsConfig_->getFloat("decider.armCancel", deciderSettings_.armCancel);
+        deciderSettings_.passiveHead = jointsConfig_->getFloat("decider.passiveInfluence.head", deciderSettings_.passiveHead);
+        deciderSettings_.passiveHands = jointsConfig_->getFloat("decider.passiveInfluence.hands", deciderSettings_.passiveHands);
+        deciderSettings_.passiveHips = jointsConfig_->getFloat("decider.passiveInfluence.hips", deciderSettings_.passiveHips);
+        deciderSettings_.passiveChest = jointsConfig_->getFloat("decider.passiveInfluence.chest", deciderSettings_.passiveChest);
+        deciderSettings_.hipsSway = jointsConfig_->getFloat("decider.hipsSway", deciderSettings_.hipsSway);
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
@@ -1007,40 +1045,60 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         handPath_.on = false;
     }
     if (stepFoot_ >= 0) {
-        // A step (the stepper's decision: this foot to stepSpot_). Its target
-        // travels as the limb test's does (travel: from the real foot, Fitts'
-        // time, minimum jerk, retargeted mid-way when the spot moves):
-        // 0 stays down while the weight moves off it (liftAt of the step
-        // time), 1 up to the swing's top (half way, stepHeight up), 2 down
-        // onto the spot; landed, the stepper plants it there.
+        // A step (the stepper's decision: this foot to stepSpot_). One clock
+        // (stepTime_ over stepDuration) runs the foot and the hips together:
+        // double support (the foot stays down until liftAt while the hips
+        // move over the other foot), the swing (minimum jerk along, the arc
+        // up and down), landing at zero speed as the clock ends. A new spot
+        // mid-way re-aims the rest of the swing from where the target is.
         const int f = stepFoot_;
-        const int end = f == 0 ? joints_.legL.end : joints_.legR.end;
-        const math::Vec3 real(physicsModels_[static_cast<size_t>(end)][3]);
-        math::Vec3 goal;
-        if (stepStage_ == 0) {
-            if (stepWait_ == 0.0f) stepFrom_ = real;
-            stepWait_ += dt;
-            goal = stepFrom_;
-            stepPath_.on = false;
-            if (stepWait_ >= stepSettings_.liftAt * stepSettings_.stepDuration) stepStage_ = 1;
-        } else {
-            const math::Vec3 top = math::lerp(stepFrom_, stepSpot_, 0.5f) + math::kUp * stepSettings_.stepHeight;
-            goal = travel(stepPath_, stepStage_ == 1 ? top : stepSpot_, end);
-            if (stepPath_.time >= stepPath_.duration) {
-                if (stepStage_ == 1) {
-                    stepStage_ = 2;
-                } else {
-                    stepper_.place(static_cast<motion::Foot>(f), stepSpot_);
-                    stepper_.setLastStepped(static_cast<motion::Foot>(f));
-                    stepFoot_ = -1;
-                    stepPath_.on = false;
-                }
+        const float duration = std::max(stepSettings_.stepDuration, 0.05f);
+        const float lift = std::clamp(stepSettings_.liftAt, 0.0f, 0.9f);
+        if (stepTime_ == 0.0f) {
+            stepFrom_ = stepper_.foot(static_cast<motion::Foot>(f));
+            stepAim_ = stepSpot_;
+        }
+        auto along = [&](float time) {
+            const float u = std::clamp((time / duration - lift) / (1.0f - lift), 0.0f, 1.0f);
+            return u * u * u * (10.0f + u * (6.0f * u - 15.0f));  // minimum jerk
+        };
+        constexpr float kReaim = 0.95f;  // swing share after which the spot stays
+        if (math::distance(stepSpot_, stepAim_) > 1e-4f) {
+            const float w = along(stepTime_);
+            if (w < kReaim) {
+                const math::Vec3 at = math::lerp(stepFrom_, stepAim_, w);
+                stepFrom_ = (at - stepSpot_ * w) / (1.0f - w);
+                stepAim_ = stepSpot_;
             }
+        }
+        stepTime_ = std::min(duration, stepTime_ + dt);
+        const float s = stepTime_ / duration;
+        const float u = std::clamp((s - lift) / (1.0f - lift), 0.0f, 1.0f);
+        math::Vec3 goal = math::lerp(stepFrom_, stepAim_, along(stepTime_));
+        goal.y += stepSettings_.stepHeight * motion::swingArc(u, stepSettings_.peakAt);
+        // Push-off (double support): the heel rises, the foot rolls over its
+        // ball up to the toe-off pitch, so the trailing leg stays long and
+        // the hips need not drop (a determinant of gait, Saunders 1953);
+        // the swing carries that lift away.
+        {
+            const float r = std::clamp(s / std::max(lift, 1e-3f), 0.0f, 1.0f);
+            const float pitch = walkSettings_.toeOffPitch * r * r * (3.0f - 2.0f * r);
+            const float fade = 1.0f - along(stepTime_);
+            goal.y += fade * ballReach_ * std::sin(pitch);
+            goal.z += fade * ballReach_ * (1.0f - std::cos(pitch));
+        }
+        if (stepTime_ >= duration) {
+            stepper_.place(static_cast<motion::Foot>(f), stepAim_);
+            stepper_.setLastStepped(static_cast<motion::Foot>(f));
+            stepFoot_ = -1;
+            stepTime_ = 0.0f;
+            goal = stepAim_;
         }
         if (stepFoot_ >= 0) stepper_.place(static_cast<motion::Foot>(f), goal);  // the root keeps between the feet
         motion::BodyGoals::Point& foot = goals.foot[f];
         foot.active = true;
         foot.position = goal;
+        foot.swing = u;  // off the ground from liftAt to the step's end
         goals.down[f] = false;
         // The other foot stands where the stepper has it (on the ground).
         goals.foot[1 - f].active = true;
@@ -1079,7 +1137,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     // The muscles: they carry the weight beyond each joint, and Jolt's pose
     // drive corrects toward this tick's pose.
     humanBody_.holdWeight(world);
-    humanBody_.drivePose(world, target);
+    humanBody_.drivePose(world, target, root_, joints_.head);
     // The capsule is as tall as the pose's pelvis is high (crouch, stride).
     const float pelvisY = target[static_cast<size_t>(joints_.pelvis)][3].y;
     world.setCharacterHeight(capsule_, rig_.height() * std::clamp(pelvisY / restPelvisHeight_, 0.0f, 1.0f));

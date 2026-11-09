@@ -54,6 +54,7 @@ struct InputState {
 enum class Action : uint8_t {
     ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
     StepForward, StepBack, StepLeft, StepRight,
+    WalkFaster, WalkSlower,  // the steps' pace: longer and quicker steps, or shorter and slower
     ModShift, ModCtrl,  // held modifiers (bowling wheel, limb test up/down)
     ToggleMouseLook,
     FreeView,    // the camera orbits freely; the player keeps their heading

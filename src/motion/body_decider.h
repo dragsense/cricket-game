@@ -51,6 +51,10 @@ struct BodyGoals {
         bool active = false;
         math::Vec3 position{0.0f};
         math::Vec3 velocity{0.0f};  // m/s, the target's own motion
+        // A foot on a timed swing (a step): the share of its time off the
+        // ground gone, from toe-off (0) to heel strike (1). Negative: no
+        // timing (a foot just held up).
+        float swing = -1.0f;
     };
     struct Turn {
         bool active = false;
@@ -115,6 +119,22 @@ struct BodyDeciderSettings {
     // The hips' move to a new place takes Fitts' time (human_joints.json
     // "reach": a + b log2(2D / width), s) on a minimum-jerk path.
     float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
+    // m/s^2 down, from the physics world (physics_world.json): a free arm
+    // hangs on it as a pendulum. 0: free arms only cancel the turning.
+    float gravity = 0.0f;
+    // human_joints.json "decider.armCancel": the share of that turning the
+    // free arms cancel.
+    float armCancel = 0.63f;
+    // human_joints.json "decider.hipsSway" (m): through a foot's timed swing
+    // the hips, between the feet, go toward the standing foot and back, this
+    // far at mid-swing (centre of mass side-to-side 3.9-7 cm in all over a
+    // stride, Orendurff et al. 2004; a sine over the single support).
+    float hipsSway = 0.027f;
+    // human_joints.json "decider.passiveInfluence": every one of the seven
+    // targets is always there (where the part is standing, moving with the
+    // root); one with a goal pulls fully, the others by their share (the
+    // user's design 2026-11-09), the body's own motion the rest.
+    float passiveHead = 0.7f, passiveHands = 0.5f, passiveHips = 0.5f, passiveChest = 0.5f;
 };
 
 class BodyDecider {
@@ -181,6 +201,12 @@ private:
     // balance: the hips go where the centre of mass is over the feet; else
     // they stay where they are and only the legs reach the feet.
     void planLegs(const BodyGoals& goals, const BodyDeciderSettings& s, BodyQueue& out, bool balance = true);
+    // Arms without a goal: not held where the body left them; each hangs
+    // from its shoulder (a pendulum) and swings to cancel the rest of the
+    // plan's turning about the vertical, by its mass and lever.
+    // Free hands: the passive share toward their own (hanging) targets.
+    void passiveHands(const bool free[2], const BodyDeciderSettings& s, BodyQueue& out);
+    void freeArms(const BodyGoals& goals, const BodyDeciderSettings& s, BodyQueue& out);
     // The plan's joint `j` (character space) turned by `turn`, within its range.
     void turnPlanned(int j, math::Quat turn);
     // The plan's pelvis placed at `t` (character space).
@@ -207,6 +233,9 @@ private:
     // Each foot's bone to the pelvis's, standing (rest): a planted leg's knee
     // pole is the standing one carried with its foot.
     math::Quat footToPelvis_[2] = {math::identityQuat(), math::identityQuat()};
+    math::Quat restFoot_[2] = {math::identityQuat(), math::identityQuat()};  // each foot's bone standing (character space)
+    math::Quat restHead_ = math::identityQuat();  // the head's bone standing (character space)
+    math::Vec3 restHand_[2]{};  // each hand standing, hanging (character space): its passive target
     math::Vec3 hipCentre_{0.0f};  // between the hips, from the pelvis (rest)
     // The relaxed arm, in the chest's frame (rest): shoulder-to-wrist
     // direction and the way its elbow points when it bends from there (back:
@@ -232,6 +261,13 @@ private:
     std::vector<float> mass_;          // per rig joint (kg)
     std::vector<math::Vec3> centre_;   // per rig joint: its mass's centre in the bone's frame
     float totalMass_ = 0.0f;
+    // Free arms: each rig joint's arm (-1 none, 0 left, 1 right), the
+    // planned mass centres last decide (character space), each arm's swing
+    // angle (rad, forward +) about the shoulder.
+    std::vector<int8_t> armOf_;
+    std::vector<math::Vec3> lastCentre_;
+    bool lastValid_ = false;
+    float armAngle_[2] = {0.0f, 0.0f};
     rig::Pose scratch_;  // the plan (locals): the body now, with the planned parts replaced
     std::vector<math::Mat4> models_, solved_;  // the body now; the plan (character space)
 };

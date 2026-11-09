@@ -55,6 +55,13 @@
                              // (double support ~20 % of a walking cycle, BIOMECHANICS 4.2; the user's call 2026-11-09: with gravity a loaded foot cannot lift)
     "stepHeight": 0.2,       // m ankle apex: the knee bends, the heel rises (about 25 cm, 4.5)
     "toeClearance": 0.012,   // m, a lifted foot's lowest point above the ground at least (minimum toe clearance 1.1-1.3 cm, Winter; BIOMECHANICS 4.5)
-    "swingPeakAt": 0.35      // apex early in the swing (heel up first, toes low at landing)
+    "swingPeakAt": 0.35,     // apex early in the swing (heel up first, toes low at landing)
+    // E / Q change the pace by this factor per press (within speedMin..speedMax
+    // times the steps above). Faster walking takes both longer and quicker
+    // steps (step length and cadence each grow with about the square root of
+    // speed, Grieve & Gear 1966): length x sqrt(k), duration / sqrt(k).
+    "speedStep": 1.2,
+    "speedMin": 0.5,
+    "speedMax": 3.0
   }
 }

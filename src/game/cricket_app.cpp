@@ -367,6 +367,8 @@ bool CricketApp::pumpEvents() {
     // walking); the body follows the feet. The heading only turns the player.
     controlled.setFacing(true, heading_);
     controlled.setStepInput(move);
+    if (actions_.pressed(input_, core::Action::WalkFaster)) controlled.changeWalkSpeed(1);
+    if (actions_.pressed(input_, core::Action::WalkSlower)) controlled.changeWalkSpeed(-1);
 
     // Limb test: no picking, balls or throwing (no ball reaches the hand).
     if (!limbTest_ && actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();

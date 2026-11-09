@@ -148,6 +148,9 @@ public:
     bool attachPhysics(physics::PhysicsWorld& world);
     // The capsule holds the body (not let go after a lean).
     bool supported() const { return supportOn_; }
+    // The step under way: its foot (-1: none) and its clock share [0, 1].
+    int stepFoot() const { return stepFoot_; }
+    float stepPhase() const { return stepTime_ / std::max(stepSettings_.stepDuration, 0.05f); }
     // Debug drawing: the capsule (its feet, height and radius; world) and
     // the line the release reads, from the centre of the feet to the hips
     // (the physics body, world). False without a body.
@@ -177,6 +180,10 @@ public:
     // zero for none): each step swings one foot (locomotion.json "step") and
     // the body follows from the stance solve. Held, the steps go on.
     void setStepInput(math::Vec2 dir) { stepInput_ = dir; }
+    // Walking pace: +1 faster, -1 slower (locomotion.json "step.speedStep");
+    // the next step takes it.
+    void changeWalkSpeed(int direction);
+    float walkSpeedScale() const { return speedScale_; }
     float speed() const { return walker_.speed(); }  // m/s
     // Stands the fielder at `position` (world) facing `yaw` radians, feet at
     // rest, any jump cleared.
@@ -491,6 +498,7 @@ private:
     // "step.toeClearance"), so its target never runs along or into the ground.
     float toeClearance_ = 0.012f;
     float liftedAnkleMin_ = 0.0f;
+    float ballReach_ = 0.0f;  // m, ankle to the ball of the foot, level (rest): push-off rolls over it
     // Physics: a hand's or foot's commanded point travels from where it was
     // to its goal in Fitts' time on a minimum-jerk path (Flash & Hogan 1985);
     // the IK solves for it (character space). A goal moved mid-way retargets.
@@ -504,6 +512,8 @@ private:
     math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
     bool stepWalk_ = false;         // single steps in use (standing)
     motion::StepSettings stepSettings_;
+    motion::StepSettings baseStep_;  // as loaded: the pace scale's 1
+    float speedScale_ = 1.0f, speedStep_ = 1.2f, speedMin_ = 0.5f, speedMax_ = 3.0f;
     float heelLift_[2] = {0.0f, 0.0f};         // radians, smoothed heel lift past the ankle's range (solveIk)
     static constexpr float kHeelRate = 15.0f;  // 1/s, how fast the heel lift follows (no flicker)
     float tickSeconds_ = 1.0f / 120.0f;        // this tick's step
@@ -546,12 +556,12 @@ private:
     bool face_ = false;
     float faceYaw_ = 0.0f;
     // A step with the physics body: the stepper decides it (foot, spot); its
-    // target travels like a limb-test goal (GoalPath).
+    // foot and the hips run on one clock (stepTime_): double support, swing,
+    // landing.
     int stepFoot_ = -1;              // the stepping foot (-1: none)
-    int stepStage_ = 0;              // 0 weight shift (down), 1 up to the top, 2 down onto the spot
-    float stepWait_ = 0.0f;          // s in stage 0
+    float stepTime_ = 0.0f;          // s into the step
     math::Vec3 stepFrom_{0.0f}, stepSpot_{0.0f};  // character space: where it left, where it lands
-    GoalPath stepPath_;
+    math::Vec3 stepAim_{0.0f};       // the spot the swing heads for now (re-aimed without a jump)
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians
