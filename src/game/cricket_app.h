@@ -69,9 +69,8 @@ private:
     // point under the mouse (drawn), from the interpolated pose.
     void updateBowlArc(float alpha);
     void applyBowlSettings();  // config/bowling.json, with the slow-motion toggle
-    // U: random action and release, all on its own: the bowler runs at the
-    // batter (jog building to a run), jumps at runUp.jumpSpeed, the action
-    // starts in the air, then the way down and the release follow.
+    // U: random action and release, all on its own, standing: the action
+    // starts at once, then the way down and the release follow.
     void randomBowl();
     // Limb test: F chooses the limb, the arrows move its target (Shift:
     // up/down) over `seconds`; R resets the pose.
@@ -131,10 +130,7 @@ private:
     std::mt19937 rng_{std::random_device{}()};  // T: release speed and landing spot; U: random action
     bool slowMotion_ = false;   // I: the bowling action in slow motion
     bool autoRelease_ = false;  // U: down and release on their own once the hand holds
-    bool autoBowl_ = false;     // U: a run-up or random action under way (the mouse and wheel do not aim)
-    bool runUp_ = false;        // U: running at the batter until the jump takes off
-    float runUpYaw_ = 0.0f;     // heading of the run-up (radians)
-    float runUpJumpSpeed_ = 4.5f;  // m/s the bowler jumps at (bowling.json runUp.jumpSpeed)
+    bool autoBowl_ = false;     // U: a random action under way (the mouse and wheel do not aim)
     float heading_ = 0.0f;    // controlled player's heading: the camera's, unless freeView_
     bool freeView_ = false;   // V: the camera moves freely; the heading is held
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)

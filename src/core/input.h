@@ -54,7 +54,7 @@ struct InputState {
 enum class Action : uint8_t {
     ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
     StepForward, StepBack, StepLeft, StepRight,
-    Run, Jog,  // hold to run / jog; otherwise walk
+    ModShift, ModCtrl,  // held modifiers (bowling wheel, limb test up/down)
     ToggleMouseLook,
     FreeView,    // the camera orbits freely; the player keeps their heading
     ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)

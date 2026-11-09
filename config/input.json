@@ -11,9 +11,9 @@
     "StepBack": ["S"],
     "StepLeft": ["A"],
     "StepRight": ["D"],
-    // Pace: walk only for now; Run / Jog are unused until running returns.
-    "Run": ["LeftShift", "RightShift"],
-    "Jog": ["LeftCtrl", "RightCtrl"],
+    // Held modifiers: Shift (bowling: wheel sets the gap; limb test: arrows go up/down), Ctrl (bowling: wheel sizes the action circle).
+    "ModShift": ["LeftShift", "RightShift"],
+    "ModCtrl": ["LeftCtrl", "RightCtrl"],
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
@@ -38,11 +38,10 @@
     // follows, the mouse picks the release point; after a click the wheel leans the
     // circle); B again goes back.
     "BowlAim": ["B"],
-    // U: the bowler bowls on his own: runs at the batter (jog building to a
-    // run), the camera following him, jumps (bowling.json runUp.jumpSpeed),
-    // the hand goes to a random action point in the air (bowling.json
-    // "random"), then down (the front foot strides) and the release at a
-    // random point. I toggles slow motion for the action.
+    // U: the bowler bowls on his own, standing (no run-up): the hand goes to
+    // a random action point (bowling.json "random"), then down (the front
+    // foot strides) and the release at a random point. I toggles slow motion
+    // for the action.
     "RandomBowl": ["U"],
     "SlowMotion": ["I"],
     // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,

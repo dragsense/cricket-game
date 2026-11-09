@@ -7,7 +7,7 @@
 // gives step length and swing/stance durations for a speed, from
 // docs/BIOMECHANICS.md section 4 (step = k * H * (v / v_ref)^0.42). Running
 // uses the same settings with a flight phase (section 5).
-// Tunables in config/locomotion.json "walk", "jog" and "run". Pure math, no allocations.
+// Tunables in config/locomotion.json "walk". Pure math, no allocations.
 
 #include "math/math.h"
 
@@ -57,13 +57,6 @@ struct WalkSettings {
     float sideFollow = 1.0f;     // share of the sideways shift over the stance foot the pelvis takes
     float pelvisDrop = 0.0f;     // m the pelvis sits lower (stance knee flexes more when running)
 };
-
-// Movement pace chosen by the player; the body's gait shape follows the
-// actual speed (blended), so changing pace never snaps.
-enum class Gait { Walk, Jog, Run };
-
-// Field-by-field blend of two gait settings, t in [0, 1].
-WalkSettings blendGait(const WalkSettings& a, const WalkSettings& b, float t);
 
 struct GaitTiming {
     float stepLength = 0.0f;  // m

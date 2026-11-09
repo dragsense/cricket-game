@@ -61,7 +61,6 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
     auto target = [&](int f, float swingLeft) {
         math::Vec3 stance = stance_[f];
         stance.x *= style.widthScale;
-        if (stanceTurn_ != 0.0f) stance = math::fromAxisAngle(math::kUp, stanceTurn_) * stance;
         math::Vec3 p = stance + velocity * (swingLeft + style.landAhead * g.stance);
         p.y = stance_[f].y;
         return p;
@@ -101,16 +100,14 @@ void FootStepper::tickGait(float dt, math::Vec3 velocity, const GaitTiming& g, f
         from_ = feet_[f];
         t_ = 0.0f;
         wait_ = 0.0f;
-        stretch_ = nextStretch_;
-        nextStretch_ = 1.0f;
-        dur_ = g.swing * stretch_;
+        dur_ = g.swing;
     }
     // Aimed at the predicted landing spot while the swing is young; from
     // kAimLock on the spot is fixed (held in the world), so the foot comes
     // down onto it instead of chasing a moving spot into the ground.
     if (t_ < kAimLock) to_ = target(swing_, (1.0f - t_) * dur_);
     const int swing = swing_, stance = 1 - swing_;
-    advanceSwing(dt, dur_, stepHeight * stretch_, style.peakAt, 0.0f, style.liftOffSpeed);
+    advanceSwing(dt, dur_, stepHeight, style.peakAt, 0.0f, style.liftOffSpeed);
 
     // Swing foot: pointed after toe-off, toes relax, then levels for landing.
     const float t = t_;

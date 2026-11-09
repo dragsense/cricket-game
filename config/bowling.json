@@ -134,35 +134,6 @@
     // I toggles slow motion: the whole game runs at this share of real speed.
     "factor": 0.2
   },
-  // U run-up: each U puts the bowler at `start` (world, m; behind the
-  // stumps at z -10.06, facing bowler.yawDeg), he runs straight at the
-  // batter, speeding up, and jumps (the bound, off the front foot) once
-  // jumpSpeed fast (m/s; run pace is 5). ~7.5 m from start to back-foot contact.
-  "runUp": {
-    "start": [0.4, 0.0, -17.0],
-    "jumpSpeed": 4.5,
-    // One timed sequence from the bound (Bartlett 1996, Portus 2004,
-    // Worthington 2013): take-off off the front foot, side-on in the air,
-    // the hand gathers at the action point; back-foot contact -> front-foot
-    // contact 0.10-0.15 s (hand down and back, front arm up at the batter,
-    // front foot straight from the air: strideTime, stride m ahead of the
-    // back foot; real fast bowlers ~0.75 x height); front-foot contact ->
-    // release 0.08-0.12 s (over the top, front arm tucks, body front-on).
-    "backTime": 0.14,
-    "swingTime": 0.16,
-    "strideTime": 0.14,
-    "checkStops": false,   // freeze at back-foot contact, front-foot contact and the release; a click goes on
-    // The bound: once at jumpSpeed the running goes on; the right foot's step
-    // takes boundStretch times as long (so it goes further and higher), the
-    // left foot's next step (the delivery stride) strideStretch times.
-    "boundStretch": 1.6,
-    "strideStretch": 1.2,
-    "stride": 0.6,   // x body height (real fast bowlers ~0.75)
-    "runOnPace": 0.9,  // share of the run-up's speed the run-on picks up to (normal running)
-    "runOnHold": 0.4,
-    "runOnStep": 0.3,  // x body height: first run-on step, the back leg lands this far ahead of the front foot  // share of runOn it keeps running at that pace before slowing to a stop
-    "runOn": 2.5 // s running on after the release, easing to a stop
-  },
   "random": {
     // U: a random action within these ranges (degrees unless noted):
     // action circle turn, action point angle (0 down, 90 ahead, 180 up),

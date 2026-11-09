@@ -95,16 +95,6 @@ TEST_CASE("gait stepping alternates feet, keeps the planted foot fixed, then set
     CHECK(math::distance(st.foot(Foot::Right), restR) < s.settleDistance);
 }
 
-TEST_CASE("gait blend interpolates every setting") {
-    WalkSettings a, b;
-    b.speed = 5.0f;
-    b.flightFraction = 0.4f;
-    const WalkSettings m = blendGait(a, b, 0.5f);
-    CHECK(m.speed == doctest::Approx(0.5f * (a.speed + 5.0f)));
-    CHECK(m.flightFraction == doctest::Approx(0.2f));
-    CHECK(m.stepK == doctest::Approx(a.stepK));
-}
-
 TEST_CASE("running bob is lowest mid-stance and highest mid-flight") {
     const float f = 0.4f;  // stance is the first 60 % of the swing
     CHECK(gaitBob(0.3f, f) == doctest::Approx(-0.5f));

@@ -118,7 +118,6 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
     root_.rotation = math::fromAxisAngle(math::kUp, def.spawnYaw);
     previousRoot_ = root_;
     walker_.reset(def.spawnYaw);
-    gait_ = motion::Gait::Walk;
     lean_ = math::Vec2(0.0f);
     accel_ = 0.0f;
     legPhase_ = armAmount_ = headYaw_ = 0.0f;
@@ -191,8 +190,8 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
 }
 
 void Human::loadLocomotion(const core::Config& c) {
-    // Load-time only (builds path strings). "jog" starts from the walk values,
-    // "run" from the jog values.
+    // Load-time only (builds path strings). Walking is the only pace (jog and
+    // run removed, the user's call 2026-11-09).
     auto load = [&](const std::string& block, motion::WalkSettings& w) {
         auto get = [&](const char* key, float v) { return c.getFloat(block + "." + key, v); };
         auto deg = [&](const char* key, float radians) { return math::radians(get(key, math::degrees(radians))); };
@@ -238,10 +237,6 @@ void Human::loadLocomotion(const core::Config& c) {
         w.sideFollow = get("sideFollow", w.sideFollow);
     };
     load("walk", walkSettings_);
-    jogSettings_ = walkSettings_;
-    load("jog", jogSettings_);
-    runSettings_ = jogSettings_;  // the jog block is the run's base (no jog pace of its own)
-    load("run", runSettings_);
     postureLean_ = math::radians(c.getFloat("walk.postureLeanDeg", math::degrees(postureLean_)));
     stepSettings_.stepLength = c.getFloat("step.stepLength", stepSettings_.stepLength);
     toeClearance_ = c.getFloat("step.toeClearance", toeClearance_);
@@ -294,27 +289,6 @@ void Human::loadLocomotion(const core::Config& c) {
     jump_.moveBack = deg("moveBackDeg", jump_.moveBack);
     jump_.moveMin = get("moveMin", jump_.moveMin);
     jump_.elbowMove = deg("elbowMoveDeg", jump_.elbowMove);
-    control_ = shape_ = walkSettings_;
-}
-
-void Human::blendShape() {
-    // Walk below walking speed, then walk -> jog -> run by the actual speed,
-    // measured against each pace's speed in the direction of travel.
-    const motion::WalkSettings* gaits[2] = {&walkSettings_, &runSettings_};
-    const math::Vec2 local = walker_.localVelocity();
-    const bool forward = local.y > std::fabs(local.x);
-    auto ref = [&](const motion::WalkSettings& g) {
-        return forward ? g.speed : std::fabs(local.x) > std::fabs(local.y) ? g.sideSpeed : g.backSpeed;
-    };
-    const float v = walker_.speed();
-    shape_ = runSettings_;
-    for (int i = 0; i < 2; ++i) {
-        if (v > ref(*gaits[i])) continue;
-        if (i == 0) shape_ = walkSettings_;
-        else shape_ = motion::blendGait(*gaits[i - 1], *gaits[i],
-                                        (v - ref(*gaits[i - 1])) / std::max(ref(*gaits[i]) - ref(*gaits[i - 1]), 0.1f));
-        break;
-    }
 }
 
 bool Human::setHeight(float height) {
@@ -472,28 +446,8 @@ void Human::placeAt(math::Vec3 position, float yaw) {
     previousRoot_ = root_;
     walker_.reset(yaw);
     jumper_ = motion::JumpController{};
-    jumpQueued_ = followThrough_ = landTurn_ = autoDeliver_ = checkHeld_ = bounding_ = false;
-    carrySpeed_ = frontLift_ = 0.0f;
+    jumpQueued_ = false;
     plantFeet();
-}
-
-void Human::autoDeliver(float releaseAngle, float releaseTilt) {
-    if (phase_ != Phase::Bowl) return;
-    autoDeliver_ = true;
-    autoReleaseAngle_ = releaseAngle;
-    autoReleaseTilt_ = releaseTilt;
-    // The bound: the running goes on as it is; the back foot's step under
-    // way is stretched (longer and higher), and the front foot's next one
-    // (the delivery stride) too. The hand reaches the action point, then
-    // goes down to the release circle (runBackTime) as the back foot lands.
-    stepper_.stretchSwing(bowl_.boundStretch);
-    stepper_.stretchNext(bowl_.strideStretch);
-    bounding_ = true;
-    carrySpeed_ = walker_.speed();
-    autoCoilTime_ = std::max(stepper_.swingTimeLeft() - bowl_.runBackTime, 0.05f);
-    // The body stays facing the batter; it turns once the hand starts down
-    // from the action point (Back stage).
-    bowlYaw_ = bowlBaseYaw_;
 }
 
 void Human::plantFeet() {
@@ -507,7 +461,6 @@ void Human::tick(double dt) {
     tickSeconds_ = static_cast<float>(dt);
     previous_.locals = current_.locals;  // same size: no allocation
     previousRoot_ = root_;
-    if (checkHeld_) return;  // frozen at a check stop
     current_.locals = rig_.restPose().locals;
     // Jump (not picking): standing, held J crouches; moving, it goes at once.
     const bool moving = walker_.speed() >= 0.2f;
@@ -518,44 +471,16 @@ void Human::tick(double dt) {
         // Moving, the swinging leg is the knee that drives up.
         if (jumpMoving_ || !stepper_.stepping())
             jumper_.start(jumpMoving_, stepper_.swingFoot() == static_cast<int>(motion::Foot::Left),
-                          walker_.speed() / std::max(runSettings_.speed, 0.1f));
+                          walker_.speed() / std::max(walkSettings_.speed, 0.1f));
     }
-    // Moving: the dip holds until the take-off foot (if set) has just planted
-    // (the other leg early in its swing); the push then goes off it (walk()
+    // Moving: after the dip the push goes off the planted foot (walk()
     // freezes the feet from the push on).
-    const bool footReady = jumpFoot_ < 0 || (stepper_.stepping() && stepper_.swingFoot() != jumpFoot_ &&
-                                             stepper_.swingProgress() < 0.35f);
-    if (jumpMoving_ && jumper_.loading() && (footReady || !moving)) {
+    if (jumpMoving_ && jumper_.loading()) {
         jumper_.release(moveInput_, jump_.moveLoad);
         jumpQueued_ = false;
     }
     if (!jumpHeld_ && !(jumpMoving_ && jumper_.loading())) jumper_.release(moveInput_);
-    const bool wasAirborne = jumper_.airborne();
     jumper_.tick(static_cast<float>(dt), jump_);
-    if (wasAirborne && !jumper_.airborne() && phase_ == Phase::Bowl) {
-        // Landing into the bowling action on the back foot (the bowling
-        // arm's side); the front foot stays up until the hand leaves the
-        // action point, then strides (downBowl). The body keeps moving over
-        // the planted back foot (slowing); the run's speed is handed back at
-        // the release.
-        carrySpeed_ = walker_.speed();
-        math::Vec3 left = stepper_.foot(motion::Foot::Left), right = stepper_.foot(motion::Foot::Right);
-        math::Vec3& front = reachLeft_ ? right : left;
-        const math::Vec3& back = reachLeft_ ? left : right;
-        frontLift_ = std::max(front.y - back.y, jump_.tuck);
-        front.y = back.y;
-        // The bound is just a running step: the landing foot planted last, the
-        // order goes on (the stride, then the back leg, then left, right ...).
-        stepper_.place(motion::Foot::Left, left);
-        stepper_.place(motion::Foot::Right, right);
-        stepper_.landed(reachLeft_ ? motion::Foot::Left : motion::Foot::Right);
-        // Back-foot contact: the front leg still in the air; the body turns
-        // with the hand on its way down (Back stage).
-        landTurn_ = true;
-        followThrough_ = false;
-        checkHeld_ = checkStops_ && autoDeliver_;
-        frontStopped_ = false;
-    }
     // Single steps: standing still (not walking, picking or jumping), a step
     // input takes steps until the fielder walks or acts.
     const bool standing = (phase_ == Phase::Idle || phase_ == Phase::Pose) && walker_.speed() < 0.2f &&
@@ -563,48 +488,6 @@ void Human::tick(double dt) {
     if (!standing) stepWalk_ = false;
     else if (math::length2(stepInput_) > 1e-6f) stepWalk_ = true;
     walk(static_cast<float>(dt));
-    if (bounding_ && stepper_.swingFoot() != static_cast<int>(reachLeft_ ? motion::Foot::Left : motion::Foot::Right)) {
-        // Back-foot contact (the long step down): the running goes on.
-        bounding_ = false;
-        landTurn_ = true;
-        followThrough_ = false;
-        checkHeld_ = checkStops_ && autoDeliver_;
-    }
-    if (jumpMoving_ && jumpFoot_ >= 0 &&
-        (jumper_.stage() == motion::JumpStage::Push || jumper_.airborne())) {
-        // Bound off the take-off foot: the other (swing) leg drives on ahead
-        // through the push and the flight and comes down there.
-        const motion::Foot drive = jumpFoot_ == static_cast<int>(motion::Foot::Left) ? motion::Foot::Right : motion::Foot::Left;
-        math::Vec3 p = stepper_.foot(drive);
-        // Feet are world-fixed in the bound (walk()): the swing foot travels
-        // to its landing spot, arriving as the flight ends.
-        // Its own path: the knee drives up at the push (the foot lifted high),
-        // then the foot reaches forward and comes down to land.
-        const float knee = jump_.moveKnee * rig_.legLength();
-        const float left = jumper_.airborne() ? jumper_.timeToLand() : 0.07f;
-        const float follow = std::min(1.0f, static_cast<float>(dt) / std::max(left, static_cast<float>(dt)));
-        p.z += (jump_.moveReach * rig_.legLength() - p.z) * follow;
-        if (jumper_.airborne()) {
-            const float s = 1.0f - jumper_.timeToLand() / std::max(jumper_.flightTime(), 0.01f);
-            p.y = knee * std::cos(0.5f * math::kPi * s);
-        } else {
-            p.y += (knee - p.y) * std::min(1.0f, static_cast<float>(dt) * 15.0f);
-        }
-        stepper_.place(drive, p);
-        if (jumper_.airborne()) {
-            // The take-off foot stays where it left the ground and the body
-            // moves away from it, so the leg stretches out straight behind
-            // (the foot rising only as the leg's length needs; beyond the
-            // trail it is drawn along). After the landing it swings through
-            // past the landing leg into the stride.
-            const motion::Foot push = static_cast<motion::Foot>(jumpFoot_);
-            math::Vec3 q = stepper_.foot(push);
-            const float leg = rig_.legLength() * 0.98f;
-            q.z = std::max(q.z, -jump_.moveTrail * rig_.legLength());
-            q.y = rig_.legLength() + jumper_.bodyY() - std::sqrt(std::max(leg * leg - q.z * q.z, 0.0f));  // hip rises with the body
-            stepper_.place(push, q);
-        }
-    }
     targets_.footL = root_.transformPoint(stepper_.foot(motion::Foot::Left));
     targets_.footR = root_.transformPoint(stepper_.foot(motion::Foot::Right));
     // Feet stand on the world's real surface under them (Jolt ground query:
@@ -614,30 +497,18 @@ void Human::tick(double dt) {
         targets_.footL.y += physics_->groundHeightAt(targets_.footL) - base;
         targets_.footR.y += physics_->groundHeightAt(targets_.footR) - base;
     }
-    // After a run-up landing the front foot is held up, coming down over its
-    // stride (before the body settles, so the body stands on the landed foot).
-    if (phase_ != Phase::Bowl || (strideFoot_ >= 0 && !stepper_.stepping())) frontLift_ = 0.0f;
-    if (frontLift_ > 0.0f) {
-        const motion::Foot front = reachLeft_ ? motion::Foot::Right : motion::Foot::Left;
-        const bool striding = strideFoot_ == static_cast<int>(front) && stepper_.stepping();
-        (front == motion::Foot::Left ? targets_.footL : targets_.footR).y +=
-            frontLift_ * (striding ? 1.0f - stepper_.swingProgress() : 1.0f);
-    }
     // Single steps and walking: one solve from the body's real constraints
     // (motion::BodyReposition): the swinging foot reaches, the other carries
-    // the body. (Jogging, running, jumping, picking and bowling stay on the
+    // the body. (Jumping, picking and bowling stay on the
     // backup repositioning for now.) The limb test's pose is the physics
     // body's alone: here it stands like idle.
-    const bool walking = (phase_ == Phase::Idle || phase_ == Phase::Pose) && !jumper_.active() && !followThrough_;
+    const bool walking = (phase_ == Phase::Idle || phase_ == Phase::Pose) && !jumper_.active();
     if (walking && stepper_.stepping()) stepPlanted_ = 1 - stepper_.swingFoot();
     const bool stance = stepWalk_ || walking;
     if (!stance) repositionBody(static_cast<float>(dt));
     // In the air the feet leave the ground (after the body settles over them).
-    // (Not in a bound: there each leg has its own path, set above.)
-    if (!(jumpMoving_ && jumpFoot_ >= 0)) {
-        targets_.footL.y += jumper_.feetY();
-        targets_.footR.y += jumper_.feetY();
-    }
+    targets_.footL.y += jumper_.feetY();
+    targets_.footR.y += jumper_.feetY();
     addGaitMotion(static_cast<float>(dt));
     reachError_ = 0.0f;
     updatePick(static_cast<float>(dt));
@@ -703,89 +574,28 @@ void Human::tick(double dt) {
 
 void Human::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
-    control_ = gait_ == motion::Gait::Run ? runSettings_ : gait_ == motion::Gait::Jog ? jogSettings_ : walkSettings_;
-    // A run-up delivery keeps running whatever the gait keys say.
-    if (autoDeliver_) control_ = runSettings_;
     if (jumper_.active() &&
         (!jumpMoving_ || jumper_.airborne() || jumper_.stage() == motion::JumpStage::Push)) {
         // Jumping: the root carries the flight's travel and the feet go with
         // it (character space), landing where the body comes down. A moving
         // jump keeps the walker's speed (not ticked) and its gait (frozen
         // mid-stride); before take-off and after landing it walks as usual.
-        if (!jumpMoving_) walker_.tick(dt, math::Vec2(0.0f), false, 0.0f, control_);
-        if (jumpMoving_ && autoDeliver_) {
-            // The bound of a run-up delivery: the body turns side-on in the
-            // air (run turn rate), the flight keeping its world velocity.
-            const math::Vec3 world = walker_.velocity();
-            walker_.tick(dt, math::Vec2(0.0f), true, bowlYaw_, runSettings_);
-            const math::Vec3 local = math::inverse(math::fromAxisAngle(math::kUp, walker_.yaw())) * world;
-            walker_.setLocalVelocity(math::Vec2(local.x, local.z));
-            root_.rotation = math::fromAxisAngle(math::kUp, walker_.yaw());
-        }
-        blendShape();
+        if (!jumpMoving_) walker_.tick(dt, math::Vec2(0.0f), false, 0.0f, walkSettings_);
         const math::Transform from = root_;
         const math::Vec2 v = jumper_.velocity();
         root_.position += root_.rotation * math::Vec3(v.x, 0.0f, v.y) * dt;
         if (jumpMoving_) root_.position += walker_.velocity() * dt;
         // Pushing off, the take-off foot stays planted (the body moves over it).
-        // In a bound the feet stay where they are in the world too (tick()
-        // swings them), so they do not ride along with the body.
-        if (jumper_.stage() == motion::JumpStage::Push || (jumpMoving_ && jumpFoot_ >= 0)) stepper_.rebase(from, root_);
+        if (jumper_.stage() == motion::JumpStage::Push) stepper_.rebase(from, root_);
         return;
     }
     // While picking the fielder stands (walk input waits for the return).
     // Bowling turns the whole player to bowlYaw_ (side-on, then straight).
-    if (phase_ == Phase::Bowl && !holding_ && carrySpeed_ > 0.0f) {
-        // Released after a run-up: the bowler runs on, straight (the facing
-        // before the action), picking up from the braced front leg at a
-        // share of the run-up's pace, then slowing (run-on below).
-        followShare_ = bowl_.runOnPace * carrySpeed_ / std::max(runSettings_.speed, 0.1f);
-        carrySpeed_ = 0.0f;
-        followThrough_ = true;
-        followTime_ = 0.0f;
-        followSwing_ = -1;
-        // From here on it is plain running (the back leg is already swinging
-        // through, started at front-foot contact).
-        jumper_ = motion::JumpController{};
-        frontLift_ = 0.0f;
-        // Running at once (not picking up from standing still): with no
-        // speed the steps would settle the feet back under the body.
-        const float a = bowlBaseYaw_ - walker_.yaw();
-        walker_.setLocalVelocity(math::Vec2(std::sin(a), std::cos(a)) * (followShare_ * runSettings_.speed));
-    }
-    if (phase_ != Phase::Bowl) {
-        carrySpeed_ = 0.0f;
-        landTurn_ = autoDeliver_ = false;
-    }
-    // Run-on: the usual running gait straight on toward the batter, the pace
-    // easing off over runOnTime (it outlasts the arm's follow-through).
-    math::Vec2 runOn(0.0f);
-    if (followThrough_) {
-        followTime_ += dt;
-        // Check stop: after every run-on step (as the next one begins).
-        if (checkStops_ && stepper_.stepping()) {
-            if (followSwing_ >= 0 && stepper_.swingFoot() != followSwing_) checkHeld_ = true;
-            followSwing_ = stepper_.swingFoot();
-        }
-        // Plain running on for runOnHold of runOnTime, then the input stops
-        // and the walker slows to a stop the usual way (steps get slower).
-        const bool running = followTime_ < bowl_.runOnHold * bowl_.runOnTime;
-        const float a = bowlBaseYaw_ - walker_.yaw();
-        runOn = running ? math::Vec2(std::sin(a), std::cos(a)) * followShare_ : math::Vec2(0.0f);
-        control_ = runSettings_;
-        // Ends only once stopped and the arm is back (the legs never drop
-        // into the standing reach steps while still moving).
-        if (!running && walker_.speed() < 0.2f && phase_ == Phase::Idle) followThrough_ = false;
-    }
     const bool picking = phase_ != Phase::Idle;
     const bool bowlTurn = phase_ == Phase::Bowl && bowlStage_ != BowlStage::Circle;
-    // The run carries on through the bound and the stride to the release (the body keeps moving over the feet).
-    const float ahead = bowlBaseYaw_ - walker_.yaw();
-    const math::Vec2 bound = autoDeliver_ && holding_ ? math::Vec2(std::sin(ahead), std::cos(ahead)) : math::Vec2(0.0f);
-    walker_.tick(dt, followThrough_ ? runOn : picking ? bound : moveInput_,
-                 bowlTurn || (face_ && !picking), bowlTurn ? bowlYaw_ : faceYaw_, control_);
-    blendShape();
-    const motion::WalkSettings& w = shape_;
+    walker_.tick(dt, picking ? math::Vec2(0.0f) : moveInput_,
+                 bowlTurn || (face_ && !picking), bowlTurn ? bowlYaw_ : faceYaw_, walkSettings_);
+    const motion::WalkSettings& w = walkSettings_;
     const math::Transform from = root_;
     root_.position += walker_.velocity() * dt;
     root_.rotation = math::fromAxisAngle(math::kUp, walker_.yaw());
@@ -796,9 +606,6 @@ void Human::walk(float dt) {
     // first step and while stopping); faster, they follow the actual speed.
     const float walkSpeed = walkSettings_.speed;
     const float timingSpeed = walker_.speed() > walkSpeed ? walker_.speed() : std::min(walker_.gaitSpeed(), walkSpeed);
-    // Run-up delivery: the feet keep running straight at the batter
-    // (stance along the run line) whatever the body's turn.
-    stepper_.setStanceTurn(autoDeliver_ || followThrough_ ? bowlBaseYaw_ - walker_.yaw() : 0.0f);
     // Single steps: the stepper picks the foot (the leading side's foot, else
     // alternating) and swings it to its spot; the body follows from the
     // body reposition. The root (and the camera with it) stays between the
@@ -813,7 +620,7 @@ void Human::walk(float dt) {
         stepper_.rebase(before, root_);
         return;
     }
-    if (picking && !followThrough_ && !autoDeliver_ && !(bowlTurn && bowlStage_ == BowlStage::Back && strideWaiting_ && !autoDeliver_)) {  // turning side-on, the feet step round
+    if (picking && !(bowlTurn && bowlStage_ == BowlStage::Back && strideWaiting_)) {  // turning side-on, the feet step round
         // Only a lunge step moves a foot; back in gait mode after the pick,
         // the gait's settle steps it back to stance (the ideal standing spot).
         motion::StepSettings lunge;
@@ -827,7 +634,7 @@ void Human::walk(float dt) {
 }
 
 motion::GaitStyle Human::gaitStyle() const {
-    const motion::WalkSettings& w = shape_;
+    const motion::WalkSettings& w = walkSettings_;
     motion::GaitStyle s;
     s.toeOffPitch = w.toeOffPitch;
     s.landPitch = w.landPitch;
@@ -840,7 +647,7 @@ motion::GaitStyle Human::gaitStyle() const {
 }
 
 void Human::addGaitMotion(float dt) {
-    const motion::WalkSettings& w = shape_;
+    const motion::WalkSettings& w = walkSettings_;
     const float amount = math::clamp(walker_.speed() / std::max(w.speed, 0.1f), 0.0f, 1.0f);
 
     // Bob: see motion::gaitBob. Running also lowers the pelvis so the stance
@@ -895,10 +702,10 @@ void Human::repositionBody(float dt) {
     // The lower foot carries the body; even weight when both are level.
     const float stance = math::clamp(0.5f + 0.5f * (left.foot.y - right.foot.y) / stanceBlendHeight_, 0.0f, 1.0f);
     RepositionSettings reposition = reposition_;
-    reposition.sideFollow = shape_.sideFollow;  // runners barely shift sideways
+    reposition.sideFollow = walkSettings_.sideFollow;  // runners barely shift sideways
     // Moving, the root already travels smoothly; chasing the stance foot
     // (which slides back every step) would make the body lag and surge.
-    reposition.forwardFollow = 1.0f - math::clamp(walker_.speed() / std::max(shape_.speed, 0.1f), 0.0f, 1.0f);
+    reposition.forwardFollow = 1.0f - math::clamp(walker_.speed() / std::max(walkSettings_.speed, 0.1f), 0.0f, 1.0f);
     reposition.restZ = restPelvis.z;
     // Standing rules (straight-leg height, hip drop); moving, the gait's own
     // pelvis motion (addGaitMotion) takes over.
@@ -1019,7 +826,7 @@ void Human::solveIk() {
 }
 
 void Human::swingArms(float dt) {
-    const motion::WalkSettings& w = shape_;
+    const motion::WalkSettings& w = walkSettings_;
 
     // Full swing walking forward, little when sidestepping or backing up.
     const float forward = math::dot(math::inverse(root_).transformDirection(walker_.velocity()), math::kForward);
@@ -1056,7 +863,7 @@ void Human::swingArms(float dt) {
 }
 
 void Human::stabiliseHead(float dt) {
-    const motion::WalkSettings& w = shape_;
+    const motion::WalkSettings& w = walkSettings_;
 
     // Lead turns: the head looks toward the requested heading before the body.
     float want = 0.0f;
@@ -1826,7 +1633,6 @@ void Human::actionBowl(math::Vec3 point, float gap, float turn) {
     throwFrom_ = phase_ == Phase::Return ? goal_ : (reachLeft_ ? restWristL_ : restWristR_);
     bowlStage_ = BowlStage::Coil;
     releaseShift_ = math::Vec3(0.0f);
-    followThrough_ = false;  // a new delivery never starts mid run-on
     frontGoal_ = restHandNow(!reachLeft_);
     phase_ = Phase::Bowl;
 }
@@ -1933,22 +1739,14 @@ void Human::updateBowl(float dt) {
         // bowling hand at the end of its way, then stays with it.
         const float front = (throwTime_ - bowl_.frontDelay) / std::max(reach - bowl_.frontDelay, 0.01f);
         frontGoal_ = frontPathPoint(actionPoint, actionGap_, smooth(math::clamp(front, 0.0f, 1.0f)));
-        // Run-up delivery: the gather reached, the hand goes on down without
-        // a pause (reaching the release circle as the back foot lands).
-        if (autoDeliver_ && actionHeld()) {
-            frontFrom_ = frontGoal_;
-            downBowl();
-        }
         return;
     }
     if (bowlStage_ == BowlStage::Back) {
         // From the action point round the shoulder down to the bottom point,
         // speeding up; then it holds there (Down) for the release click.
-        const float back = std::max(landTurn_ ? bowl_.runBackTime : bowl_.backTime, 0.01f);
+        const float back = std::max(bowl_.backTime, 0.01f);
         const float way = std::min(1.0f, throwTime_ / back);
-        // After a run-up the front foot is in the air: it strides at once, straight down from there
-        // (front-foot contact ~0.1-0.15 s after back-foot contact).
-        if (strideWaiting_ && !autoDeliver_ && way * way >= bowl_.strideAt) {  // share of the way down (it speeds up as u^2)
+        if (strideWaiting_ && way * way >= bowl_.strideAt) {  // share of the way down (it speeds up as u^2)
             // The front foot (opposite the bowling arm) steps straight ahead,
             // to strideLength in front of the back foot (wherever a landing
             // left it; a foot already ahead steps less).
@@ -1966,39 +1764,21 @@ void Human::updateBowl(float dt) {
             bowlYaw_ = bowlBaseYaw_ + bodyTurn_ * u * u;  // turns with the hand, full at the bottom point
             goal_ = arcBetween(actionPoint, bottom, u * u);
             frontGoal_ = frontDownPoint(actionPoint, actionGap_, u * u);  // the front hand down its own way, alongside
-            if (autoDeliver_) {
-                // Run-up delivery: the front arm reaches up and out at the
-                // batter (straight ahead before the turn) through the stride.
-                const math::Vec3 batter = math::fromAxisAngle(math::kUp, bowlBaseYaw_ - walker_.yaw()) * math::kForward;
-                const math::Vec3 high =
-                    shoulderNow(!reachLeft_) + math::normalize(batter + math::kUp * 0.5f) * (armLength_ * 0.95f);
-                frontGoal_ = math::lerp(frontFrom_, high, smooth(u));
-            }
             return;
         }
         bowlStage_ = BowlStage::Down;
-        if (autoDeliver_) frontFrom_ = frontGoal_;
     }
     if (bowlStage_ == BowlStage::Down) {
         chestLean_ = coil_;
         bowlYaw_ = bowlBaseYaw_ + bodyTurn_;
         goal_ = bottom;
-        if (!autoDeliver_) {
-            frontGoal_ = frontDownPoint(actionPoint, actionGap_, 1.0f);
-            return;
-        }
-        // Run-up delivery: over the top from back-foot contact, once the
-        // front foot's stride is under way; timed so it is down before the
-        // release.
-        const int front = static_cast<int>(reachLeft_ ? motion::Foot::Right : motion::Foot::Left);
-        if (!landTurn_ || stepper_.swingFoot() != front) return;
-        autoSwingTime_ = std::max(bowl_.runSwingTime, stepper_.swingTimeLeft() + 0.02f);
-        releaseBowl(autoReleaseAngle_, autoReleaseTilt_);
+        frontGoal_ = frontDownPoint(actionPoint, actionGap_, 1.0f);
+        return;
     }
     if (bowlStage_ == BowlStage::Swing) {
         // The hand goes round speeding up (s = u^2); the reach stages turn,
         // bend and fold the body after it.
-        const float swing = std::max(autoDeliver_ ? autoSwingTime_ : bowl_.swingTime, 0.01f),
+        const float swing = std::max(bowl_.swingTime, 0.01f),
                     follow = std::max(bowl_.swingFollowTime, 0.01f);
         float t = throwTime_;
         if (t < swing) {
@@ -2014,15 +1794,13 @@ void Human::updateBowl(float dt) {
             const float onCircle = smooth(math::clamp((angle - swingFrom_) / math::kHalfPi, 0.0f, 1.0f));
             const motion::ThrowArc arc = bowlArc(releaseTilt_);
             goal_ = arc.point(angle) + (bottom - arc.point(swingFrom_)) * (1.0f - onCircle);
-            // The front arm pulls down and tucks in to the side (eased from
-            // its high reach on a run-up delivery).
-            frontGoal_ = autoDeliver_ ? math::lerp(frontFrom_, restHandNow(!reachLeft_), smooth(u)) : restHandNow(!reachLeft_);
+            // The front arm pulls down and tucks in to the side.
+            frontGoal_ = restHandNow(!reachLeft_);
             return;
         }
         if (holding_) {
             // Release on the circle's tangent. The world position is taken
             // from the solved hand (tick()).
-            if (checkStops_ && autoDeliver_) checkHeld_ = true;  // check stop: the release point
             holding_ = false;
             released_ = true;
             // Along the facing before the action (toward the batter), whatever

@@ -69,30 +69,6 @@ public:
     // foot's current height); tick() with no direction advances it. False if
     // a step is already in progress.
     bool stepTo(Foot f, math::Vec3 spot);
-    // Foot `last` has just landed (e.g. from a jump): any step in progress
-    // ends and the gait carries on with the other foot next, as running (the
-    // stance spots are kept; reset() would move them to where the feet are).
-    void landed(Foot last) {
-        swing_ = -1;
-        t_ = wait_ = 0.0f;
-        idle_ = false;
-        last_ = static_cast<int>(last);
-    }
-    // Gait mode: the swing in progress takes `scale` times as long (from
-    // now), so it lands that much further on and rises that much higher.
-    void stretchSwing(float scale) {
-        if (swing_ < 0) return;
-        t_ /= scale;
-        dur_ *= scale;
-        stretch_ = scale;
-    }
-    // Gait mode: the next swing to start is stretched by `scale` (as above).
-    void stretchNext(float scale) { nextStretch_ = scale; }
-    float swingTimeLeft() const { return swing_ >= 0 ? (1.0f - t_) * dur_ : 0.0f; }
-    // Gait mode: the stance spots are turned by `angle` (rad, about +Y) from
-    // the character's facing, so the feet keep stepping along a run line
-    // while the body turns.
-    void setStanceTurn(float angle) { stanceTurn_ = angle; }
     // Puts foot `f` at `spot` (character space) at once, flat, without a step.
     void place(Foot f, math::Vec3 spot);
 
@@ -121,8 +97,6 @@ private:
     float pitch_[2]{}, toe_[2]{}, push_[2]{};
     float wait_ = 0.0f;       // gait mode: time both feet have been planted
     float dur_ = 0.0f;        // gait mode: this swing's duration
-    float stretch_ = 1.0f, nextStretch_ = 1.0f;  // gait mode: this / the next swing's stretch
-    float stanceTurn_ = 0.0f;  // gait mode: stance spots' turn from the facing
     bool idle_ = true;        // gait mode: standing (next walk starts fresh)
     int start_ = static_cast<int>(Foot::Left);  // gait mode: foot that started the last walk
     float stanceWidth_ = 0.2f;
