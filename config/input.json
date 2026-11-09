@@ -26,9 +26,6 @@
     "ClearReach": ["R"],
     "Pick": ["Space"],
     "PickStep": ["LeftAlt", "RightAlt"],
-    // J: standing jump. Hold to crouch (deeper = higher), release to take off;
-    // WASD held on release jumps that way (left, right, forward, back).
-    "Jump": ["J"],
     // T: releases the ball from the batting position toward the fielder
     // (config/ball_launch.json "toFielder"); walk to it and press Space.
     "ThrowBall": ["T"],

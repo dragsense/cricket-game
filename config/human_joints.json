@@ -166,17 +166,6 @@
     "lumbarHipBandsDeg": [30, 60, 90],
     "lumbarHipRatio": [1.9, 0.9, 0.4]
   },
-  "bodyReposition": {
-    "legReach": 1.0,         // a leg reaches at most its real length (thigh + shin)
-    "armLegRatio": 1.0,      // a hand swings opposite the other leg by this share of its thigh angle (walking: about equal)
-    "passes": 3,             // tilt-then-move passes per tick
-    // Foot roll (BIOMECHANICS 12): the ankle's loaded range; past it the shin
-    // turns the foot about its heel (toes up) or ball (heel up, toes bent).
-    "dorsiflexionDeg": 10,   // shin forward before the heel lifts (walking about 10)
-    "plantarflexionDeg": 10, // shin back before the toes rise off the ground
-    "pushOffDeg": 20,        // ankle plantarflexion at full push-off (toe-off 15-20; the unloading foot points)
-    "rollPasses": 2          // body-then-roll passes per tick
-  },
 
   // Muscles (BIOMECHANICS 14): each joint's motor drives it toward the planned
   // pose, no harder than the joint really is, as fast as muscles switch on.

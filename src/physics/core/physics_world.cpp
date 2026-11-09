@@ -29,8 +29,12 @@
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
 #include <Jolt/Physics/Constraints/SixDOFConstraint.h>
+#include <Jolt/Physics/Constraints/SpringSettings.h>
 #include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/Ragdoll/Ragdoll.h>
+#include <Jolt/Skeleton/Skeleton.h>
+#include <Jolt/Skeleton/SkeletonPose.h>
 #include <Jolt/RegisterTypes.h>
 
 #include <algorithm>
@@ -53,6 +57,7 @@ constexpr JPH::uint kNumBroadPhaseLayers = 2;
 
 constexpr float kGroundHalfSize = 400.0f;  // covers the whole ground
 constexpr float kGroundHalfDepth = 1.0f;
+constexpr float kCharacterHeightStep = 0.05f;  // m between a capsule's shapes
 
 void joltTrace(const char* fmt, ...) {
     char buffer[512];
@@ -133,6 +138,18 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     ch.mass = c.getFloat("character.mass", ch.mass);
     ch.maxStrength = c.getFloat("character.maxStrength", ch.maxStrength);
     ch.padding = c.getFloat("character.padding", ch.padding);
+    ch.supportFrequency = c.getFloat("character.support.frequency", ch.supportFrequency);
+    ch.supportDamping = c.getFloat("character.support.damping", ch.supportDamping);
+    ch.supportMaxForce = c.getFloat("character.support.maxForce", ch.supportMaxForce);
+    ch.supportMaxTorque = c.getFloat("character.support.maxTorque", ch.supportMaxTorque);
+    auto deg = [&](const char* key, float rad) { return math::radians(c.getFloat(key, math::degrees(rad))); };
+    ch.releaseForward = deg("character.release.forwardDeg", ch.releaseForward);
+    ch.releaseBack = deg("character.release.backDeg", ch.releaseBack);
+    ch.releaseLeft = deg("character.release.leftDeg", ch.releaseLeft);
+    ch.releaseRight = deg("character.release.rightDeg", ch.releaseRight);
+    ch.restSpeed = c.getFloat("character.release.restSpeed", ch.restSpeed);
+    ch.recoverWait = c.getFloat("character.release.recoverWait", ch.recoverWait);
+    ch.recoverTime = c.getFloat("character.release.recoverTime", ch.recoverTime);
     return s;
 }
 
@@ -165,9 +182,20 @@ struct PhysicsWorld::Impl {
         JPH::Ref<JPH::CharacterVirtual> character;
         float verticalSpeed = 0.0f;  // m/s, falling off the ground
         float stepUp = 0.0f, stickDown = 0.0f;
+        // Its shapes, shortest first (setCharacterHeight), made at load time.
+        std::vector<JPH::RefConst<JPH::Shape>> shapes;
+        float minHeight = 0.0f, fullHeight = 0.0f;
+        int shape = -1;  // the one in use
     };
     std::vector<Character> characters;
     JPH::CharacterVsCharacterCollisionSimple characterVsCharacter;
+    // Ragdolls (Jolt owns their bodies and joints); reserved once at init.
+    struct RagdollSlot {
+        JPH::Ref<JPH::Ragdoll> ragdoll;
+        JPH::SkeletonPose pose;      // the pose drive's targets, sized at load
+        std::vector<BodyId> bodies;  // its parts' slots
+    };
+    std::vector<RagdollSlot> ragdolls;
 
     Impl() {
         broadPhaseLayers.MapObjectToBroadPhaseLayer(kLayerStatic, JPH::BroadPhaseLayer(0));
@@ -228,6 +256,7 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     m.swingTwists.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
     m.sixDofs.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
     m.characters.reserve(static_cast<size_t>(std::max(settings.maxCharacters, 0)));
+    m.ragdolls.reserve(static_cast<size_t>(std::max(settings.maxCharacters, 0)));
 
     // Static ground slab, top face at the world's groundHeight (the one ground).
     JPH::BodyCreationSettings ground(new JPH::BoxShape(JPH::Vec3(kGroundHalfSize, kGroundHalfDepth, kGroundHalfSize)),
@@ -260,6 +289,12 @@ void PhysicsWorld::shutdown() {
     impl_->hinges.clear();
     impl_->swingTwists.clear();
     impl_->sixDofs.clear();
+    // A ragdoll destroys its own bodies.
+    for (Impl::RagdollSlot& r : impl_->ragdolls) {
+        r.ragdoll->RemoveFromPhysicsSystem();
+        for (BodyId b : r.bodies) impl_->slots[b].body = JPH::BodyID();
+    }
+    impl_->ragdolls.clear();
     JPH::BodyInterface& bi = impl_->system.GetBodyInterface();
     for (Impl::Slot& s : impl_->slots) {
         if (s.body.IsInvalid()) continue;
@@ -274,15 +309,11 @@ void PhysicsWorld::shutdown() {
     releaseJolt();
 }
 
-BodyId PhysicsWorld::createBody(const BodyDesc& d) {
-    if (!impl_) return kInvalidBody;
-    Impl& m = *impl_;
-    auto free = std::find_if(m.slots.begin(), m.slots.end(), [](const Impl::Slot& s) { return s.body.IsInvalid(); });
-    if (free == m.slots.end()) {
-        LOG_ERROR("physics: body limit ({}) reached", m.slots.size());
-        return kInvalidBody;
-    }
+namespace {
 
+// Jolt's creation settings for a body (its shape, motion, layer, mass).
+JPH::BodyCreationSettings bodySettings(const BodyDesc& d, const PhysicsSettings& settings,
+                                       const JPH::GroupFilter* sameGroup) {
     JPH::Ref<JPH::Shape> shape;
     switch (d.shape) {
         case ShapeType::Box: {
@@ -306,9 +337,9 @@ BodyId PhysicsWorld::createBody(const BodyDesc& d) {
                                   motion, layer);
     bcs.mFriction = d.friction;
     bcs.mRestitution = d.restitution;
-    if (d.collisionGroup > 0) bcs.mCollisionGroup = JPH::CollisionGroup(m.sameGroup, d.collisionGroup, 0);
-    bcs.mLinearDamping = m.settings.linearDamping;
-    bcs.mAngularDamping = m.settings.angularDamping;
+    if (d.collisionGroup > 0) bcs.mCollisionGroup = JPH::CollisionGroup(sameGroup, d.collisionGroup, 0);
+    bcs.mLinearDamping = settings.linearDamping;
+    bcs.mAngularDamping = settings.angularDamping;
     // A kinematic body keeps its mass too, for when it turns dynamic (setKinematic).
     if (motion != JPH::EMotionType::Static) {
         bcs.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
@@ -322,6 +353,22 @@ BodyId PhysicsWorld::createBody(const BodyDesc& d) {
     }
     // A body held by springs or moved by hand never sleeps (it would stop following).
     if (motion != JPH::EMotionType::Static) bcs.mAllowSleeping = d.collides && !d.kinematic;
+    return bcs;
+}
+
+} // namespace
+
+BodyId PhysicsWorld::createBody(const BodyDesc& d) {
+    if (!impl_) return kInvalidBody;
+    Impl& m = *impl_;
+    auto free = std::find_if(m.slots.begin(), m.slots.end(), [](const Impl::Slot& s) { return s.body.IsInvalid(); });
+    if (free == m.slots.end()) {
+        LOG_ERROR("physics: body limit ({}) reached", m.slots.size());
+        return kInvalidBody;
+    }
+
+    const JPH::BodyCreationSettings bcs = bodySettings(d, m.settings, m.sameGroup);
+    const JPH::EMotionType motion = bcs.mMotionType;
     JPH::BodyID body = m.system.GetBodyInterface().CreateAndAddBody(
         bcs, motion != JPH::EMotionType::Static ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
     if (body.IsInvalid()) {
@@ -498,6 +545,8 @@ void applySteps(JPH::Constraint& c, const PhysicsSettings& s) {
 
 JPH::MotorSettings toJolt(const MotorDesc& d) {
     JPH::MotorSettings s(std::max(d.frequency, 0.0f), std::max(d.damping, 0.0f));
+    if (d.stiffness > 0.0f)
+        s.mSpringSettings = JPH::SpringSettings(JPH::ESpringMode::StiffnessAndDamping, d.stiffness, std::max(d.damping, 0.0f));
     s.SetTorqueLimit(std::max(d.maxTorque, 0.0f));
     return s;
 }
@@ -756,24 +805,33 @@ CharacterId PhysicsWorld::createCharacter(float height, math::Vec3 feet) {
     Impl& m = *impl_;
     const CharacterSettings& cs = m.settings.character;
     const float radius = std::max(cs.radius, 0.01f);
-    const float halfCylinder = std::max(0.5f * height - radius, 0.01f);
-    // The capsule stands on its origin (the feet).
-    JPH::RotatedTranslatedShapeSettings shape(JPH::Vec3(0.0f, halfCylinder + radius, 0.0f), JPH::Quat::sIdentity(),
-                                              new JPH::CapsuleShape(halfCylinder, radius));
-    JPH::ShapeSettings::ShapeResult made = shape.Create();
-    if (made.HasError()) {
-        LOG_ERROR("physics: character shape: {}", made.GetError().c_str());
-        return kInvalidCharacter;
+    // Its shapes, 40-100 % of its height in kCharacterHeightStep steps; each
+    // stands on its origin (the feet).
+    Impl::Character c;
+    c.minHeight = std::max(0.4f * height, 2.0f * radius + 0.02f);
+    for (float tall = c.minHeight;; tall += kCharacterHeightStep) {
+        const float full = std::min(tall, height);
+        const float halfCylinder = std::max(0.5f * full - radius, 0.01f);
+        JPH::RotatedTranslatedShapeSettings shape(JPH::Vec3(0.0f, halfCylinder + radius, 0.0f), JPH::Quat::sIdentity(),
+                                                  new JPH::CapsuleShape(halfCylinder, radius));
+        JPH::ShapeSettings::ShapeResult made = shape.Create();
+        if (made.HasError()) {
+            LOG_ERROR("physics: character shape: {}", made.GetError().c_str());
+            return kInvalidCharacter;
+        }
+        c.shapes.push_back(made.Get());
+        if (full >= height) break;
     }
+    c.shape = static_cast<int>(c.shapes.size()) - 1;
+    c.fullHeight = height;
     JPH::Ref<JPH::CharacterVirtualSettings> settings = new JPH::CharacterVirtualSettings();
-    settings->mShape = made.Get();
+    settings->mShape = c.shapes.back();
     settings->mMaxSlopeAngle = cs.maxSlope;
     settings->mMass = cs.mass;
     settings->mMaxStrength = cs.maxStrength;
     settings->mCharacterPadding = cs.padding;
     // Contacts below the lower sphere's centre carry it (the feet).
     settings->mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), -radius);
-    Impl::Character c;
     c.character = new JPH::CharacterVirtual(settings, JPH::RVec3(toJolt(feet)), JPH::Quat::sIdentity(), 0, &m.system);
     c.character->SetCharacterVsCharacterCollision(&m.characterVsCharacter);
     c.stepUp = cs.stepUp;
@@ -827,6 +885,152 @@ bool PhysicsWorld::characterOnGround(CharacterId id) const {
 bool PhysicsWorld::awake(BodyId id) const {
     const Impl::Slot* s = impl_ ? impl_->slot(id) : nullptr;
     return s && impl_->system.GetBodyInterfaceNoLock().IsActive(s->body);
+}
+
+void PhysicsWorld::setCharacterHeight(CharacterId id, float height) {
+    if (!impl_ || id >= impl_->characters.size()) return;
+    Impl& m = *impl_;
+    Impl::Character& c = m.characters[id];
+    const int last = static_cast<int>(c.shapes.size()) - 1;
+    const int want = std::clamp(static_cast<int>(std::lround((height - c.minHeight) / kCharacterHeightStep)), 0, last);
+    if (want == c.shape) return;
+    const JPH::SpecifiedBroadPhaseLayerFilter broadPhase(JPH::BroadPhaseLayer(0));
+    const JPH::SpecifiedObjectLayerFilter layer(kLayerStatic);
+    if (c.character->SetShape(c.shapes[static_cast<size_t>(want)], 1.5f * m.settings.character.padding, broadPhase,
+                              layer, JPH::BodyFilter(), JPH::ShapeFilter(), *m.tempAllocator))
+        c.shape = want;
+}
+
+float PhysicsWorld::characterHeight(CharacterId id) const {
+    if (!impl_ || id >= impl_->characters.size()) return 0.0f;
+    const Impl::Character& c = impl_->characters[id];
+    return std::min(c.minHeight + static_cast<float>(c.shape) * kCharacterHeightStep, c.fullHeight);
+}
+
+RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uint32_t group, std::vector<BodyId>& bodies) {
+    bodies.clear();
+    if (!impl_ || parts.empty()) return kInvalidRagdoll;
+    Impl& m = *impl_;
+    if (m.ragdolls.size() >= m.ragdolls.capacity()) {
+        LOG_ERROR("physics: ragdoll limit ({}) reached", m.ragdolls.capacity());
+        return kInvalidRagdoll;
+    }
+    const size_t freeSlots = static_cast<size_t>(
+        std::count_if(m.slots.begin(), m.slots.end(), [](const Impl::Slot& s) { return s.body.IsInvalid(); }));
+    if (freeSlots < parts.size()) {
+        LOG_ERROR("physics: body limit ({}) reached", m.slots.size());
+        return kInvalidRagdoll;
+    }
+    JPH::Ref<JPH::Skeleton> skeleton = new JPH::Skeleton();
+    JPH::Ref<JPH::RagdollSettings> settings = new JPH::RagdollSettings();
+    settings->mSkeleton = skeleton;
+    settings->mParts.resize(parts.size());
+    for (size_t i = 0; i < parts.size(); ++i) {
+        const RagdollPart& p = parts[i];
+        char name[16];
+        std::snprintf(name, sizeof(name), "part%zu", i);
+        skeleton->AddJoint(name, p.parent);
+        BodyDesc d = p.body;
+        d.dynamic = true;
+        d.kinematic = false;
+        d.collides = true;
+        d.collisionGroup = std::max(group, 1u);
+        JPH::BodyCreationSettings bcs = bodySettings(d, m.settings, m.sameGroup);
+        bcs.mAllowSleeping = false;  // its motors keep driving it
+        static_cast<JPH::BodyCreationSettings&>(settings->mParts[i]) = bcs;
+        if (p.parent < 0) continue;
+        JPH::Ref<JPH::SwingTwistConstraintSettings> c = new JPH::SwingTwistConstraintSettings();
+        c->mSpace = JPH::EConstraintSpace::WorldSpace;
+        c->mPosition1 = c->mPosition2 = JPH::RVec3(toJolt(p.pivot));
+        c->mTwistAxis1 = toJolt(math::normalize(p.twistAxis1));
+        c->mPlaneAxis1 = toJolt(math::normalize(p.planeAxis1));
+        c->mTwistAxis2 = toJolt(math::normalize(p.twistAxis2));
+        c->mPlaneAxis2 = toJolt(math::normalize(p.planeAxis2));
+        c->mSwingType = JPH::ESwingType::Pyramid;  // each swing axis its own range
+        c->mNormalHalfConeAngle = p.normalHalfCone;
+        c->mPlaneHalfConeAngle = p.planeHalfCone;
+        c->mTwistMinAngle = p.twistMin;
+        c->mTwistMaxAngle = p.twistMax;
+        c->mSwingMotorSettings = c->mTwistMotorSettings = toJolt(p.motor);
+        settings->mParts[i].mToParent = c;
+    }
+    settings->CalculateBodyIndexToConstraintIndex();
+    settings->CalculateConstraintIndexToBodyIdxPair();
+    JPH::Ref<JPH::Ragdoll> ragdoll = settings->CreateRagdoll(std::max(group, 1u), 0, &m.system);
+    if (!ragdoll) {
+        LOG_ERROR("physics: Jolt could not create a ragdoll");
+        return kInvalidRagdoll;
+    }
+    for (JPH::uint i = 0; i < ragdoll->GetConstraintCount(); ++i)
+        applySteps(*ragdoll->GetConstraint(static_cast<int>(i)), m.settings);
+    ragdoll->AddToPhysicsSystem(JPH::EActivation::Activate);
+    Impl::RagdollSlot r;
+    r.ragdoll = ragdoll;
+    r.pose.SetSkeleton(skeleton);
+    for (size_t i = 0; i < parts.size(); ++i) {
+        auto free = std::find_if(m.slots.begin(), m.slots.end(), [](const Impl::Slot& s) { return s.body.IsInvalid(); });
+        free->body = ragdoll->GetBodyID(static_cast<int>(i));
+        m.capture(*free);
+        free->previous = free->current;
+        const BodyId id = static_cast<BodyId>(free - m.slots.begin());
+        r.bodies.push_back(id);
+        bodies.push_back(id);
+    }
+    m.ragdolls.push_back(std::move(r));
+    return static_cast<RagdollId>(m.ragdolls.size() - 1);
+}
+
+void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations, int count) {
+    if (!impl_ || id >= impl_->ragdolls.size() || !rotations) return;
+    Impl::RagdollSlot& r = impl_->ragdolls[id];
+    const int n = std::min(count, static_cast<int>(r.pose.GetJointCount()));
+    for (int i = 0; i < n; ++i) r.pose.GetJoint(i).mRotation = toJolt(math::normalize(rotations[i]));
+    r.ragdoll->DriveToPoseUsingMotors(r.pose);
+}
+
+JointId PhysicsWorld::createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular) {
+    if (!impl_ || !impl_->slot(a) || !impl_->slot(b)) return kInvalidJoint;
+    Impl& m = *impl_;
+    if (m.hinges.size() >= m.hinges.capacity()) {
+        LOG_ERROR("physics: joint limit ({}) reached", m.hinges.capacity());
+        return kInvalidJoint;
+    }
+    // Every axis free (the settings' defaults), each driven by its motor.
+    JPH::SixDOFConstraintSettings s;
+    s.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    for (A axis : {A::TranslationX, A::TranslationY, A::TranslationZ}) {
+        JPH::MotorSettings& motor = s.mMotorSettings[axis];
+        motor = toJolt(linear);  // stiffness: N/m, damping N s/m
+        motor.SetForceLimit(std::max(linear.maxTorque, 0.0f));
+    }
+    for (A axis : {A::RotationX, A::RotationY, A::RotationZ}) s.mMotorSettings[axis] = toJolt(angular);
+    JPH::Ref<JPH::SixDOFConstraint> c = makeJoint<JPH::SixDOFConstraint>(m.system, m.slots[a].body, m.slots[b].body, s);
+    if (!c) return kInvalidJoint;
+    applySteps(*c, m.settings);
+    for (int axis = 0; axis < 6; ++axis) c->SetMotorState(static_cast<A>(axis), JPH::EMotorState::Position);
+    m.system.AddConstraint(c);
+    m.hinges.push_back(nullptr);
+    m.swingTwists.push_back(nullptr);
+    m.sixDofs.push_back(c);
+    return static_cast<JointId>(m.hinges.size() - 1);
+}
+
+void PhysicsWorld::setSupportTarget(JointId id, math::Vec3 offset, math::Quat rotation) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
+    JPH::SixDOFConstraint& c = *impl_->sixDofs[id];
+    c.SetTargetPositionCS(toJolt(offset));
+    c.SetTargetOrientationCS(toJolt(math::normalize(rotation)));
+}
+
+void PhysicsWorld::setSupportLimits(JointId id, float maxForce, float maxTorque) {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id]) return;
+    JPH::SixDOFConstraint& c = *impl_->sixDofs[id];
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    for (A axis : {A::TranslationX, A::TranslationY, A::TranslationZ})
+        c.GetMotorSettings(axis).SetForceLimit(std::max(maxForce, 0.0f));
+    for (A axis : {A::RotationX, A::RotationY, A::RotationZ})
+        c.GetMotorSettings(axis).SetTorqueLimit(std::max(maxTorque, 0.0f));
 }
 
 } // namespace physics

@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace core {
 class Config;
@@ -24,6 +25,8 @@ using JointId = uint32_t;
 constexpr JointId kInvalidJoint = 0xffffffffu;
 using CharacterId = uint32_t;
 constexpr CharacterId kInvalidCharacter = 0xffffffffu;
+using RagdollId = uint32_t;
+constexpr RagdollId kInvalidRagdoll = 0xffffffffu;
 // config/physics_world.json "world": shared by Jolt and the ball solver.
 struct WorldSettings {
     math::Vec3 gravity{0.0f, -9.81f, 0.0f};
@@ -45,6 +48,18 @@ struct CharacterSettings {
     float mass = 73.0f;     // kg, for pushing other capsules
     float maxStrength = 500.0f;  // N, its push on what it touches
     float padding = 0.02f;  // m, gap kept to what it touches
+    // Its hold of the body: a spring from the capsule to the pelvis (each of
+    // the six axes), so the full-physics body stays up. Hz, damping ratio,
+    // force (N) and torque (N m) limits.
+    float supportFrequency = 4.0f, supportDamping = 1.0f;
+    float supportMaxForce = 2000.0f, supportMaxTorque = 600.0f;
+    // The hold lets go once the hips lean past these (rad, seen from the
+    // centre of both feet; config in degrees), blended between them.
+    float releaseForward = 0.148f, releaseBack = 0.0785f, releaseLeft = 0.14f, releaseRight = 0.14f;
+    // Let go, the body falls; once its centre of mass is slower than
+    // restSpeed (m/s) for recoverWait (s), the capsule goes under the pelvis
+    // and the hold eases back in over recoverTime (s).
+    float restSpeed = 0.2f, recoverWait = 1.0f, recoverTime = 1.0f;
 };
 
 // config/physics_world.json "jolt", "ground" and "character".
@@ -120,11 +135,30 @@ struct SixDofDesc {
 };
 // A joint motor (Jolt MotorSettings): drives the joint toward its target
 // like a spring of `frequency` Hz and `damping` ratio, never with more than
-// `maxTorque` N m.
+// `maxTorque` N m. With `stiffness` > 0 the spring is that stiff instead
+// (N m/rad) and `damping` is its damping (N m s/rad).
 struct MotorDesc {
     float frequency = 2.0f;
     float damping = 1.0f;
     float maxTorque = 1e30f;
+    float stiffness = 0.0f;
+};
+
+// One part of a ragdoll (Jolt Ragdoll), parents before children.
+struct RagdollPart {
+    BodyDesc body;    // its shape, mass and pose (world, as built); made dynamic
+    int parent = -1;  // the part it hangs from (-1: the root part)
+    // Its joint to the parent (Jolt SwingTwist), world space as built: the
+    // pivot, the parent's joint frame and the part's (twist axis and plane
+    // axis each; the normal axis is plane x twist). Swing about the normal
+    // axis within +-planeHalfCone, about the plane axis within
+    // +-normalHalfCone (0: locked), twist within [twistMin, twistMax]; rad.
+    math::Vec3 pivot{0.0f};
+    math::Vec3 twistAxis1{1.0f, 0.0f, 0.0f}, planeAxis1{0.0f, 0.0f, 1.0f};
+    math::Vec3 twistAxis2{1.0f, 0.0f, 0.0f}, planeAxis2{0.0f, 0.0f, 1.0f};
+    float twistMin = 0.0f, twistMax = 0.0f;
+    float normalHalfCone = 0.0f, planeHalfCone = 0.0f;
+    MotorDesc motor;  // its muscle for the pose drive; maxTorque 0: none
 };
 
 class PhysicsWorld {
@@ -248,6 +282,33 @@ public:
     void placeCharacter(CharacterId id, math::Vec3 feet);
     math::Vec3 characterFeet(CharacterId id) const;
     bool characterOnGround(CharacterId id) const;
+    // The capsule's height (m, the nearest of its shapes made at load time,
+    // 5 cm apart, 40-100 % of its full height); kept if the new shape does not
+    // fit where it is (e.g. standing up under something). No allocations.
+    void setCharacterHeight(CharacterId id, float height);
+    float characterHeight(CharacterId id) const;  // m, of the shape in use
+
+    // A ragdoll (Jolt Ragdoll): one dynamic body per part, joined to its
+    // parent by a SwingTwist joint with its motor; its parts never collide
+    // with each other (`group` > 0). `bodies` gets each part's body (the
+    // usual body calls work on them). Load time; kInvalidRagdoll when full.
+    RagdollId createRagdoll(const std::vector<RagdollPart>& parts, uint32_t group, std::vector<BodyId>& bodies);
+    // Jolt Ragdoll::DriveToPoseUsingMotors: every joint's motor pulls its part
+    // toward `rotations[i]`, the part body's rotation relative to its parent's
+    // body (body space; [0], the root, unused), as strong as its MotorDesc.
+    // `count`: the ragdoll's parts. No allocations.
+    void driveRagdollToPose(RagdollId id, const math::Quat* rotations, int count);
+
+    // A soft hold of body `b` by body `a` (Jolt SixDOF, every axis free, each
+    // driven by a spring motor toward its target): `linear` for position
+    // (maxTorque read as the force limit, N), `angular` for rotation. Load
+    // time; kInvalidJoint when full. Off/on: setJointEnabled.
+    JointId createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular);
+    // Its target: b's centre of mass at `offset` from a's (a's frame) and b's
+    // rotation `rotation` relative to a's.
+    void setSupportTarget(JointId id, math::Vec3 offset, math::Quat rotation);
+    // Its force (N) and torque (N m) limits, e.g. eased in after a release.
+    void setSupportLimits(JointId id, float maxForce, float maxTorque);
 
 private:
     struct Impl;

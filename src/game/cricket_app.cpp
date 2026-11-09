@@ -169,8 +169,6 @@ bool CricketApp::init() {
     bowlerModels_.assign(static_cast<size_t>(bowler.rig().numJoints()), math::Mat4(1.0f));
     limbTest_ = e.getBool("debug.limbTest", false);
     if (limbTest_) bowlerVisual_.setVisible(*renderer_, world_, false);
-    // Limb test: the fielder's body moves by physics (muscles and balance).
-    if (limbTest_) sim_.fielder().setPhysicsOn(true);
     // One ball: the bowler starts with it; the fielder's hand is empty (T
     // sends the ball to the fielder to pick).
     sim_.fielder().setReachTarget(ballPos_);
@@ -222,7 +220,6 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         } else if (name == "physics_world.json") {
             cfg_.physicsWorld = std::move(fresh);
             if (!sim_.initPhysics(cfg_.physicsWorld, cfg_.scene)) LOG_ERROR("reload: physics world could not be rebuilt");
-            if (limbTest_) sim_.fielder().setPhysicsOn(true);
         } else if (name == "ball_launch.json") {
             cfg_.ballLaunch = std::move(fresh);
         } else if (name == "throw.json") {
@@ -366,11 +363,11 @@ bool CricketApp::pumpEvents() {
     (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
     if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
     if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
-    // Limb test: the fielder stands still (no walking or jumping).
-    controlled.setMoveInput(limbTest_ ? math::Vec2(0.0f) : move, true, heading_);
+    // Walking is off for now (the user's call, 2026-11-09: the ragdoll's legs
+    // lag the walking pose; limb test first). WASD only turns the player.
+    controlled.setMoveInput(math::Vec2(0.0f), true, heading_);
     // Limb test: WASD takes single steps instead (the body follows the feet).
     controlled.setStepInput(limbTest_ ? move : math::Vec2(0.0f));
-    controlled.setJumpInput(!limbTest_ && actions_.down(input_, core::Action::Jump));
 
     // Limb test: no picking, balls or throwing (no ball reaches the hand).
     if (!limbTest_ && actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();
@@ -870,32 +867,31 @@ void CricketApp::drawDebugGeometry(float alpha) {
 
     // The humans' physics bodies (HumanBody): each part's Jolt shape (white)
     // and each joint at its pivot: hinge (yellow, a line along its axis),
-    // SixDOF (cyan, its X red, Y green, Z blue axes); a joint with a muscle
-    // (motor) has a red ring.
+    // swing-twist (cyan, its twist X red, Y green, Z blue axes); a joint with
+    // a muscle (motor) has a red ring.
     drawHumanBody(sim_.fielder().humanBody(), alpha);
     if (!limbTest_) drawHumanBody(sim_.bowler().humanBody(), alpha);
 
-    // The balance assists (DECISIONS 2026-11-08 "Balance by visible
-    // assists"), while physics is on: from the hips the hover (green, up) and
-    // the pull (orange, across), 0.5 m per body weight; the upright torque
-    // (magenta, along its axis, 0.3 m at its most); each locked foot (blue
-    // ring at its anchor); the capture point (red ring).
-    auto drawAssists = [&](const agents::Human& h) {
-        if (!h.physicsOn() || !h.humanBody().ready()) return;
-        const physics::PhysicsWorld& world = sim_.physicsWorld();
-        const agents::Balancer& b = h.balancer();
-        const math::Vec3 hips = world.interpolated(h.humanBody().parts()[0].body, alpha).position;
-        const float weight = std::max(h.humanBody().totalMass() * -world.world().gravity.y, 1.0f);
-        dd.line(hips, hips + b.hoverForce() * (0.5f / weight), render::colors::kGreen);
-        dd.line(hips, hips + b.pullForce() * (0.5f / weight), render::rgba(255, 150, 30));
-        dd.line(hips, hips + b.uprightTorque() * (0.3f / std::max(b.settings().uprightMaxTorque, 1.0f)),
-                render::rgba(230, 60, 230));
-        for (int f = 0; f < 2; ++f)
-            if (b.footLocked(f)) dd.circle(b.footAnchor(f), math::kUp, 0.06f, render::colors::kBlue, 12);
-        dd.circle(b.capturePoint() + math::kUp * 0.005f, math::kUp, 0.04f, render::colors::kRed, 12);
+    // Each player's capsule (white while it holds the body, red once let go)
+    // and the line the release reads: from the centre of the feet (yellow
+    // dot) to the hips (green while held, red let go).
+    auto drawCapsule = [&](const agents::Human& h) {
+        math::Vec3 feet, feetCentre, hips;
+        float height = 0.0f, radius = 0.0f;
+        if (!h.capsuleDebug(feet, height, radius, feetCentre, hips)) return;
+        const render::Color c = h.supported() ? render::colors::kWhite : render::colors::kRed;
+        const math::Vec3 low = feet + math::kUp * radius, high = feet + math::kUp * std::max(height - radius, radius);
+        dd.circle(low, math::kUp, radius, c, 16);
+        dd.circle(high, math::kUp, radius, c, 16);
+        for (const math::Vec3 s : {math::kRight, -math::kRight, math::kForward, -math::kForward})
+            dd.line(low + s * radius, high + s * radius, c);
+        dd.sphere(low, radius, c, 8);
+        dd.sphere(high, radius, c, 8);
+        dd.sphere(feetCentre, 0.03f, render::colors::kYellow, 8);
+        dd.line(feetCentre, hips, h.supported() ? render::colors::kGreen : render::colors::kRed);
     };
-    drawAssists(sim_.fielder());
-    if (!limbTest_) drawAssists(sim_.bowler());
+    drawCapsule(sim_.fielder());
+    if (!limbTest_) drawCapsule(sim_.bowler());
 
     if (debugSettings_.showProbe) {
         math::Transform probe = sim_.probeTransform(alpha);

@@ -40,6 +40,29 @@
     "stickDown": 0.3,     // m, follows the ground down this far
     "mass": 73,           // kg, as the body (human_joints.json bodyMass)
     "maxStrength": 500,   // N, its push on what it touches
-    "padding": 0.02       // m, gap kept to what it touches
+    "padding": 0.02,      // m, gap kept to what it touches
+    // The capsule holds the full-physics body up: a spring from the capsule to
+    // the pelvis on all six axes (Jolt SixDOF motors). Feel values, not body
+    // values: stronger = steadier, weaker = more sway.
+    "support": {
+      "frequency": 4.0,   // Hz
+      "damping": 1.0,     // ratio (1: no overshoot)
+      "maxForce": 2000,   // N (~2.8 x the body's weight)
+      "maxTorque": 600    // N m
+    },
+    // The hold lets go when the hips (pelvis) lean past these, seen from the
+    // centre of both feet (limits of stability, NeuroCom / Nashner:
+    // forward 8.5, back 4.5, sideways ~8 deg); blended between them. Then the
+    // body falls; at rest (slower than restSpeed m/s for recoverWait s) the
+    // capsule goes under the pelvis and the hold eases back in over recoverTime s.
+    "release": {
+      "forwardDeg": 8.5,
+      "backDeg": 4.5,
+      "leftDeg": 8.0,
+      "rightDeg": 8.0,
+      "restSpeed": 0.2,
+      "recoverWait": 1.0,
+      "recoverTime": 1.0
+    }
   }
 }

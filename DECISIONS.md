@@ -536,3 +536,15 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Kept, unused by the capsule:** `agents::Balancer` and the physics limb test (still
   run when physics is on).
 
+## 2026-11-09 (later): Full physics body on the capsule
+- **Decision (the user's calls):** the body is a full-physics Jolt Ragdoll driven by Jolt's
+  `DriveToPoseUsingMotors`, with gravity holding (each joint carries the weight beyond it, at
+  most its real strength). The capsule holds it up by a spring to the pelvis; the spring lets
+  go when the hips lean past 4 angles from the centre of the feet, and comes back at rest.
+- **Why:** Jolt does the joint physics; only the pose (our cricket logic) and thin glue are
+  ours. Jolt's motors alone sag under gravity (a spring needs an error to push), hence the
+  gravity holding, as real muscles hold posture.
+- **Joints:** Jolt's pose drive needs SwingTwist joints; uneven ranges are centred on the
+  parent's joint frame so the symmetric limits cover them.
+- **Removed:** `Balancer`, the old velocity-muscle drive, `JumpController`, `BodyReposition`.
+

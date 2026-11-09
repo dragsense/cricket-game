@@ -45,7 +45,7 @@
     "pushTime": 0.12        // s, push-off before a foot lifts (pre-swing ~10 % of the stride): heel up, knee bends
   },
   // Single steps while standing (motion::StepSettings): one foot at a time;
-  // the body follows from body reposition (human_joints.json "bodyReposition").
+  // the body follows the feet (human_joints.json "reposition").
   "step": {
     "stepLength": 0.4,       // m forward, ahead of the planted foot (short, comfortable step)
     "backStepLength": 0.3,   // m back
@@ -55,51 +55,5 @@
     "stepHeight": 0.2,       // m ankle apex: the knee bends, the heel rises (about 25 cm, 4.5)
     "toeClearance": 0.012,   // m, a lifted foot's lowest point above the ground at least (minimum toe clearance 1.1-1.3 cm, Winter; BIOMECHANICS 4.5)
     "swingPeakAt": 0.35      // apex early in the swing (heel up first, toes low at landing)
-  },
-  // Standing jump (motion::JumpSettings): crouch, push-off, ballistic flight, landing.
-  "jump": {
-    "crouchDepth": 0.18,     // m pelvis drop at the deepest load
-    "loadTime": 0.35,        // s to the deepest load while J is held
-    "minLoad": 0.4,          // share of the deepest load a tap gives
-    "moveLoad": 0.3,         // walking jump: a small dip to this share, then take-off
-    "crouchLeanDeg": 20,     // trunk forward at the deepest load
-    "pushTime": 0.16,        // s legs extend to take-off
-    "movePushTime": 0.08,    // s, moving: one quick push off the stance foot
-    "moveHeight": 0.15,      // m, moving: the body rises this much in the bound (flight ~0.35 s)
-    "moveKnee": 0.35,        // x leg length, moving bound: the driving foot lifts this high (knee up), coming down to land
-    "moveReach": 0.4,        // x leg length, moving: the swing foot drives this far ahead of the body and lands there
-    "moveTrail": 0.5,        // x leg length, moving: the take-off foot trails this far behind the body in the air, leg straight
-    "pushLift": 0.04,        // m pelvis above standing at take-off
-    "height": 0.35,          // m rise after take-off at the deepest load
-    "forwardDistance": 0.9,  // m travelled at the deepest load
-    "backDistance": 0.45,
-    "sideDistance": 0.7,
-    "tuck": 0.12,            // m feet draw up mid-flight
-    "leanDeg": 11,           // toward the jump direction
-    "landDepth": 0.14,       // m pelvis sinks absorbing the landing
-    "landTime": 0.12,
-    "recoverTime": 0.35,
-    // Arms (research notes in jump_controller.h). Flexion forward-up, abduction out.
-    "armBackDeg": 50,        // back swing at the deepest load, straight up
-    "armBackForwardDeg": 70, // back swing, forward jump
-    "armUpDeg": 155,         // take-off, straight up (overhead)
-    "armUpForwardDeg": 125,  // forward jump (along the path)
-    "armUpBackDeg": 90,      // backward jump
-    "armUpSideDeg": 135,     // side jump, lead arm up...
-    "sideOutDeg": 60,        // ...and out to the jump side
-    "acrossFlexDeg": 70,     // side jump, trail arm forward...
-    "acrossDeg": 30,         // ...and across the chest
-    "flightFall": 0.5,       // share of the way to the landing pose the arms go in flight
-    "landFlexDeg": 70,       // landing: arms forward to shoulder height
-    "landSideOutDeg": 70,    // side jump landing: arms out for balance
-    "landSideFlexDeg": 20,
-    "elbowLoadDeg": 35,      // elbows on the back swing
-    "elbowTopDeg": 15,       // nearly straight at take-off
-    "elbowLandDeg": 35,      // soft on landing
-    // Moving jump: the gait's opposed arms, bigger (drive arm opposite the driving knee).
-    "moveDriveDeg": 110,     // drive arm forward-up at full run
-    "moveBackDeg": 45,       // other arm back
-    "moveMin": 0.35,         // share of that at walking pace
-    "elbowMoveDeg": 80
   }
 }

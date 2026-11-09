@@ -8,15 +8,12 @@
 // steady the head, reach for the hand target if there is one (standing
 // only; docs/BIOMECHANICS.md section 9), then clamp every joint to its limits.
 
-#include "agents/balancer.h"
 #include "agents/human_body.h"
 #include "ik/joint_limits.h"
 #include "ik/limb_ik.h"
 #include "math/math.h"
 #include "motion/foot_stepper.h"
-#include "motion/jump_controller.h"
 #include "motion/body_decider.h"
-#include "motion/body_reposition.h"
 #include "motion/throw_arc.h"
 #include "motion/walk_controller.h"
 #include "rig/rig.h"
@@ -140,21 +137,21 @@ public:
     // (config/human_joints.json) and walk/run settings (config/locomotion.json),
     // and stands it at the spawn point.
     bool init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion);
-    // The body in the shared physics world (HumanBody: a Jolt body per bone
-    // with mass, real joint ranges, no muscles yet, so it folds under
-    // gravity): its centre of mass height carries the pelvis while walking
-    // and in the limb test; the feet stand on the world's real surface (Jolt
-    // ground query). After init(); again after the world is rebuilt. False if
-    // the world is full.
+    // The body in the shared physics world (DECISIONS 2026-11-09 "Full
+    // physics body on the capsule"): a capsule (Jolt CharacterVirtual)
+    // carries the player over the ground; the body is a full-physics Jolt
+    // Ragdoll whose muscles (Jolt's pose drive) pull it toward this tick's
+    // pose, held up by a spring from the capsule to the pelvis. Leaning past
+    // the release angles lets go: the body falls, then recovers. The feet
+    // stand on the world's real surface (Jolt ground query). After init();
+    // again after the world is rebuilt. False if the world is full.
     bool attachPhysics(physics::PhysicsWorld& world);
-    // Physics on: the body moves only by its muscles and the balancer
-    // (DESIGN "Physics body and balance"): each tick the decider reads the
-    // physics body and the limb test's targets, the balancer's assists stand
-    // it on the feet (and step), the muscles turn the joints, Jolt moves it. Off: the body is
-    // kinematic, placed at the planned pose. Needs attachPhysics().
-    void setPhysicsOn(bool on);
-    bool physicsOn() const { return physicsOn_; }
-    const Balancer& balancer() const { return balancer_; }
+    // The capsule holds the body (not let go after a lean).
+    bool supported() const { return supportOn_; }
+    // Debug drawing: the capsule (its feet, height and radius; world) and
+    // the line the release reads, from the centre of the feet to the hips
+    // (the physics body, world). False without a body.
+    bool capsuleDebug(math::Vec3& feet, float& height, float& radius, math::Vec3& feetCentre, math::Vec3& hips) const;
     const HumanBody& humanBody() const { return humanBody_; }
     HumanBody& humanBody() { return humanBody_; }
     const ik::JointLimits& jointLimits() const { return limits_; }
@@ -179,14 +176,6 @@ public:
     // the body follows from the stance solve. Held, the steps go on.
     void setStepInput(math::Vec2 dir) { stepInput_ = dir; }
     float speed() const { return walker_.speed(); }  // m/s
-    // Jump key held (not picking). Standing, holding starts the crouch;
-    // letting go takes off toward the move input (none: straight up).
-    // Walking, it takes off at once after a quick dip from the planted foot,
-    // the speed carried through the flight; the gait goes on after the
-    // landing.
-    void setJumpInput(bool held) { jumpHeld_ = held; }
-    bool jumping() const { return jumper_.active(); }
-    bool airborne() const { return jumper_.airborne(); }
     // Stands the fielder at `position` (world) facing `yaw` radians, feet at
     // rest, any jump cleared.
     void placeAt(math::Vec3 position, float yaw);
@@ -340,8 +329,8 @@ public:
     void setPoseHand(bool left, math::Vec3 world);
     void setPoseFoot(motion::Foot foot, math::Vec3 world);
     void clearPose();
-    // Physics on: every part back at the planned standing pose (the physics-off
-    // pose), at rest; the muscles hold from there.
+    // Every part back at the planned standing pose, at rest, the hold on
+    // again; the muscles pull from there.
     void resetPhysicsBody();
     bool posing() const { return phase_ == Phase::Pose; }
     // Wrist of one hand in world space, from a model-space pose.
@@ -384,10 +373,6 @@ private:
     // planted feet staying where they are in the world.
     void followCapsule(math::Vec3 from, float dt);
     void repositionBody(float dt);
-    // Limb test: a placed foot stops where its leg reaches (hip range), and a
-    // raised foot lifts only as the weight arrives over the other.
-    // Limb test with a placed foot: body and legs from motion::BodyReposition.
-    void repositionFromFeet();
     void addGaitMotion(float dt);
     void swingArms(float dt);
     void stabiliseHead(float dt);
@@ -498,11 +483,8 @@ private:
     RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
     int posedFoot_ = -1;  // limb test: the foot last placed (motion::Foot), -1 none
-    bool poseHandLast_ = false;  // limb test: the hand was moved after the foot (physics: only it has a target)
+    bool poseHandLast_ = false;  // limb test: the hand was moved after the foot (only it has a target)
     math::Vec3 poseFootGoal_{0.0f};  // limb test ankle goal, world space
-    // Limb test: the targets were let go when balance was lost (posture
-    // before the task); a new target given while standing takes them back.
-    bool targetsReleased_ = false;
     // A lifted foot's ankle stays at least this high (character space): its
     // standing height plus the minimum toe clearance (locomotion.json
     // "step.toeClearance"), so its target never runs along or into the ground.
@@ -520,50 +502,44 @@ private:
     GoalPath handPath_, footPath_;
     math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
     bool stepWalk_ = false;         // single steps in use (standing)
-    int stepPlanted_ = 1;           // single steps: the foot carrying the body (motion::Foot)
     motion::StepSettings stepSettings_;
     float heelLift_[2] = {0.0f, 0.0f};         // radians, smoothed heel lift past the ankle's range (solveIk)
     static constexpr float kHeelRate = 15.0f;  // 1/s, how fast the heel lift follows (no flicker)
     float tickSeconds_ = 1.0f / 120.0f;        // this tick's step
-    HumanBody humanBody_;                  // the body's mass (Jolt), vertical only for now
+    HumanBody humanBody_;                  // the full-physics body (Jolt Ragdoll)
     physics::PhysicsWorld* physics_ = nullptr;
     physics::CharacterId capsule_ = physics::kInvalidCharacter;  // carries the root over the ground
     float restComHeight_ = 0.0f;               // m, the centre of mass above the root at rest
-    // Physics on (setPhysicsOn): decider -> balancer -> muscles each tick.
-    void physicsTick(float dt);
-    bool physicsOn_ = false;
+    float restPelvisHeight_ = 1.0f;            // m, the pelvis above the root at rest
+    // The capsule's hold of the body: a hidden kinematic body riding the
+    // capsule's feet, sprung to the pelvis (physics_world.json "character").
+    physics::BodyId anchor_ = physics::kInvalidBody;
+    physics::JointId support_ = physics::kInvalidJoint;
+    bool supportOn_ = true;
+    float supportShare_ = 1.0f;  // 0..1, eased in after a recovery
+    float restTime_ = 0.0f;      // s the let-go body has been at rest
+    bool armed_ = true;          // the lean check is on (off after a fall until the body is back up)
+    // Each tick, after the pose: the muscles pull toward `target` (character
+    // space), the hold follows the capsule, the capsule takes the pelvis's
+    // height; a lean past the release angles lets go, rest brings it back.
+    void physicsTick(const std::vector<math::Mat4>& target, float dt);
+    // The limb test's goals through the decider: its plan (character space),
+    // or null without goals.
+    const std::vector<math::Mat4>* limbTestPlan(float dt);
     motion::BodyDecider decider_;
     motion::BodyDeciderJoints deciderJoints_;
     motion::BodyDeciderSettings deciderSettings_;
     motion::BodyQueue queue_;
-    Balancer balancer_;
-    // A balance step under way (the balancer asked: capture point outside
-    // the feet): the foot travels raised to its target (world), then down.
-    struct BalanceStep {
-        int foot = -1;
-        math::Vec3 target{0.0f};
-        float time = 0.0f;  // s since it started
-    };
-    BalanceStep balanceStep_;
-    static constexpr float kStepMaxTime = 1.0f;  // s: a step that has not landed by then ends
     MuscleTiming muscleTiming_;
-    std::vector<uint8_t> blocked_;            // per rig joint, from the last step
+    std::vector<uint8_t> blocked_;            // per rig joint, for the decider (none blocked)
     std::vector<math::Mat4> physicsModels_;   // the physics body now (character space)
     rig::Pose physicsPose_;
-    motion::BodyReposition bodyReposition_;              // limb test: body and legs from real constraints
-    motion::BodyRepositionSettings bodyRepositionSettings_;
-    float armLegRatio_ = 1.0f;  // a hand's swing angle per the other leg's thigh angle
     float ballDistance_ = 0.1f;  // ankle to ball of the foot (m), from the skeleton
     float ballDrop_ = 0.03f;     // ball of the foot below the ankle (m), from the skeleton
 
     motion::WalkSettings walkSettings_;  // the only pace (jog and run removed 2026-11-09)
     float postureLean_ = 0.087f;  // rad, walking posture: trunk held slightly forward
     motion::WalkController walker_;
-    motion::JumpSettings jump_;
-    motion::JumpController jumper_;
-    bool jumpHeld_ = false;
-    bool jumpMoving_ = false;  // the jump started while walking (speed carried)
-    bool jumpQueued_ = false;  // J pressed while moving: waiting for the take-off foot
     math::Vec3 releaseShift_{0.0f};  // release circle moved toward the batter during the swing, character space
     motion::FootStepper stepper_;
     math::Vec2 moveInput_{0.0f};

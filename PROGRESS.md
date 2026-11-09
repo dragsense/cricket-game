@@ -554,11 +554,34 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
     createCharacter/moveCharacter, physics_world.json "character"); `Human::followCapsule`
     moves the root through it each tick. Measured: 1.5 m/s for 1 s = 1.5 m on the ground;
     stops at a wall (face - radius - padding) and slides along it; lands from a 2 m drop.
-  - [ ] **C. Jolt Ragdoll** for the physics body: on hold, waiting on the user's call.
-    Jolt 5.3's `Ragdoll::DriveToPoseUsingMotors` drives only SwingTwist joints (it
-    asserts on any other type), but our joints are hinges and SixDOF with the real uneven
-    ranges. `DriveToPoseUsingKinematics` is what `HumanBody::follow` already does.
-  Known failing tests unchanged (as 6c9db7f).
+  - [~] **C. Full-physics body on the capsule** (2026-11-09, the user's calls; DECISIONS
+    2026-11-09 "Full physics body on the capsule"; awaiting the user's test):
+    - `HumanBody` is a Jolt Ragdoll (`PhysicsWorld::createRagdoll`): one dynamic body per bone
+      with mass, Jolt SwingTwist joints with the real ranges (hinge: swings locked; uneven
+      swing ranges centred on the parent's joint frame, symmetric half cones).
+    - Muscles: `holdWeight` (each joint carries the weight beyond it, capped at `maxTorque`)
+      + Jolt `Ragdoll::DriveToPoseUsingMotors` toward the pose (measured stiffness/damping in
+      Jolt's stiffness mode where listed, else activation-time frequency).
+    - The capsule holds the body: a hidden kinematic anchor on the capsule's feet, a SixDOF
+      spring to the pelvis on all six axes (stiffness = whole-body mass / inertia x (2 pi 4
+      Hz)^2). The capsule's height follows the pose's pelvis (shapes 5 cm apart).
+    - Release: the hips lean past forward/back/left/right degrees seen from the centre of both
+      feet (physics_world.json "character.release"): the spring is off, the body falls; at
+      rest 1 s the capsule goes under the pelvis and the spring eases back in over 1 s.
+    - Limb test: the goals go through the body decider; its plan is the muscles' target.
+    - Removed: `Balancer`, the old custom drive, tests/test_human_body.cpp, `JumpController`
+      (J key, "jump" config), `BodyReposition` (stance now `repositionBody` + `solveIk`).
+    - Walking input is off for now (the legs lag the walking pose).
+    - Drawn: each capsule (white held, red let go) and the feet-centre-to-hips line.
+    - Measured (temporary tests, not committed): standing worst joint 1.3 cm for 5 s; a
+      chest shove holds; after a fall it stands back up (pelvis 7 mm).
+    - **Open:** every limb-test move drops the body: the decider's plan leans the hips 5-10
+      deg back (past backDeg 4.5). Proposed: release on actual minus planned lean, the
+      capsule following the planned pelvis. Walking: the measured (relaxed) stiffness is too
+      soft for fast moves (knee lags); proposed: stiffness from the limb's inertia x the
+      activation frequency. Test files to decide: test_physics_joints.cpp (its joint/motor
+      /spring API is now unused), test_body_decider.cpp (2 failing), the skipped pick-step case.
+  Known failing tests: the 2 decider tests (test_body_decider.cpp).
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 
