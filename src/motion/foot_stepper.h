@@ -71,6 +71,14 @@ public:
     bool stepTo(Foot f, math::Vec3 spot);
     // Puts foot `f` at `spot` (character space) at once, flat, without a step.
     void place(Foot f, math::Vec3 spot);
+    // The deciding part of a step, for a caller that moves the foot itself:
+    // which foot a step in `dir` moves now (-1: none, too short), and the
+    // spot foot `f` lands on for `dir` (relative to the other, planted foot;
+    // at its ground height). Asked every tick, a step re-aims as `dir` changes.
+    int pickFoot(math::Vec2 dir, const StepSettings& s) const;
+    math::Vec3 stepSpot(Foot f, math::Vec2 dir, const StepSettings& s) const;
+    // The last foot that stepped (a caller moving the feet itself sets it).
+    void setLastStepped(Foot f) { last_ = static_cast<int>(f); }
 
     bool stepping() const { return swing_ >= 0; }
     // Foot `f` is off the ground (swinging).

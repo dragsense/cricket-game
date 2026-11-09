@@ -63,6 +63,7 @@ struct BodyGoals {
     Turn chest, head;
     bool down[2] = {true, true};   // left, right foot on the ground
     float push[2] = {0.0f, 0.0f};  // left, right push-off share [0, 1]: the unloading ankle points the foot
+    float dt = 0.0f;  // s since the last decide: the hips travel to a new place over time (0: they jump)
 };
 
 enum class Goal { HandL, HandR, FootL, FootR, Hips, Chest, Head };
@@ -111,6 +112,9 @@ struct BodyDeciderSettings {
     // rad); it splits the lumbar spine's and the pelvis tilt's combined share.
     float lumbarHipBand[3] = {0.5236f, 1.0472f, 1.5708f};  // 30, 60, 90 deg
     float lumbarHipRatio[3] = {1.9f, 0.9f, 0.4f};
+    // The hips' move to a new place takes Fitts' time (human_joints.json
+    // "reach": a + b log2(2D / width), s) on a minimum-jerk path.
+    float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
 };
 
 class BodyDecider {
@@ -126,6 +130,9 @@ public:
     // After decide: the plan places the pelvis (a hand's reach), and the
     // plan's centre of mass (character space; needs setMasses).
     bool planning() const { return pelvisPlanned_; }
+    // The character root moved (`toNew`: old character space to new): what
+    // the decider holds (planted feet, the hips' path) stays put in the world.
+    void rebase(const math::Transform& toNew);
     math::Vec3 planCentreOfMass() const;
 
     // Fills `out` from the body's current `pose` (character space) and its
@@ -171,7 +178,9 @@ private:
     void planTrunk(int e, math::Vec3 target, int first, int end, BodyQueue& out);
     // The planned legs under a planned pelvis: each planted foot stays where
     // it is (two-bone solve from the planned hip, knee forward).
-    void planLegs(const BodyGoals& goals, const BodyDeciderSettings& s, BodyQueue& out);
+    // balance: the hips go where the centre of mass is over the feet; else
+    // they stay where they are and only the legs reach the feet.
+    void planLegs(const BodyGoals& goals, const BodyDeciderSettings& s, BodyQueue& out, bool balance = true);
     // The plan's joint `j` (character space) turned by `turn`, within its range.
     void turnPlanned(int j, math::Quat turn);
     // The plan's pelvis placed at `t` (character space).
@@ -211,6 +220,13 @@ private:
     math::Vec3 anchor_[2]{};
     math::Quat anchorRot_[2] = {math::identityQuat(), math::identityQuat()};
     bool anchored_[2] = {false, false};
+    // The planned hips' travel to their new place (character space).
+    struct HipsPath {
+        math::Vec3 from{0.0f}, to{0.0f}, at{0.0f};
+        float time = 0.0f, duration = 0.0f;
+        bool on = false;
+    };
+    HipsPath hips_;
     // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
     int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};
     std::vector<float> mass_;          // per rig joint (kg)

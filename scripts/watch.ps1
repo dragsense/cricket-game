@@ -2,12 +2,14 @@
 # code, shaders or CMake files it rebuilds and swaps in the new game.
 #   - The running game stays open while compiling; if the build fails it keeps
 #     running and the errors are shown here.
-#   - config/*.json is NOT watched here: debug builds reload it live in-game.
+#   - config/*.json is NOT watched here: dev and debug builds reload it live in-game.
+#   - Default build: dev (optimised with debug info), so the simulation runs at
+#     full speed; -Config debug for unoptimised stepping in a debugger.
 # Uses watchexec (dev tool): winget install watchexec.watchexec
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\watch.ps1 [-Config release]
+#   powershell -ExecutionPolicy Bypass -File scripts\watch.ps1 [-Config debug|release]
 
-param([ValidateSet('debug', 'release')][string]$Config = 'debug')
+param([ValidateSet('debug', 'release', 'dev')][string]$Config = 'dev')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root

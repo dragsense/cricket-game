@@ -38,3 +38,4 @@ int main(int /*argc*/, char** /*argv*/) {
     game::CricketApp app(std::move(configs));
     return app.run();
 }
+ 

@@ -163,15 +163,17 @@ public:
     void tick(double dt);
 
     const IkTargets& targets() const { return targets_; }
-    // Requested walk in character space (x = left, y = forward), length 0..1
-    // scales the speed; zero stops. With `face`, turns toward world heading
-    // `faceYaw` (radians about +Y).
-    void setMoveInput(math::Vec2 move, bool face, float faceYaw) {
-        moveInput_ = move;
+    // The body decider's last answer (its plan: valid until the next tick).
+    const motion::BodyQueue& bodyQueue() const { return queue_; }
+    // Turning: with `face`, turns toward world heading `faceYaw` (radians
+    // about +Y). Moving is by steps only (setStepInput).
+    void setFacing(bool face, float faceYaw) {
         face_ = face;
         faceYaw_ = faceYaw;
     }
-    // Single steps while standing (character space, x = left, y = forward;
+    // Steps (WASD; character space, x = left, y = forward; zero for none):
+    // each step swings one foot (locomotion.json "step"), the body follows
+    // the feet; held, the steps go on (walking). Was: single steps while standing (character space, x = left, y = forward;
     // zero for none): each step swings one foot (locomotion.json "step") and
     // the body follows from the stance solve. Held, the steps go on.
     void setStepInput(math::Vec2 dir) { stepInput_ = dir; }
@@ -373,7 +375,6 @@ private:
     // planted feet staying where they are in the world.
     void followCapsule(math::Vec3 from, float dt);
     void repositionBody(float dt);
-    void addGaitMotion(float dt);
     void swingArms(float dt);
     void stabiliseHead(float dt);
     void solveIk();
@@ -542,11 +543,15 @@ private:
     motion::WalkController walker_;
     math::Vec3 releaseShift_{0.0f};  // release circle moved toward the batter during the swing, character space
     motion::FootStepper stepper_;
-    math::Vec2 moveInput_{0.0f};
     bool face_ = false;
     float faceYaw_ = 0.0f;
-    math::Vec2 lean_{0.0f};  // smoothed (forward, into-turn) lean, radians
-    float accel_ = 0.0f;     // smoothed forward acceleration for the lean, m/s^2
+    // A step with the physics body: the stepper decides it (foot, spot); its
+    // target travels like a limb-test goal (GoalPath).
+    int stepFoot_ = -1;              // the stepping foot (-1: none)
+    int stepStage_ = 0;              // 0 weight shift (down), 1 up to the top, 2 down onto the spot
+    float stepWait_ = 0.0f;          // s in stage 0
+    math::Vec3 stepFrom_{0.0f}, stepSpot_{0.0f};  // character space: where it left, where it lands
+    GoalPath stepPath_;
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians

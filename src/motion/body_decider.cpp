@@ -148,16 +148,20 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
     // while a hand or a lifted foot has a goal the trunk starts from standing
     // (the spine at rest, the pelvis as it stands), so it also straightens
     // after a far reach.
+    // A foot moves when it has a goal and is off the ground; a foot down with
+    // a goal stands pinned on that spot.
+    auto moving = [&](int i) { return goals.foot[i].active && !goals.down[i]; };
     const bool planning = goals.hand[0].active || goals.hand[1].active || goals.foot[0].active || goals.foot[1].active;
     for (int i = 0; i < 2; ++i) {
         const int ankle = joints_.legs[i].end;
-        const bool planted = ankle >= 0 && goals.down[i] && !goals.foot[i].active;
+        const bool planted = ankle >= 0 && goals.down[i];
         if (!planted || !planning) anchored_[i] = false;
         if (planted && !anchored_[i]) {
             anchor_[i] = pos(ankle);
             anchorRot_[i] = rot(ankle);
             anchored_[i] = true;
         }
+        if (planted && goals.foot[i].active) anchor_[i] = goals.foot[i].position;  // pinned on its given spot
     }
     if (planning) {
         const rig::Pose& rest = rig_->restPose();
@@ -172,7 +176,7 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
     for (int h = 0; h < 2; ++h)
         if (goals.hand[h].active) handTrunk(h, goals.hand[h], blocked, s, out);
     for (int i = 0; i < 2; ++i)
-        if (goals.foot[i].active) footTrunk(i, goals.foot[i], s, out);
+        if (moving(i)) footTrunk(i, goals.foot[i], s, out);
     planLegs(goals, s, out);
     // The reach completes: the legs' balance moves the hips (and the
     // shoulders and the lifted leg's hip with them), so the trunk and the
@@ -183,7 +187,7 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
         auto shortOf = [&] {
             float sum = 0.0f;
             for (int e = 0; e < kEnds; ++e)
-                if (endGoal(e).active && endRoot(e) >= 0)
+                if ((e < 2 ? endGoal(e).active : moving(e - 2)) && endRoot(e) >= 0)
                     sum += std::max(0.0f, math::distance(planPos(endRoot(e)), endGoal(e).position) - endReach(e));
             return sum;
         };
@@ -198,6 +202,37 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
             if (last - now < kProgress) break;
             last = now;
         }
+    }
+    // The hips travel to their new place (any goal's: a step's balance, a
+    // reach's lean) on a minimum-jerk path in Fitts' time, from where the
+    // body has them; a new place mid-way retargets the same path. The legs
+    // follow them to the planted feet.
+    if (planning && pelvisPlanned_ && goals.dt > 0.0f) {
+        const math::Vec3 want = planPos(joints_.pelvis);
+        constexpr float kRetarget = 1e-3f;  // m: a new place
+        if (!hips_.on) {
+            hips_.from = hips_.at = pos(joints_.pelvis);
+            hips_.to = want;
+            hips_.time = 0.0f;
+            hips_.duration = movementTime(math::distance(hips_.from, want), s.fittsWidth, s.fittsA, s.fittsB);
+            hips_.on = true;
+        } else if (math::distance(want, hips_.to) > kRetarget) {
+            if (hips_.time >= hips_.duration) {
+                hips_.from = hips_.at;
+                hips_.time = 0.0f;
+                hips_.duration = movementTime(math::distance(hips_.at, want), s.fittsWidth, s.fittsA, s.fittsB);
+            }
+            hips_.to = want;
+        }
+        hips_.time += goals.dt;
+        const float u = std::clamp(hips_.time / std::max(hips_.duration, 1e-3f), 0.0f, 1.0f);
+        hips_.at = math::lerp(hips_.from, hips_.to, u * u * u * (10.0f + u * (6.0f * u - 15.0f)));
+        if (math::distance(hips_.at, want) > 1e-4f) {
+            movePlannedPelvis(hips_.at - want);
+            planLegs(goals, s, out, false);
+        }
+    } else if (!planning) {
+        hips_.on = false;
     }
     for (int h = 0; h < 2; ++h)
         if (goals.hand[h].active) handOrders(h, goals.hand[h], blocked, s, out);
@@ -216,7 +251,7 @@ void BodyDecider::decide(const rig::Pose& pose, const BodyGoals& goals, const st
     }
 
     for (int i = 0; i < 2; ++i) {
-        if (goals.foot[i].active) footOrders(i, goals, blocked, s, out);
+        if (moving(i)) footOrders(i, goals, blocked, s, out);
         // Push-off: the calf points the unloading foot (toes down is + about the foot's X).
         const int ankle = joints_.legs[i].end;
         if (goals.push[i] > 0.0f && ankle >= 0)
@@ -404,7 +439,15 @@ math::Vec3 BodyDecider::planCentreOfMass() const {
     return totalMass_ > 0.0f ? sum / totalMass_ : sum;
 }
 
-void BodyDecider::planLegs(const BodyGoals& /*goals*/, const BodyDeciderSettings& s, BodyQueue& out) {
+void BodyDecider::rebase(const math::Transform& toNew) {
+    for (int i = 0; i < 2; ++i) {
+        anchor_[i] = toNew.transformPoint(anchor_[i]);
+        anchorRot_[i] = toNew.rotation * anchorRot_[i];
+    }
+    for (math::Vec3* p : {&hips_.from, &hips_.to, &hips_.at}) *p = toNew.transformPoint(*p);
+}
+
+void BodyDecider::planLegs(const BodyGoals& /*goals*/, const BodyDeciderSettings& s, BodyQueue& out, bool balance) {
     if (!pelvisPlanned_) return;
     // The planted feet stay where they are; the legs reach them from the
     // planned hips, and the hips go where the plan's centre of mass stays over
@@ -477,7 +520,8 @@ void BodyDecider::planLegs(const BodyGoals& /*goals*/, const BodyDeciderSettings
     };
     constexpr int kPasses = 4;
     constexpr float kOver = 1e-3f;  // m: the centre of mass over the feet
-    for (int pass = 0; pass < kPasses; ++pass) {
+    if (!balance) solveInRange();
+    for (int pass = 0; balance && pass < kPasses; ++pass) {
         solveInRange();
         if (totalMass_ <= 0.0f) break;
         const math::Vec3 com = planCentreOfMass();

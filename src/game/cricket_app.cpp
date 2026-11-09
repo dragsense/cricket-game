@@ -360,14 +360,13 @@ bool CricketApp::pumpEvents() {
     }
     if (!limbTest_ && actions_.pressed(input_, core::Action::RandomBowl)) randomBowl();
     agents::Human& controlled = bowlAim_ ? sim_.bowler() : sim_.fielder();
-    (bowlAim_ ? sim_.fielder() : sim_.bowler()).setMoveInput(math::Vec2(0.0f), false, 0.0f);
+    (bowlAim_ ? sim_.fielder() : sim_.bowler()).setFacing(false, 0.0f);
     if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
     if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
-    // Walking is off for now (the user's call, 2026-11-09: the ragdoll's legs
-    // lag the walking pose; limb test first). WASD only turns the player.
-    controlled.setMoveInput(math::Vec2(0.0f), true, heading_);
-    // Limb test: WASD takes single steps instead (the body follows the feet).
-    controlled.setStepInput(limbTest_ ? move : math::Vec2(0.0f));
+    // One way to move (the user's call, 2026-11-09): WASD takes steps (held:
+    // walking); the body follows the feet. The heading only turns the player.
+    controlled.setFacing(true, heading_);
+    controlled.setStepInput(move);
 
     // Limb test: no picking, balls or throwing (no ball reaches the hand).
     if (!limbTest_ && actions_.pressed(input_, core::Action::ClearReach)) sim_.fielder().clearReach();

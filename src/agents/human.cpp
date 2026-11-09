@@ -118,8 +118,6 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
     root_.rotation = math::fromAxisAngle(math::kUp, def.spawnYaw);
     previousRoot_ = root_;
     walker_.reset(def.spawnYaw);
-    lean_ = math::Vec2(0.0f);
-    accel_ = 0.0f;
     legPhase_ = armAmount_ = headYaw_ = 0.0f;
     loadLocomotion(locomotion);
 
@@ -373,6 +371,16 @@ void Human::placeAt(math::Vec3 position, float yaw) {
 
 void Human::followCapsule(math::Vec3 from, float dt) {
     if (!physics_ || capsule_ == physics::kInvalidCharacter || dt <= 0.0f) return;
+    if (humanBody_.ready() && supportOn_) {
+        // The full-physics body: the capsule follows the real hips (physicsTick),
+        // not the root; the root (the pose's frame) moves by the feet and
+        // walking only, so it never chases the hips (that loops: the pose
+        // plans the pelvis from the root).
+        const math::Transform before = root_;
+        root_.position.y = physics_->groundHeightAt(root_.position);
+        stepper_.rebase(before, root_);
+        return;
+    }
     const math::Vec3 feet = physics_->moveCharacter(capsule_, (root_.position - from) / dt, dt);
     const math::Transform before = root_;
     root_.position.x = feet.x;
@@ -397,8 +405,7 @@ void Human::tick(double dt) {
     current_.locals = rig_.restPose().locals;
     // Single steps: standing still (not walking or picking), a step input
     // takes steps until the fielder walks or acts.
-    const bool standing = (phase_ == Phase::Idle || phase_ == Phase::Pose) && walker_.speed() < 0.2f &&
-                          math::length2(moveInput_) < 1e-6f;
+    const bool standing = phase_ == Phase::Idle || phase_ == Phase::Pose;
     if (!standing) stepWalk_ = false;
     else if (math::length2(stepInput_) > 1e-6f) stepWalk_ = true;
     const math::Vec3 walkFrom = root_.position;
@@ -416,7 +423,6 @@ void Human::tick(double dt) {
     // The body follows the feet (repositionBody); the limb test's pose is
     // the decider's plan for the physics body: here it stands like idle.
     repositionBody(static_cast<float>(dt));
-    addGaitMotion(static_cast<float>(dt));
     reachError_ = 0.0f;
     updatePick(static_cast<float>(dt));
     updateThrow(static_cast<float>(dt));
@@ -461,7 +467,7 @@ void Human::tick(double dt) {
     // limb test's: the decider's plan), the capsule holding it up.
     if (physics_ && humanBody_.ready()) {
         rig_.localToModel(current_, models_);
-        const std::vector<math::Mat4>* plan = phase_ == Phase::Pose ? limbTestPlan(static_cast<float>(dt)) : nullptr;
+        const std::vector<math::Mat4>* plan = phase_ == Phase::Pose || phase_ == Phase::Idle ? limbTestPlan(static_cast<float>(dt)) : nullptr;
         physicsTick(plan ? *plan : models_, static_cast<float>(dt));
     }
     // Shoulders carried by the chest (not the clavicle) while bowling, for
@@ -482,7 +488,7 @@ void Human::walk(float dt) {
     // Bowling turns the whole player to bowlYaw_ (side-on, then straight).
     const bool picking = phase_ != Phase::Idle;
     const bool bowlTurn = phase_ == Phase::Bowl && bowlStage_ != BowlStage::Circle;
-    walker_.tick(dt, picking || !supportOn_ ? math::Vec2(0.0f) : moveInput_,
+    walker_.tick(dt, math::Vec2(0.0f),  // turning only: moving is by steps
                  bowlTurn || (face_ && !picking), bowlTurn ? bowlYaw_ : faceYaw_, walkSettings_);
     const motion::WalkSettings& w = walkSettings_;
     const math::Transform from = root_;
@@ -500,12 +506,29 @@ void Human::walk(float dt) {
     // body reposition. The root (and the camera with it) stays between the
     // feet every tick, so it glides along with the swinging foot.
     if (stepWalk_) {
-        stepper_.tick(dt, stepInput_, stepSettings_);
+        if (physics_ && humanBody_.ready()) {
+            // The physics body: the stepper decides the step (which foot,
+            // where it lands, re-aimed every tick as the input turns); the
+            // foot's target travels there in limbTestPlan.
+            if (stepFoot_ < 0) {
+                stepFoot_ = stepper_.pickFoot(stepInput_, stepSettings_);
+                stepStage_ = 0;
+                stepWait_ = 0.0f;
+            }
+            if (stepFoot_ >= 0 && math::length2(stepInput_) > 1e-6f)
+                stepSpot_ = stepper_.stepSpot(static_cast<motion::Foot>(stepFoot_), stepInput_, stepSettings_);
+        } else {
+            stepper_.tick(dt, stepInput_, stepSettings_);
+        }
         const math::Transform before = root_;
         const math::Vec3 mid = root_.transformPoint(0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right)));
         root_.position.x = mid.x;
         root_.position.z = mid.z;
         stepper_.rebase(before, root_);
+        // The step's points stay where they are in the world as the root moves.
+        const math::Transform toNew = math::inverse(root_) * before;
+        for (math::Vec3* p : {&stepFrom_, &stepSpot_, &stepPath_.from, &stepPath_.to, &stepPath_.at}) *p = toNew.transformPoint(*p);
+        decider_.rebase(toNew);
         return;
     }
     if (picking && !(bowlTurn && bowlStage_ == BowlStage::Back && strideWaiting_)) {  // turning side-on, the feet step round
@@ -532,50 +555,6 @@ motion::GaitStyle Human::gaitStyle() const {
     s.widthScale = w.widthScale;
     s.landAhead = w.landAhead;
     return s;
-}
-
-void Human::addGaitMotion(float dt) {
-    const motion::WalkSettings& w = walkSettings_;
-    const float amount = math::clamp(walker_.speed() / std::max(w.speed, 0.1f), 0.0f, 1.0f);
-
-    // Bob: see motion::gaitBob. Running also lowers the pelvis so the stance
-    // knee flexes (about 40 deg mid-stance). Sway: toward the stance foot (+X is left).
-    // Left leg position from the gait: it travels back to front while it
-    // swings, front to back while the right swings. Held when standing.
-    const int swing = stepper_.swingFoot();
-    const float sweep = std::cos(math::kPi * stepper_.swingProgress());
-    if (swing == static_cast<int>(motion::Foot::Left)) legPhase_ = -sweep;
-    else if (swing == static_cast<int>(motion::Foot::Right)) legPhase_ = sweep;
-
-    const float arc = swing >= 0 ? std::sin(math::kPi * stepper_.swingProgress()) : 0.0f;
-    const float side = swing == static_cast<int>(motion::Foot::Right) ? 1.0f : -1.0f;
-    // Between steps, hold the value at a step boundary (continuous for walk and run).
-    const float bob = motion::gaitBob(swing >= 0 ? stepper_.swingProgress() : 0.0f, w.flightFraction);
-    const math::Vec3 offset(side * w.sway * amount * arc, amount * (w.bob * bob - w.pelvisDrop), 0.0f);
-
-    // Lean forward with speed and acceleration, and into turns (about +Z,
-    // positive tips the body toward -X, the right).
-    const float forward = math::dot(math::inverse(root_).transformDirection(walker_.velocity()), math::kForward);
-    // Acceleration steps (to 0 on reaching speed); smoothing it before the
-    // lean filter makes the lean ease out instead of kinking.
-    const float follow = std::min(1.0f, w.leanRate * dt);
-    accel_ += (walker_.acceleration() - accel_) * follow;
-    const math::Vec2 want(w.leanPerSpeed * forward + w.leanPerAccel * accel_,
-                          -w.turnLean * walker_.yawRate() * walker_.speed());
-    lean_ += (math::clamp(want, math::Vec2(-w.maxLean), math::Vec2(w.maxLean)) - lean_) * follow;
-
-    math::Transform& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)];
-    pelvis.position = body_.position + offset;
-    // Pelvis turns toward the forward leg (+X left: a positive turn about +Y
-    // takes the left hip back); the chest turns back against it.
-    const float twist = -w.pelvisTwist * amount * legPhase_;
-    const math::Vec2 lean = lean_;
-    pelvis.rotation = math::fromAxisAngle(math::kRight, lean.x) * math::fromAxisAngle(math::kForward, lean.y) *
-                      math::fromAxisAngle(math::kUp, twist) * pelvis.rotation;
-    if (joints_.chest >= 0) {
-        math::Quat& chest = current_.locals[static_cast<size_t>(joints_.chest)].rotation;
-        chest = math::fromAxisAngle(math::kUp, -w.chestCounter * twist) * chest;
-    }
 }
 
 void Human::repositionBody(float dt) {
@@ -665,6 +644,12 @@ void Human::solveIk() {
 }
 
 void Human::swingArms(float dt) {
+    // Leg position from the steps: the swinging leg travels back to front;
+    // held between steps. The arms swing opposite the same-side leg.
+    const int swing = stepper_.swingFoot();
+    const float sweep = std::cos(math::kPi * stepper_.swingProgress());
+    if (swing == static_cast<int>(motion::Foot::Left)) legPhase_ = -sweep;
+    else if (swing == static_cast<int>(motion::Foot::Right)) legPhase_ = sweep;
     const motion::WalkSettings& w = walkSettings_;
 
     // Full swing walking forward, little when sidestepping or backing up.
@@ -914,6 +899,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         muscleTiming_.fittsA = jointsConfig_->getFloat("reach.fittsA", muscleTiming_.fittsA);
         muscleTiming_.fittsB = jointsConfig_->getFloat("reach.fittsB", muscleTiming_.fittsB);
         muscleTiming_.fittsWidth = jointsConfig_->getFloat("reach.fittsWidth", muscleTiming_.fittsWidth);
+        deciderSettings_.fittsA = muscleTiming_.fittsA;
+        deciderSettings_.fittsB = muscleTiming_.fittsB;
+        deciderSettings_.fittsWidth = muscleTiming_.fittsWidth;
         deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
@@ -958,7 +946,8 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
     linear.maxTorque = c.supportMaxForce;
     angular.maxTorque = c.supportMaxTorque;
     support_ = anchor_ == physics::kInvalidBody ? physics::kInvalidJoint
-                                                : world.createSupport(anchor_, humanBody_.parts()[0].body, linear, angular);
+                                                : world.createSupport(anchor_, humanBody_.parts()[0].body, linear, angular,
+                                                                    c.supportFreeDown);
     if (support_ == physics::kInvalidJoint) {
         LOG_ERROR("human: no room for the capsule's hold in the physics world");
         physics_ = nullptr;
@@ -1008,6 +997,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     };
     // Only the limb moved last has a target (the user's rule).
     motion::BodyGoals goals;
+    goals.dt = dt;
     if (poseHand_ && poseHandLast_) {
         motion::BodyGoals::Point& hand = goals.hand[reachLeft_ ? 0 : 1];
         hand.active = true;
@@ -1015,6 +1005,50 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
                                reachLeft_ ? joints_.armL.end : joints_.armR.end);
     } else {
         handPath_.on = false;
+    }
+    if (stepFoot_ >= 0) {
+        // A step (the stepper's decision: this foot to stepSpot_). Its target
+        // travels as the limb test's does (travel: from the real foot, Fitts'
+        // time, minimum jerk, retargeted mid-way when the spot moves):
+        // 0 stays down while the weight moves off it (liftAt of the step
+        // time), 1 up to the swing's top (half way, stepHeight up), 2 down
+        // onto the spot; landed, the stepper plants it there.
+        const int f = stepFoot_;
+        const int end = f == 0 ? joints_.legL.end : joints_.legR.end;
+        const math::Vec3 real(physicsModels_[static_cast<size_t>(end)][3]);
+        math::Vec3 goal;
+        if (stepStage_ == 0) {
+            if (stepWait_ == 0.0f) stepFrom_ = real;
+            stepWait_ += dt;
+            goal = stepFrom_;
+            stepPath_.on = false;
+            if (stepWait_ >= stepSettings_.liftAt * stepSettings_.stepDuration) stepStage_ = 1;
+        } else {
+            const math::Vec3 top = math::lerp(stepFrom_, stepSpot_, 0.5f) + math::kUp * stepSettings_.stepHeight;
+            goal = travel(stepPath_, stepStage_ == 1 ? top : stepSpot_, end);
+            if (stepPath_.time >= stepPath_.duration) {
+                if (stepStage_ == 1) {
+                    stepStage_ = 2;
+                } else {
+                    stepper_.place(static_cast<motion::Foot>(f), stepSpot_);
+                    stepper_.setLastStepped(static_cast<motion::Foot>(f));
+                    stepFoot_ = -1;
+                    stepPath_.on = false;
+                }
+            }
+        }
+        if (stepFoot_ >= 0) stepper_.place(static_cast<motion::Foot>(f), goal);  // the root keeps between the feet
+        motion::BodyGoals::Point& foot = goals.foot[f];
+        foot.active = true;
+        foot.position = goal;
+        goals.down[f] = false;
+        // The other foot stands where the stepper has it (on the ground).
+        goals.foot[1 - f].active = true;
+        goals.foot[1 - f].position = stepper_.foot(static_cast<motion::Foot>(1 - f));
+        goals.down[1 - f] = true;
+        handPath_.on = footPath_.on = false;
+        decider_.decide(physicsPose_, goals, blocked_, deciderSettings_, queue_);
+        return queue_.plan;
     }
     if (posedFoot_ >= 0 && !poseHandLast_) {
         const int f = posedFoot_;
@@ -1026,6 +1060,14 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     } else {
         footPath_.on = false;
     }
+    // Every foot without a goal stands pinned where the stepper has it (on
+    // the ground): one plan, standing or stepping.
+    for (int i = 0; i < 2; ++i)
+        if (!goals.foot[i].active) {
+            goals.foot[i].active = true;
+            goals.foot[i].position = stepper_.foot(static_cast<motion::Foot>(i));
+            goals.down[i] = true;
+        }
     // The decider picks which parts move and plans the whole pose.
     decider_.decide(physicsPose_, goals, blocked_, deciderSettings_, queue_);
     return queue_.plan;
@@ -1045,9 +1087,23 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     if (supportOn_) {
         // The hold rides the capsule's feet and pulls the pelvis to where the
         // pose has it.
-        world.moveKinematic(anchor_, root_.position, dt);
-        const math::Transform pelvis = humanBody_.partPose(0, target);
-        world.setSupportTarget(support_, root_.rotation * pelvis.position, root_.rotation * pelvis.rotation);
+        // The capsule goes under the real hips (Jolt stops it at walls) and
+        // turns only as the pelvis turns (legs and upper body do not count).
+        // The hold rides it and pulls the pelvis to where the pose has it.
+        const math::Transform realHips = humanBody_.boneWorld(world, 0);
+        const math::Vec3 at = world.characterFeet(capsule_);
+        const math::Vec3 under(realHips.position.x, at.y, realHips.position.z);
+        const math::Vec3 capsuleFeet = world.moveCharacter(capsule_, (under - at) / dt, dt);
+        const math::Vec3 facing = realHips.rotation * math::kForward;
+        const math::Quat turn = math::fromAxisAngle(math::kUp, std::atan2(facing.x, facing.z));
+        world.moveKinematic(anchor_, math::Transform{capsuleFeet, turn}, dt);
+        // Never higher than standing (as the capsule is never taller than the
+        // player): pulled higher, the hold would lift the feet off the ground.
+        math::Transform planned = humanBody_.partPose(0, target);
+        planned.position.y -= std::max(0.0f, pelvisY - restPelvisHeight_);
+        const math::Transform pelvis = root_ * planned;  // world
+        const math::Quat back = math::inverse(turn);
+        world.setSupportTarget(support_, back * (pelvis.position - capsuleFeet), back * pelvis.rotation);
         if (supportShare_ < 1.0f) {
             supportShare_ = std::min(1.0f, supportShare_ + dt / std::max(c.recoverTime, 1e-3f));
             world.setSupportLimits(support_, c.supportMaxForce * supportShare_, c.supportMaxTorque * supportShare_);
@@ -1065,7 +1121,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
             base += world.transform(humanBody_.parts()[static_cast<size_t>(part)].body).position;
             ++feet;
         }
-        if (feet == 0) return;
+        if (feet == 0 || !c.releaseOn) return;
         base /= static_cast<float>(feet);
         const math::Vec3 hips = world.transform(humanBody_.parts()[0].body).position;
         const math::Vec3 lean = math::inverse(root_.rotation) * (hips - base);  // character axes: +X left, +Z forward

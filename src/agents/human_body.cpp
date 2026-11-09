@@ -149,8 +149,6 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             r.motor.frequency = frequency;
             r.motor.damping = muscles.damping;
             r.motor.maxTorque = strength;  // 0: no muscle (the joint hangs free)
-            r.motor.stiffness = valueOf(muscles.stiffness, bone.name);
-            if (r.motor.stiffness > 0.0f) r.motor.damping = valueOf(muscles.jointDamping, bone.name);
             p.muscle = strength > 0.0f;
             p.strength = strength;
         }
@@ -159,6 +157,22 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         parts_.push_back(p);
         ragdoll.push_back(r);
         totalMass_ += p.mass;
+    }
+    // Each muscle's stiffness from what it moves: the inertia of every part
+    // beyond its joint, about the joint (each part as a point mass at its
+    // centre, as built), at the activation frequency: K = I (2 pi f)^2,
+    // critically damped (2 sqrt(K I)); its torque stays capped at maxTorque.
+    const float w2 = (math::kTwoPi * frequency) * (math::kTwoPi * frequency);
+    std::vector<float> inertia(ragdoll.size(), 0.0f);
+    for (size_t i = 0; i < ragdoll.size(); ++i)
+        for (int j = static_cast<int>(i); j >= 0 && ragdoll[static_cast<size_t>(j)].parent >= 0;
+             j = ragdoll[static_cast<size_t>(j)].parent)
+            inertia[static_cast<size_t>(j)] +=
+                ragdoll[i].body.mass * math::length2(ragdoll[i].body.pose.position - ragdoll[static_cast<size_t>(j)].pivot);
+    for (size_t i = 0; i < ragdoll.size(); ++i) {
+        if (ragdoll[i].parent < 0 || inertia[i] <= 0.0f) continue;
+        ragdoll[i].motor.stiffness = inertia[i] * w2;
+        ragdoll[i].motor.damping = 2.0f * std::sqrt(ragdoll[i].motor.stiffness * inertia[i]) * muscles.damping;
     }
     std::vector<physics::BodyId> bodies;
     ragdoll_ = world.createRagdoll(ragdoll, group, bodies);

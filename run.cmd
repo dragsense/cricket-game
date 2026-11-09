@@ -3,7 +3,8 @@ rem Build (only what changed) and run the game.
 rem   run            debug build + tests + run
 rem   run fast       debug build + run, skip tests
 rem   run release    optimized build + tests + run
-rem   run watch      rebuild + swap in the game on every save (like nodemon)
+rem   run watch      fast dev build (optimised + debug info), rebuilt and swapped in on every save (like nodemon)
+rem   run watch -Config debug   the same with the slow debug build (for stepping in a debugger)
 setlocal
 if /I "%~1"=="watch" (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\watch.ps1" %2 %3

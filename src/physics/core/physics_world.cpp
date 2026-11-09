@@ -38,6 +38,7 @@
 #include <Jolt/RegisterTypes.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -142,6 +143,8 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     ch.supportDamping = c.getFloat("character.support.damping", ch.supportDamping);
     ch.supportMaxForce = c.getFloat("character.support.maxForce", ch.supportMaxForce);
     ch.supportMaxTorque = c.getFloat("character.support.maxTorque", ch.supportMaxTorque);
+    ch.supportFreeDown = c.getFloat("character.support.freeDown", ch.supportFreeDown);
+    ch.releaseOn = c.getBool("character.release.on", ch.releaseOn);
     auto deg = [&](const char* key, float rad) { return math::radians(c.getFloat(key, math::degrees(rad))); };
     ch.releaseForward = deg("character.release.forwardDeg", ch.releaseForward);
     ch.releaseBack = deg("character.release.backDeg", ch.releaseBack);
@@ -988,7 +991,8 @@ void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations,
     r.ragdoll->DriveToPoseUsingMotors(r.pose);
 }
 
-JointId PhysicsWorld::createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular) {
+JointId PhysicsWorld::createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular,
+                                    float freeDown) {
     if (!impl_ || !impl_->slot(a) || !impl_->slot(b)) return kInvalidJoint;
     Impl& m = *impl_;
     if (m.hinges.size() >= m.hinges.capacity()) {
@@ -1009,6 +1013,20 @@ JointId PhysicsWorld::createSupport(BodyId a, BodyId b, const MotorDesc& linear,
     if (!c) return kInvalidJoint;
     applySteps(*c, m.settings);
     for (int axis = 0; axis < 6; ++axis) c->SetMotorState(static_cast<A>(axis), JPH::EMotorState::Position);
+    if (freeDown > 0.0f) {
+        // Up/down: no motor; b moves freely from its target down to freeDown
+        // below it, then Jolt's soft limit (the linear spring) holds it.
+        c->SetMotorState(A::TranslationY, JPH::EMotorState::Off);
+        c->SetLimitsSpringSettings(A::TranslationY, JPH::SpringSettings(JPH::ESpringMode::StiffnessAndDamping,
+                                                                        std::max(linear.stiffness, 0.0f),
+                                                                        std::max(linear.damping, 0.0f)));
+        const JPH::BodyInterface& bi = m.system.GetBodyInterface();
+        const JPH::Vec3 offset = bi.GetRotation(m.slots[a].body).Conjugated() *
+                                 JPH::Vec3(bi.GetCenterOfMassPosition(m.slots[b].body) -
+                                           bi.GetCenterOfMassPosition(m.slots[a].body));
+        c->SetTranslationLimits(JPH::Vec3(-FLT_MAX, offset.GetY() - freeDown, -FLT_MAX),
+                                JPH::Vec3(FLT_MAX, offset.GetY(), FLT_MAX));
+    }
     m.system.AddConstraint(c);
     m.hinges.push_back(nullptr);
     m.swingTwists.push_back(nullptr);
@@ -1021,6 +1039,11 @@ void PhysicsWorld::setSupportTarget(JointId id, math::Vec3 offset, math::Quat ro
     JPH::SixDOFConstraint& c = *impl_->sixDofs[id];
     c.SetTargetPositionCS(toJolt(offset));
     c.SetTargetOrientationCS(toJolt(math::normalize(rotation)));
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    if (c.GetMotorState(A::TranslationY) == JPH::EMotorState::Off) {  // free down: the band follows the target
+        const float freeDown = c.GetLimitsMax(A::TranslationY) - c.GetLimitsMin(A::TranslationY);
+        c.SetTranslationLimits(JPH::Vec3(-FLT_MAX, offset.y - freeDown, -FLT_MAX), JPH::Vec3(FLT_MAX, offset.y, FLT_MAX));
+    }
 }
 
 void PhysicsWorld::setSupportLimits(JointId id, float maxForce, float maxTorque) {

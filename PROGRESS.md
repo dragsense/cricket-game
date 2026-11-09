@@ -581,6 +581,24 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
       soft for fast moves (knee lags); proposed: stiffness from the limb's inertia x the
       activation frequency. Test files to decide: test_physics_joints.cpp (its joint/motor
       /spring API is now unused), test_body_decider.cpp (2 failing), the skipped pick-step case.
+  - [~] **D. Stepping on the physics body** (2026-11-09 evening, the user's calls; committed, being tested):
+    - Capsule: goes under the real hips and turns with the pelvis yaw; the root no longer reads the
+      hips (that looped: runaway). Hold: up/down free 3 cm below the plan (support.freeDown, Jolt
+      SixDOF soft limit), never pulled above standing (restPelvisHeight_). Release off (release.on).
+    - One input: WASD = steps (held: walking); setMoveInput/addGaitMotion removed; WalkController
+      only turns now.
+    - Stepper decides only (pickFoot/stepSpot, re-aimed every tick); the foot target travels in
+      Human::limbTestPlan (stages: weight shift liftAt, up to the top, down onto the spot).
+    - Decider (general): a foot down with a goal is pinned there; the planned hips travel to a new
+      place on a minimum-jerk path in Fitts' time (BodyGoals.dt); rebase() when the root moves.
+      Physics body in Idle/Pose: always the decider's plan, feet without a goal pinned.
+    - Muscles: stiffness = inertia beyond the joint x (2 pi f)^2 (activationTime), critical damping,
+      capped at maxTorque (relaxed measured values no longer drive).
+    - Measured (TEMP trace in tests/test_human.cpp; configs must stay alive, see memory): standing
+      ankle 0.2 cm; step foot 2-8 cm from its target, chest 0-4 deg, lands within 2 cm; after landing
+      the real chest swings 7-15 deg and the foot slides ~15 cm for ~0.5 s.
+    - **Next:** one clock per step (foot + hips targets from the same phase) for a smooth landing;
+      why planLegs raises the hips so often; turn the TEMP trace into a real test; hand sways in the limb test (check with the new muscles).
   Known failing tests: the 2 decider tests (test_body_decider.cpp).
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)

@@ -98,8 +98,12 @@ add_executable(CricketGame
 )
 target_link_libraries(CricketGame PRIVATE cricket_core cricket_rig cricket_ik cricket_motion cricket_physics SDL3::SDL3 imgui EnTT::EnTT filament_sdk)
 cricket_warnings(CricketGame)
-# Debug builds read config/ straight from the source tree and hot-reload it.
-target_compile_definitions(CricketGame PRIVATE $<$<CONFIG:Debug>:CRICKET_DEV_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config">)
+# Dev builds (Debug, and RelWithDebInfo: optimised with symbols, for watch
+# mode at full speed) read config/ straight from the source tree and
+# hot-reload it, and dock the window as debug does.
+target_compile_definitions(CricketGame PRIVATE
+    $<$<CONFIG:Debug,RelWithDebInfo>:CRICKET_DEV_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config">
+    $<$<CONFIG:Debug,RelWithDebInfo>:CRICKET_DEV_BUILD>)
 if(WIN32)
     set_target_properties(CricketGame PROPERTIES WIN32_EXECUTABLE $<CONFIG:Release>)
 endif()

@@ -3,6 +3,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\build.ps1                # debug: build + test + run
 #   powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Config release
+#   powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Config dev      # optimised + debug info (watch's default)
 #   ... -NoRun / -NoTests / -ConfigureOnly / -Clean / -Detach
 #
 # A running game keeps running while it rebuilds: its locked exe is renamed
@@ -10,7 +11,7 @@
 # is only closed when the new one starts, so a failed build leaves it running.
 
 param(
-    [ValidateSet('debug', 'release')][string]$Config = 'debug',
+    [ValidateSet('debug', 'release', 'dev')][string]$Config = 'debug',
     [switch]$NoRun,
     [switch]$NoTests,
     [switch]$ConfigureOnly,

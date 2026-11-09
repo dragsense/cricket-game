@@ -147,34 +147,40 @@ void FootStepper::advanceSwing(float dt, float duration, float height, float pea
     }
 }
 
-bool FootStepper::startStep(math::Vec2 dir, const StepSettings& s) {
-    if (math::length2(dir) < math::kEpsilon) return false;
+math::Vec3 FootStepper::stepSpot(Foot foot, math::Vec2 dir, const StepSettings& s) const {
+    // Relative to the other (planted) foot. A foot only adds the step when it
+    // leads (sideways: the foot on that side); a trailing foot just closes
+    // back to stance width.
+    const int i = static_cast<int>(foot);
     const math::Vec3 step(dir.x * s.sideStepLength, 0.0f, dir.y > 0.0f ? dir.y * s.stepLength : dir.y * s.backStepLength);
+    const math::Vec3 side(i == 0 ? stanceWidth_ : -stanceWidth_, 0.0f, 0.0f);
+    math::Vec3 spot = feet_[1 - i] + side + (math::dot(side, step) >= 0.0f ? step : math::Vec3(0.0f));
+    spot.y = feet_[1 - i].y;
+    return spot;
+}
 
-    // Each foot's next spot, relative to the other (planted) foot. A foot only
-    // adds the step when it leads (sideways: the foot on that side); a
-    // trailing foot just closes back to stance width.
-    math::Vec3 target[2];
+int FootStepper::pickFoot(math::Vec2 dir, const StepSettings& s) const {
+    if (math::length2(dir) < math::kEpsilon) return -1;
+    const math::Vec3 step(dir.x, 0.0f, dir.y);
     float move[2];
     bool leads[2];
     for (int i = 0; i < 2; ++i) {
-        const math::Vec3 side(i == 0 ? stanceWidth_ : -stanceWidth_, 0.0f, 0.0f);
-        leads[i] = math::dot(side, step) > 0.0f;
-        target[i] = feet_[1 - i] + side + (math::dot(side, step) >= 0.0f ? step : math::Vec3(0.0f));
-        target[i].y = feet_[1 - i].y;
-        move[i] = math::distance(target[i], feet_[i]);
+        leads[i] = math::dot(math::Vec3(i == 0 ? 1.0f : -1.0f, 0.0f, 0.0f), step) > 0.0f;
+        move[i] = math::distance(stepSpot(static_cast<Foot>(i), dir, s), feet_[i]);
     }
-    if (move[0] < kMinStep && move[1] < kMinStep) return false;
-
+    if (move[0] < kMinStep && move[1] < kMinStep) return -1;
     // The foot with further to go steps; on a tie the leading foot, else alternate.
-    int f;
-    if (std::fabs(move[0] - move[1]) > kMinStep) f = move[0] > move[1] ? 0 : 1;
-    else if (leads[0] != leads[1]) f = leads[0] ? 0 : 1;
-    else f = 1 - last_;
+    if (std::fabs(move[0] - move[1]) > kMinStep) return move[0] > move[1] ? 0 : 1;
+    if (leads[0] != leads[1]) return leads[0] ? 0 : 1;
+    return 1 - last_;
+}
 
+bool FootStepper::startStep(math::Vec2 dir, const StepSettings& s) {
+    const int f = pickFoot(dir, s);
+    if (f < 0) return false;
     swing_ = f;
     from_ = feet_[f];
-    to_ = target[f];
+    to_ = stepSpot(static_cast<Foot>(f), dir, s);
     t_ = 0.0f;
     return true;
 }

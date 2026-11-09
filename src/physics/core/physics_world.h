@@ -53,8 +53,12 @@ struct CharacterSettings {
     // force (N) and torque (N m) limits.
     float supportFrequency = 4.0f, supportDamping = 1.0f;
     float supportMaxForce = 2000.0f, supportMaxTorque = 600.0f;
+    // m: the hips may sink this far below the pose's pelvis with no hold
+    // (their weight goes down the legs); below it the spring catches them.
+    float supportFreeDown = 0.03f;
     // The hold lets go once the hips lean past these (rad, seen from the
     // centre of both feet; config in degrees), blended between them.
+    bool releaseOn = false;  // off for now: the hold never lets go
     float releaseForward = 0.148f, releaseBack = 0.0785f, releaseLeft = 0.14f, releaseRight = 0.14f;
     // Let go, the body falls; once its centre of mass is slower than
     // restSpeed (m/s) for recoverWait (s), the capsule goes under the pelvis
@@ -302,8 +306,11 @@ public:
     // A soft hold of body `b` by body `a` (Jolt SixDOF, every axis free, each
     // driven by a spring motor toward its target): `linear` for position
     // (maxTorque read as the force limit, N), `angular` for rotation. Load
-    // time; kInvalidJoint when full. Off/on: setJointEnabled.
-    JointId createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular);
+    // time; kInvalidJoint when full. Off/on: setJointEnabled. freeDown > 0:
+    // up/down has no motor; b is free from its target to freeDown (m) below
+    // it, then a soft limit with `linear`'s stiffness and damping (its force
+    // limit does not apply there).
+    JointId createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular, float freeDown = 0.0f);
     // Its target: b's centre of mass at `offset` from a's (a's frame) and b's
     // rotation `rotation` relative to a's.
     void setSupportTarget(JointId id, math::Vec3 offset, math::Quat rotation);

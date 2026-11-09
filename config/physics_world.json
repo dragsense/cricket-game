@@ -48,7 +48,10 @@
       "frequency": 4.0,   // Hz
       "damping": 1.0,     // ratio (1: no overshoot)
       "maxForce": 2000,   // N (~2.8 x the body's weight)
-      "maxTorque": 600    // N m
+      "maxTorque": 600,   // N m
+      // m: the hips sink this far below the pose's pelvis with no hold (their
+      // weight goes down the thighs onto the knees); below it the spring catches.
+      "freeDown": 0.03
     },
     // The hold lets go when the hips (pelvis) lean past these, seen from the
     // centre of both feet (limits of stability, NeuroCom / Nashner:
@@ -56,6 +59,7 @@
     // body falls; at rest (slower than restSpeed m/s for recoverWait s) the
     // capsule goes under the pelvis and the hold eases back in over recoverTime s.
     "release": {
+      "on": false,        // off for now: the hold never lets go (the user's call, 2026-11-09)
       "forwardDeg": 8.5,
       "backDeg": 4.5,
       "leftDeg": 8.0,

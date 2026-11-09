@@ -188,7 +188,7 @@ TEST_CASE("the fielder starts with the ball in hand; placing it releases it") {
     agents::Human fielder;
     REQUIRE(makeHuman(fielder));
     CHECK(fielder.holding());
-    fielder.setMoveInput(math::Vec2(0.0f, 1.0f), true, 0.0f);  // still held while walking
+    fielder.setStepInput(math::Vec2(0.0f, 1.0f));  // still held while stepping
     for (int i = 0; i < 120; ++i) fielder.tick(1.0 / 120.0);
     CHECK(fielder.holding());
     fielder.setReachTarget(fielder.root().transformPoint(math::Vec3(0.2f, 0.036f, 0.4f)));

@@ -24,14 +24,22 @@
       "displayName": "Windows Release (MSVC, Ninja)",
       "inherits": "windows-base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "dev",
+      "displayName": "Windows Dev: optimised with debug info (MSVC, Ninja)",
+      "inherits": "windows-base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
     }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
-    { "name": "release", "configurePreset": "release" }
+    { "name": "release", "configurePreset": "release" },
+    { "name": "dev", "configurePreset": "dev" }
   ],
   "testPresets": [
     { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } }
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } }
   ]
 }
