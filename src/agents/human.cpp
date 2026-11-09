@@ -447,7 +447,20 @@ void Human::placeAt(math::Vec3 position, float yaw) {
     walker_.reset(yaw);
     jumper_ = motion::JumpController{};
     jumpQueued_ = false;
+    if (physics_) physics_->placeCharacter(capsule_, position);
     plantFeet();
+}
+
+void Human::followCapsule(math::Vec3 from, float dt) {
+    if (!physics_ || capsule_ == physics::kInvalidCharacter || dt <= 0.0f) return;
+    const math::Vec3 feet = physics_->moveCharacter(capsule_, (root_.position - from) / dt, dt);
+    const math::Transform before = root_;
+    root_.position.x = feet.x;
+    root_.position.z = feet.z;
+    // On the ground the root is on its surface (the capsule floats its
+    // padding above it); off it (a drop), at the capsule.
+    root_.position.y = physics_->characterOnGround(capsule_) ? physics_->groundHeightAt(feet) : feet.y;
+    stepper_.rebase(before, root_);
 }
 
 void Human::plantFeet() {
@@ -487,7 +500,9 @@ void Human::tick(double dt) {
                           math::length2(moveInput_) < 1e-6f && !jumper_.active();
     if (!standing) stepWalk_ = false;
     else if (math::length2(stepInput_) > 1e-6f) stepWalk_ = true;
+    const math::Vec3 walkFrom = root_.position;
     walk(static_cast<float>(dt));
+    followCapsule(walkFrom, static_cast<float>(dt));
     targets_.footL = root_.transformPoint(stepper_.foot(motion::Foot::Left));
     targets_.footR = root_.transformPoint(stepper_.foot(motion::Foot::Right));
     // Feet stand on the world's real surface under them (Jolt ground query:
@@ -1033,6 +1048,12 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             liftedAnkleMin_ = rest[static_cast<size_t>(joints_.legL.end)][3].y + toeClearance_;
     }
     physics_ = &world;
+    capsule_ = world.createCharacter(rig_.height(), root_.position);
+    if (capsule_ == physics::kInvalidCharacter) {
+        LOG_ERROR("human: no room for the capsule in the physics world");
+        physics_ = nullptr;
+        return false;
+    }
     humanBody_ = HumanBody{};
     // The centre of mass over the root at rest (the body starts standing).
     rig_.localToModel(rig_.restPose(), models_);

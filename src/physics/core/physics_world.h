@@ -22,6 +22,8 @@ using SpringId = uint32_t;
 constexpr SpringId kInvalidSpring = 0xffffffffu;
 using JointId = uint32_t;
 constexpr JointId kInvalidJoint = 0xffffffffu;
+using CharacterId = uint32_t;
+constexpr CharacterId kInvalidCharacter = 0xffffffffu;
 // config/physics_world.json "world": shared by Jolt and the ball solver.
 struct WorldSettings {
     math::Vec3 gravity{0.0f, -9.81f, 0.0f};
@@ -30,7 +32,22 @@ struct WorldSettings {
     float groundHeight = 0.0f;  // m, top of the ground: the one ground everything stays above
 };
 
-// config/physics_world.json "jolt" and "ground".
+// config/physics_world.json "character": a player's capsule (Jolt
+// CharacterVirtual), the one thing that carries a player over the ground. It
+// stands upright always, slides along what it hits, climbs small steps and
+// stays on slopes up to maxSlope; it collides with the static scenery and
+// with other capsules only (a player's own body parts ride on it).
+struct CharacterSettings {
+    float radius = 0.3f;    // m
+    float maxSlope = 0.785f;  // rad, steepest ground it walks on (config in degrees)
+    float stepUp = 0.3f;    // m, highest step it walks up
+    float stickDown = 0.3f; // m, it follows the ground down this far (no hop off small drops)
+    float mass = 73.0f;     // kg, for pushing other capsules
+    float maxStrength = 500.0f;  // N, its push on what it touches
+    float padding = 0.02f;  // m, gap kept to what it touches
+};
+
+// config/physics_world.json "jolt", "ground" and "character".
 struct PhysicsSettings {
     int maxBodies = 256;
     int maxBodyPairs = 1024;
@@ -48,7 +65,10 @@ struct PhysicsSettings {
     float angularDamping = 0.05f;
     float groundFriction = 0.6f;
     float groundRestitution = 0.2f;
+    int maxCharacters = 32;  // player capsules (load time)
+    CharacterSettings character;
 };
+
 
 WorldSettings readWorldSettings(const core::Config& c);
 PhysicsSettings readPhysicsSettings(const core::Config& c);
@@ -214,6 +234,20 @@ public:
     // No heap allocations.
     int groundContacts(BodyId id, math::Vec3* out, int capacity) const;
     bool awake(BodyId id) const;
+
+    // Player capsules (Jolt CharacterVirtual; PhysicsSettings::character),
+    // `height` m tall (the player's own). Load time; kInvalidCharacter when
+    // full. `feet`: world, the bottom of the capsule.
+    CharacterId createCharacter(float height, math::Vec3 feet);
+    // One tick: moves the capsule at `velocity` (world, m/s; its vertical part
+    // is ignored: gravity pulls it down off the ground, the ground holds it),
+    // sliding along what it hits. Returns the feet's new position. No heap
+    // allocations.
+    math::Vec3 moveCharacter(CharacterId id, math::Vec3 velocity, float dt);
+    // Teleports the capsule (no sweep), e.g. a reset; vertical speed zero.
+    void placeCharacter(CharacterId id, math::Vec3 feet);
+    math::Vec3 characterFeet(CharacterId id) const;
+    bool characterOnGround(CharacterId id) const;
 
 private:
     struct Impl;

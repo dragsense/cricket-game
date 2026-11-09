@@ -13,6 +13,7 @@
     "maxContactConstraints": 1024,
     "maxSprings": 32,               // Jolt distance-constraint springs (load time)
     "maxJoints": 256,               // Jolt hinge and swing-twist joints (load time)
+    "maxCharacters": 32,            // player capsules (Jolt CharacterVirtual, load time)
     // Solver iterations for joints (Jolt override; 0: Jolt's 10). 20/5: a muscle-less crash overshoots 12 deg (was 17).
     // 40: the stance ankle's spring passes its torque through the light foot to the ground (measured one foot,
     // roll axis: 20 steps 80 % of the asked torque, 40 ~93 %, 60 96 %, 200 99.5 %; cost per human per tick
@@ -28,5 +29,17 @@
     "angularDamping": 0.05
   },
   // Jolt's static ground, top at world.groundHeight.
-  "ground": { "friction": 0.6, "restitution": 0.2 }
+  "ground": { "friction": 0.6, "restitution": 0.2 },
+  // A player's capsule (Jolt CharacterVirtual): it carries the player over the
+  // ground, upright always; the procedural body is posed on it. Its height is
+  // the player's own (the skeleton's); these are the rest.
+  "character": {
+    "radius": 0.25,       // m, about half the shoulder width (de Leva: biacromial ~0.4 m)
+    "maxSlopeDeg": 45,    // steepest ground it walks on
+    "stepUp": 0.3,        // m, highest step it walks up (a stair is ~0.18)
+    "stickDown": 0.3,     // m, follows the ground down this far
+    "mass": 73,           // kg, as the body (human_joints.json bodyMass)
+    "maxStrength": 500,   // N, its push on what it touches
+    "padding": 0.02       // m, gap kept to what it touches
+  }
 }

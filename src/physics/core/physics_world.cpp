@@ -10,12 +10,14 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h>
 #include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollector.h>
@@ -122,8 +124,18 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     s.angularDamping = c.getFloat("jolt.angularDamping", s.angularDamping);
     s.groundFriction = c.getFloat("ground.friction", s.groundFriction);
     s.groundRestitution = c.getFloat("ground.restitution", s.groundRestitution);
+    s.maxCharacters = c.getInt("jolt.maxCharacters", s.maxCharacters);
+    CharacterSettings& ch = s.character;
+    ch.radius = c.getFloat("character.radius", ch.radius);
+    ch.maxSlope = math::radians(c.getFloat("character.maxSlopeDeg", math::degrees(ch.maxSlope)));
+    ch.stepUp = c.getFloat("character.stepUp", ch.stepUp);
+    ch.stickDown = c.getFloat("character.stickDown", ch.stickDown);
+    ch.mass = c.getFloat("character.mass", ch.mass);
+    ch.maxStrength = c.getFloat("character.maxStrength", ch.maxStrength);
+    ch.padding = c.getFloat("character.padding", ch.padding);
     return s;
 }
+
 
 struct PhysicsWorld::Impl {
     struct Slot {
@@ -148,6 +160,14 @@ struct PhysicsWorld::Impl {
     PhysicsSettings settings;
     // Parts of one object (same collision group) skip each other (Jolt group filter).
     JPH::Ref<JPH::GroupFilterTable> sameGroup;
+    // Player capsules, reserved once at init; they also collide with each other.
+    struct Character {
+        JPH::Ref<JPH::CharacterVirtual> character;
+        float verticalSpeed = 0.0f;  // m/s, falling off the ground
+        float stepUp = 0.0f, stickDown = 0.0f;
+    };
+    std::vector<Character> characters;
+    JPH::CharacterVsCharacterCollisionSimple characterVsCharacter;
 
     Impl() {
         broadPhaseLayers.MapObjectToBroadPhaseLayer(kLayerStatic, JPH::BroadPhaseLayer(0));
@@ -207,6 +227,7 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
     m.hinges.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
     m.swingTwists.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
     m.sixDofs.reserve(static_cast<size_t>(std::max(settings.maxJoints, 0)));
+    m.characters.reserve(static_cast<size_t>(std::max(settings.maxCharacters, 0)));
 
     // Static ground slab, top face at the world's groundHeight (the one ground).
     JPH::BodyCreationSettings ground(new JPH::BoxShape(JPH::Vec3(kGroundHalfSize, kGroundHalfDepth, kGroundHalfSize)),
@@ -226,6 +247,8 @@ bool PhysicsWorld::init(const WorldSettings& world, const PhysicsSettings& setti
 
 void PhysicsWorld::shutdown() {
     if (!impl_) return;
+    impl_->characterVsCharacter.mCharacters.clear();
+    impl_->characters.clear();
     for (JPH::Ref<JPH::DistanceConstraint>& c : impl_->springs) impl_->system.RemoveConstraint(c);
     impl_->springs.clear();
     for (JPH::Ref<JPH::HingeConstraint>& c : impl_->hinges)
@@ -726,6 +749,79 @@ int PhysicsWorld::groundContacts(BodyId id, math::Vec3* out, int capacity) const
     }
     if (count == 0) out[count++] = fromJolt(onGround);
     return count;
+}
+
+CharacterId PhysicsWorld::createCharacter(float height, math::Vec3 feet) {
+    if (!impl_ || impl_->characters.size() >= impl_->characters.capacity()) return kInvalidCharacter;
+    Impl& m = *impl_;
+    const CharacterSettings& cs = m.settings.character;
+    const float radius = std::max(cs.radius, 0.01f);
+    const float halfCylinder = std::max(0.5f * height - radius, 0.01f);
+    // The capsule stands on its origin (the feet).
+    JPH::RotatedTranslatedShapeSettings shape(JPH::Vec3(0.0f, halfCylinder + radius, 0.0f), JPH::Quat::sIdentity(),
+                                              new JPH::CapsuleShape(halfCylinder, radius));
+    JPH::ShapeSettings::ShapeResult made = shape.Create();
+    if (made.HasError()) {
+        LOG_ERROR("physics: character shape: {}", made.GetError().c_str());
+        return kInvalidCharacter;
+    }
+    JPH::Ref<JPH::CharacterVirtualSettings> settings = new JPH::CharacterVirtualSettings();
+    settings->mShape = made.Get();
+    settings->mMaxSlopeAngle = cs.maxSlope;
+    settings->mMass = cs.mass;
+    settings->mMaxStrength = cs.maxStrength;
+    settings->mCharacterPadding = cs.padding;
+    // Contacts below the lower sphere's centre carry it (the feet).
+    settings->mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), -radius);
+    Impl::Character c;
+    c.character = new JPH::CharacterVirtual(settings, JPH::RVec3(toJolt(feet)), JPH::Quat::sIdentity(), 0, &m.system);
+    c.character->SetCharacterVsCharacterCollision(&m.characterVsCharacter);
+    c.stepUp = cs.stepUp;
+    c.stickDown = cs.stickDown;
+    m.characterVsCharacter.Add(c.character);
+    m.characters.push_back(c);
+    return static_cast<CharacterId>(m.characters.size() - 1);
+}
+
+math::Vec3 PhysicsWorld::moveCharacter(CharacterId id, math::Vec3 velocity, float dt) {
+    if (!impl_ || id >= impl_->characters.size() || dt <= 0.0f) return characterFeet(id);
+    Impl& m = *impl_;
+    Impl::Character& c = m.characters[id];
+    JPH::CharacterVirtual& ch = *c.character;
+    // On the ground it stays there; off it, gravity pulls it down.
+    if (ch.GetGroundState() == JPH::CharacterVirtual::EGroundState::OnGround)
+        c.verticalSpeed = 0.0f;
+    else
+        c.verticalSpeed += world_.gravity.y * dt;
+    ch.SetLinearVelocity(JPH::Vec3(velocity.x, c.verticalSpeed, velocity.z));
+    JPH::CharacterVirtual::ExtendedUpdateSettings update;
+    update.mStickToFloorStepDown = JPH::Vec3(0.0f, -c.stickDown, 0.0f);
+    update.mWalkStairsStepUp = JPH::Vec3(0.0f, c.stepUp, 0.0f);
+    // Static scenery only (and the other capsules): a player's body parts
+    // and loose objects do not stop it.
+    const JPH::SpecifiedBroadPhaseLayerFilter broadPhase(JPH::BroadPhaseLayer(0));
+    const JPH::SpecifiedObjectLayerFilter layer(kLayerStatic);
+    ch.ExtendedUpdate(dt, toJolt(world_.gravity), update, broadPhase, layer, JPH::BodyFilter(), JPH::ShapeFilter(),
+                      *m.tempAllocator);
+    return characterFeet(id);
+}
+
+void PhysicsWorld::placeCharacter(CharacterId id, math::Vec3 feet) {
+    if (!impl_ || id >= impl_->characters.size()) return;
+    Impl::Character& c = impl_->characters[id];
+    c.character->SetPosition(JPH::RVec3(toJolt(feet)));
+    c.character->SetLinearVelocity(JPH::Vec3::sZero());
+    c.verticalSpeed = 0.0f;
+}
+
+math::Vec3 PhysicsWorld::characterFeet(CharacterId id) const {
+    if (!impl_ || id >= impl_->characters.size()) return math::Vec3(0.0f);
+    return fromJolt(JPH::Vec3(impl_->characters[id].character->GetPosition()));
+}
+
+bool PhysicsWorld::characterOnGround(CharacterId id) const {
+    if (!impl_ || id >= impl_->characters.size()) return false;
+    return impl_->characters[id].character->GetGroundState() == JPH::CharacterVirtual::EGroundState::OnGround;
 }
 
 bool PhysicsWorld::awake(BodyId id) const {

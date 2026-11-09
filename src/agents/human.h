@@ -378,6 +378,11 @@ public:
 private:
     void plantFeet();
     void walk(float dt);
+    // The root's move this tick (from `from`, where walk() found it) goes
+    // through the capsule (Jolt CharacterVirtual): it slides along what it
+    // hits and keeps to the ground; the root takes where it ends up, the
+    // planted feet staying where they are in the world.
+    void followCapsule(math::Vec3 from, float dt);
     void repositionBody(float dt);
     // Limb test: a placed foot stops where its leg reaches (hip range), and a
     // raised foot lifts only as the weight arrives over the other.
@@ -522,6 +527,7 @@ private:
     float tickSeconds_ = 1.0f / 120.0f;        // this tick's step
     HumanBody humanBody_;                  // the body's mass (Jolt), vertical only for now
     physics::PhysicsWorld* physics_ = nullptr;
+    physics::CharacterId capsule_ = physics::kInvalidCharacter;  // carries the root over the ground
     float restComHeight_ = 0.0f;               // m, the centre of mass above the root at rest
     // Physics on (setPhysicsOn): decider -> balancer -> muscles each tick.
     void physicsTick(float dt);
