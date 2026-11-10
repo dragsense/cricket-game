@@ -56,6 +56,13 @@ struct CharacterSettings {
     // m: the hips may sink this far below the pose's pelvis with no hold
     // (their weight goes down the legs); below it the spring catches them.
     float supportFreeDown = 0.03f;
+    // The capsule leads; the pelvis moves around it. With both feet planted
+    // the capsule re-centres toward the support at this rate (1/s).
+    float recentreRate = 2.0f;
+    // The real pelvis off the pin's target (m, level): under `small` nothing;
+    // past `medium` for `sustained` s a recovery step is reported; past
+    // `large` the strength goes (ragdoll) when the release is on.
+    float errorSmall = 0.03f, errorMedium = 0.08f, errorLarge = 0.2f, errorTime = 0.3f;
     // The hold lets go once the hips lean past these (rad, seen from the
     // centre of both feet; config in degrees), blended between them.
     bool releaseOn = false;  // off for now: the hold never lets go
@@ -302,6 +309,9 @@ public:
     // body (body space; [0], the root, unused), as strong as its MotorDesc.
     // `count`: the ragdoll's parts. No allocations.
     void driveRagdollToPose(RagdollId id, const math::Quat* rotations, int count);
+    // Every motor's torque limit at `scale` (0..1) of its MotorDesc's: the
+    // body's strength (hits, falls, get-up). No allocations.
+    void setRagdollStrength(RagdollId id, float scale);
 
     // A soft hold of body `b` by body `a` (Jolt SixDOF, every axis free, each
     // driven by a spring motor toward its target): `linear` for position

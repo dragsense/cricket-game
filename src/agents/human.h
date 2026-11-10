@@ -13,6 +13,8 @@
 #include "ik/limb_ik.h"
 #include "math/math.h"
 #include "motion/foot_stepper.h"
+#include "motion/step_planner.h"
+#include "motion/target_set.h"
 #include "motion/body_decider.h"
 #include "motion/throw_arc.h"
 #include "motion/walk_controller.h"
@@ -149,8 +151,21 @@ public:
     // The capsule holds the body (not let go after a lean).
     bool supported() const { return supportOn_; }
     // The step under way: its foot (-1: none) and its clock share [0, 1].
-    int stepFoot() const { return stepFoot_; }
-    float stepPhase() const { return stepTime_ / std::max(stepSettings_.stepDuration, 0.05f); }
+    int stepFoot() const { return stepPlanner_.running() ? stepPlanner_.foot() : -1; }
+    float stepPhase() const { return stepPlanner_.share(); }
+    // The whole body's strength (0..1): scales every muscle and the capsule's
+    // hold (a hit, a fall, a get-up).
+    float strength() const { return strength_; }
+    void setStrength(float strength) { strength_ = std::clamp(strength, 0.0f, 1.0f); }
+    // The real pelvis off the hold's target (physics_world.json
+    // "character.pelvisError"): Small is nothing, Medium sustained asks the
+    // planner for a recovery step, Large lets go (when the release is on).
+    enum class PelvisError { Small, Medium, Large };
+    PelvisError pelvisError() const { return pelvisError_; }
+    float pelvisErrorDistance() const { return pelvisErrorNow_; }
+    // The targets given to the decider this tick and its answer, for debug
+    // drawing (character space of root()).
+    const motion::TargetSet& bodyTargets() const { return bodyTargets_; }
     // Debug drawing: the capsule (its feet, height and radius; world) and
     // the line the release reads, from the centre of the feet to the hips
     // (the physics body, world). False without a body.
@@ -541,10 +556,17 @@ private:
     motion::BodyDeciderJoints deciderJoints_;
     motion::BodyDeciderSettings deciderSettings_;
     motion::BodyQueue queue_;
+    motion::TargetSet bodyTargets_;
     MuscleTiming muscleTiming_;
-    std::vector<uint8_t> blocked_;            // per rig joint, for the decider (none blocked)
     std::vector<math::Mat4> physicsModels_;   // the physics body now (character space)
-    rig::Pose physicsPose_;
+    rig::Pose physicsPose_;                   // scratch: the physics body's locals (a get-up seeds the plan from it)
+    // The capsule leads (DECISIONS 2026-11-10): it moves by the planner's
+    // intent (world, m/s), the plan's pelvis around it within its bound; the
+    // body's strength and the real pelvis's error from the hold's target.
+    math::Vec3 intentVelocity_{0.0f};
+    float strength_ = 1.0f, appliedStrength_ = 1.0f;
+    PelvisError pelvisError_ = PelvisError::Small;
+    float pelvisErrorNow_ = 0.0f, pelvisErrorTime_ = 0.0f;
     float ballDistance_ = 0.1f;  // ankle to ball of the foot (m), from the skeleton
     float ballDrop_ = 0.03f;     // ball of the foot below the ankle (m), from the skeleton
 
@@ -555,13 +577,11 @@ private:
     motion::FootStepper stepper_;
     bool face_ = false;
     float faceYaw_ = 0.0f;
-    // A step with the physics body: the stepper decides it (foot, spot); its
-    // foot and the hips run on one clock (stepTime_): double support, swing,
-    // landing.
-    int stepFoot_ = -1;              // the stepping foot (-1: none)
-    float stepTime_ = 0.0f;          // s into the step
-    math::Vec3 stepFrom_{0.0f}, stepSpot_{0.0f};  // character space: where it left, where it lands
-    math::Vec3 stepAim_{0.0f};       // the spot the swing heads for now (re-aimed without a jump)
+    // A step with the physics body: the stepper decides it (foot, spot); the
+    // step planner places the foot's target over time (Start, Up, Land); the
+    // decider does the body.
+    motion::StepPlanner stepPlanner_;
+    motion::StepPlannerSettings stepPlan_;
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians

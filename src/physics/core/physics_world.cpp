@@ -144,6 +144,11 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     ch.supportMaxForce = c.getFloat("character.support.maxForce", ch.supportMaxForce);
     ch.supportMaxTorque = c.getFloat("character.support.maxTorque", ch.supportMaxTorque);
     ch.supportFreeDown = c.getFloat("character.support.freeDown", ch.supportFreeDown);
+    ch.recentreRate = c.getFloat("character.recentreRate", ch.recentreRate);
+    ch.errorSmall = c.getFloat("character.pelvisError.small", ch.errorSmall);
+    ch.errorMedium = c.getFloat("character.pelvisError.medium", ch.errorMedium);
+    ch.errorLarge = c.getFloat("character.pelvisError.large", ch.errorLarge);
+    ch.errorTime = c.getFloat("character.pelvisError.sustained", ch.errorTime);
     ch.releaseOn = c.getBool("character.release.on", ch.releaseOn);
     auto deg = [&](const char* key, float rad) { return math::radians(c.getFloat(key, math::degrees(rad))); };
     ch.releaseForward = deg("character.release.forwardDeg", ch.releaseForward);
@@ -197,6 +202,7 @@ struct PhysicsWorld::Impl {
         JPH::Ref<JPH::Ragdoll> ragdoll;
         JPH::SkeletonPose pose;      // the pose drive's targets, sized at load
         std::vector<BodyId> bodies;  // its parts' slots
+        std::vector<float> baseTorque;  // per joint (parts with a parent, in order): its motor's full torque limit
     };
     std::vector<RagdollSlot> ragdolls;
 
@@ -970,6 +976,8 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
     Impl::RagdollSlot r;
     r.ragdoll = ragdoll;
     r.pose.SetSkeleton(skeleton);
+    for (const RagdollPart& p : parts)
+        if (p.parent >= 0) r.baseTorque.push_back(std::max(p.motor.maxTorque, 0.0f));
     for (size_t i = 0; i < parts.size(); ++i) {
         auto free = std::find_if(m.slots.begin(), m.slots.end(), [](const Impl::Slot& s) { return s.body.IsInvalid(); });
         free->body = ragdoll->GetBodyID(static_cast<int>(i));
@@ -989,6 +997,20 @@ void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations,
     const int n = std::min(count, static_cast<int>(r.pose.GetJointCount()));
     for (int i = 0; i < n; ++i) r.pose.GetJoint(i).mRotation = toJolt(math::normalize(rotations[i]));
     r.ragdoll->DriveToPoseUsingMotors(r.pose);
+}
+
+void PhysicsWorld::setRagdollStrength(RagdollId id, float scale) {
+    if (!impl_ || id >= impl_->ragdolls.size()) return;
+    Impl::RagdollSlot& r = impl_->ragdolls[id];
+    const float k = std::clamp(scale, 0.0f, 1.0f);
+    const size_t n = std::min(static_cast<size_t>(r.ragdoll->GetConstraintCount()), r.baseTorque.size());
+    for (size_t i = 0; i < n; ++i) {
+        JPH::TwoBodyConstraint* c = r.ragdoll->GetConstraint(static_cast<int>(i));
+        if (!c || c->GetSubType() != JPH::EConstraintSubType::SwingTwist) continue;
+        JPH::SwingTwistConstraint* st = static_cast<JPH::SwingTwistConstraint*>(c);
+        st->GetSwingMotorSettings().SetTorqueLimit(r.baseTorque[i] * k);
+        st->GetTwistMotorSettings().SetTorqueLimit(r.baseTorque[i] * k);
+    }
 }
 
 JointId PhysicsWorld::createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular,

@@ -305,50 +305,94 @@ arm, Step 2.1); left click places the target (the ball), R clears it.
 previous/current transform per body for interpolation, preallocated temp allocator
 (no per-tick heap use), single-threaded job system by default. Jolt stays inside the .cpp.
 
-### Physics body and balance (M6): designed 2026-11-06; decider built (`motion::BodyDecider`), not wired
-The body moves only by forces. Nothing places a part while its physics is on. See
-DECISIONS 2026-11-06 and docs/BIOMECHANICS.md 14.
+### Physics body and balance (M6): whole-body decider on seven targets (2026-11-10)
+The body moves only by forces. Nothing places a part while its physics is on. Two
+systems, strictly apart (DECISIONS 2026-11-10 "Whole-body decider on targets"):
 ```
-Actions (walk, run, bowl, bat, reach, field, dive)
-   only move the 7 targets (hips, chest, head, 2 hands, 2 feet) + elbow/knee hints,
-   mark which targets are ACTIVE, and give path + timing (the future is known)
+Planner (an action: idle, step, walk, reach, dive; `motion::StepPlanner` is the example)
+   knows the action; only places the 7 targets over time (`motion::TargetSet`):
+   pose, mode (Free / Driven / Pinned), weights, feet's swing share and ground normal;
+   gives the capsule its intent velocity; reads the decider's reports
         ▼
-Decider (replaces BodyReposition; only numbers, never moves anything)
-   reads the physics body's real pose; per active target: the queue of parts
-   in real body order (hand: arm → clavicle → chest → spine_02 → spine_01 → hips
-   tilt → hips move; chest: chest → spine → pelvis; foot: hip/knee, then pelvis)
-   + each part's direction; speed from the target's own motion and timing
+Decider (`motion::BodyDecider`; knows no action; never reads the physics body per tick)
+   1 Pinned feet: anchors (never slide)       2 Support weights (blended) → hips reference
+   3 Driven targets (blended weights)          4 Reach: limbs clamped to 96 % length; trunk
+     queue in real body order; short → reported 5 Posture: chest upright, head level, free
+     arms swing (Collins 2009) and settle in the chest's frame
+   → output pose: hips speed/acceleration-bounded, joint rates bounded, warm-started from
+     last tick; hard constraints: pelvis within hipsOffsetMax of the root, below every
+     grounded leg's reach; grounded legs solved last on the output pelvis
         ▼
-Balancer (always wins; uses only the free, non-active parts)
-   planner: capture-point / centre-of-mass path over the known steps and target
-   paths, pre-shifting for fast moves (anticipation)
-   feedback, every tick (built 2026-11-08, one centre-of-mass controller):
-   ξ = x + v/ω₀ → centre of pressure p (Peterka's gains) inside the touching soles →
-   ground force (LIPM) → per-foot share → Jᵀ torques through the stance legs
-   (ankle via its Jolt springs); planned: p at the edge → hip/trunk (blended),
-   outside → step to ξ + margin, nothing left → release to free physics
-   if the free parts cannot hold it, the active target gives way
+Muscles (`agents::HumanBody`): holdWeight x strength, Jolt Ragdoll::DriveToPoseUsingMotors
+   toward the output pose (head world-stabilised from the real chest), torque limits x strength
         ▼
-Muscles: Jolt motors in velocity mode toward the directions, max torque = the
-   joint's real strength (human_joints.json), plus gravity compensation
+Capsule + pin (`agents::Human::followCapsule` / `physicsTick`): the capsule LEADS: it moves by
+   the planner's intent (+ a slow re-centre toward the support while both feet are planted,
+   the plan rebased so the pelvis's world target does not move); the pin (SixDOF spring from
+   the capsule's feet) pulls the real pelvis to the plan's pelvis, force x strength x support
+   under the feet (none in flight). Ragdoll (let go): the capsule follows the real pelvis;
+   at rest it gets up from the landed pose (the decider re-seeded once).
         ▼
-Jolt: 19 parts, real masses, joint limits stop the joints, contacts, friction
-        ▼
-Draw the Jolt body
+Jolt step; then the real pelvis's error from the pin target is classed: small (ignore),
+   medium sustained (planner: recovery step), large (let go, when the release is on).
 ```
-- **Physics on/off by game events:** bowler from the start of the delivery through the
-  follow-through; batter at the ball's release; keeper and fielders when the ball comes
-  to them. Off (kinematic, fixed pose, no work) when standing still. Switching keeps the
-  pose and speed. A physics player touching a kinematic one turns it on.
-- **Recovery** starts from the real landed pose; the support is whatever touches the
-  ground (knees, hands, hip). No fixed get-up.
-- **Caching:** the plan and gravity compensation are recomputed only when a target, the
-  pose or a contact changes; the feedback runs every tick (tiny).
-- **Never:** outside forces on the body (one exception, the user's call 2026-11-08: the
-  assist string, a capped rope from above the hips, off by default, always drawn while
-  on; a measuring tool, physics_world.json "string"), placing parts while physics is on, locked axes,
-  tuned strategy thresholds (physical limits decide), per-action balance code.
-- **Measure:** hand lag behind a moving target, CPU with ~5 active players, Jolt sleep.
+**Tick order** (one fixed 120 Hz step, `Human::tick`): walk/turn → planner (step clock,
+intent) → capsule moves → root = capsule → targets → `decide` → `holdWeight`,
+`drivePose`, pin target → Jolt step → error readback (next tick). No render dt anywhere.
+
+**Why not a self-balancing controller:** every attempt (Peterka ankles, centre-of-mass
+Jᵀ, torque legs, QP) fell or drifted, measured 2026-11-06..08; the plan read the lagging
+body back and jumped. Balance is by construction (support-weighted hips reference, the pin),
+and stepping is the planner's answer to a reported error or short reach, as in sports
+games' physical animation (PuppetMaster, Unreal Physical Animation). Capture-point
+stepping can come later inside the planner, without touching the decider.
+
+**Edge cases and how the design meets them:** out of reach / past limits: clamped at 96 %,
+reported (`BodyQueue::reach`), never snapped. Both feet unpinned: support 0, the hips'
+reference carries on ballistically, the pin fades to nothing. A foot moving while it is
+the support: its weight ramps off over supportBlendTime; the hips shift before it lifts.
+Re-target or cancel mid-step: paths continue from the current target (`StepPlanner::
+retarget` / `cancel`), the output pose from the current plan. A hand needing the trunk:
+the reach queue, limited to what the hips (if driven) leave; still short → reported. Leg
+near straight: never (reachClamp). Slopes / stairs: feet pin with the ground normal, the
+hips' height follows the weighted feet. A hit during a step: the body deviates, the plan
+does not read it; the error classes decide. Activation mid-motion: blended over blendTime,
+from the current plan; deactivation: feet re-pin where they are, others blend to rest. Big
+dt: the app's fixed step only. Ragdoll in/out: strength and the pin scale; get-up re-seeds
+the plan from the landed pose. A wall: the capsule stops; the plan's pelvis stays within
+its bound (`offsetClamped`), the feet targets clamp to reach and report short.
+
+**Tuning guide** (`human_joints.json` "decider", `physics_world.json` "character"):
+- Snapping hips: lower `hipsMaxAccel` (8) / `hipsMaxSpeed` (2); too sluggish: raise them.
+- Weight shift too abrupt / too slow before a step: `supportBlendTime` (0.12 s) and the
+  planner's `step.liftAt`.
+- Targets switching on/off visibly: `blendTime` (0.1 s).
+- Knees snapping straight: `reachClamp` (0.96) lower; legs too bent standing: higher.
+- Head over-rotating: `headMaxRate` (6 rad/s) lower; `passiveInfluence.head` toward 1.
+- Trunk whipping in reaches: `trunkMaxRate` (4 rad/s).
+- Capsule drifting from the feet: `character.recentreRate` (2 /s) higher; the body
+  dragged by the capsule: `hipsOffsetMax` (0.35 m) larger.
+- Falls / recovery: `pelvisError` thresholds and `release.on`; muscles and pin through
+  `Human::setStrength`.
+
+**Debug drawing** (`CricketApp::drawCapsule`): pinned feet as white rings sized by support
+weight, driven targets magenta, the plan's pelvis cyan with its offset line from the
+capsule (red when clamped), short reaches as red lines, the capsule white/red (held / let
+go). Numbers: `Human::pelvisError()` / `pelvisErrorDistance()`, `BodyQueue::reach`.
+
+**Test checklist** (tests/test_body_decider.cpp, tests/test_human.cpp "stepping on the
+physics body"): no snapping: the plan's pelvis speed and acceleration under their bounds
+through a sudden stance change and a 0.5 m landing; no head over-rotation: the real chest
+swing under 10 deg through steps; no foot sliding: a pinned foot's plan position within
+2 mm through a step, the real ankle's slide measured; no capsule drift: the root within
+hipsOffsetMax of the plan's pelvis, re-centred after the step; no switches: support
+weights and activations change by at most dt/blendTime per tick; a far target reports
+short; a target let go blends back without a jump.
+
+**Never:** outside forces on the body (one exception, the user's call 2026-11-08: the
+assist string, off by default), placing parts while physics is on, locked axes, tuned
+strategy thresholds (physical limits decide), per-action balance code, the capsule
+following the real pelvis while it holds the body.
 
 ### Own sphere physics (M3): in progress
 Generic, reusable by any object we simulate ourselves (ball now; e.g. players' contact

@@ -618,7 +618,23 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
       2008 / Tierney 2005). Measure the knee's torque parts per tick first. Then: capture-point balance (#4)
       or just rename the feet-moving condition. speedMax 3 is above what the body manages now.
     - Before commit: arrow-key limb cases (a foot held up now puts all weight on the other), PROGRESS/DECISIONS.
-  Known failing tests: the 2 decider tests (test_body_decider.cpp).
+  - [~] **F. Whole-body decider on seven targets** (2026-11-10, the user's approval; DECISIONS
+    2026-11-10; UNCOMMITTED, the user checking in the game):
+    - `motion::TargetSet` (planner -> decider interface: pose, mode Free/Driven/Pinned, weights,
+      swing share, ground normal, strength); `motion::StepPlanner` (one step: Start, Up, Land;
+      retarget, cancel); `motion::BodyDecider` rewritten: warm-started plan (never reads the
+      physics body per tick; seeded at reset and get-up), priorities pinned feet -> support
+      weights (blended) and hips reference -> driven targets (blended) -> reach (96 % clamp,
+      trunk queue, short reported) -> posture; output bounded (hips 2 m/s, 8 m/s^2; joint rates).
+    - Capsule leads (intent velocity, re-centres toward the support with both feet planted);
+      pin strength x body strength x support; pelvis error classes; `Human::setStrength`
+      (Jolt motor torque limits + gravity hold); targets drawn in the game.
+    - Measured (stepping test, 4 s; committed walk in brackets): plan pelvis accel 11.0 (10)
+      m/s^2, real 20.4 (13.5), chest swing 2.2 (3.7) deg, foot slide 3.3 (1.5) cm, side sway
+      2.4 (4.5; real 3.9-7) cm, no drop. Decider tests 27/27, agents 15/15 (1 skipped).
+    - **Open:** real pelvis accel and foot slide worse than the committed walk; side sway a
+      little low; a hand let go returns in ~0.1 s (blendTime); arrow-key limb cases not yet
+      run (the user's check before commit).
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 

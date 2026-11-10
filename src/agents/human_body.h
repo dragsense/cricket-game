@@ -81,7 +81,10 @@ public:
     // opposite on its parent, no harder than its strength. Jolt's motors
     // (drivePose) then only correct what is left. Call each tick before the
     // step. No allocations.
-    void holdWeight(physics::PhysicsWorld& world) const;
+    // `strength` (0..1) scales the hold (a hit, a fall, a get-up).
+    void holdWeight(physics::PhysicsWorld& world, float strength = 1.0f) const;
+    // Every muscle's torque limit at `strength` (0..1) of its real one.
+    void setStrength(physics::PhysicsWorld& world, float strength) const;
     // Every muscle pulls its joint toward the pose `models` (character space,
     // the rig's joints): Jolt's Ragdoll::DriveToPoseUsingMotors. No allocations.
     void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const;

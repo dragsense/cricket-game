@@ -548,3 +548,36 @@ Dated log. Format: decision, reason, alternatives rejected.
   parent's joint frame so the symmetric limits cover them.
 - **Removed:** `Balancer`, the old velocity-muscle drive, `JumpController`, `BodyReposition`.
 
+## 2026-11-10: Whole-body decider on targets; the capsule leads
+- **Decision (the user's approval of the plan, 2026-11-10):** two systems, strictly
+  apart. A planner (an action) only places the seven targets over time
+  (`motion::TargetSet`: pose, mode Free / Driven / Pinned, weights, a foot's swing share
+  and ground normal) and gives the capsule its intent; `motion::StepPlanner` is the
+  example (one step: Start, Up, Land). The decider (`motion::BodyDecider`) knows no
+  action: from the targets alone it decides the whole body each tick in priority order
+  (pinned feet, blended support weights and the hips over them, driven targets, reach
+  with the trunk queue, posture) and carries its own plan forward (warm start, seeded
+  from the real pose only at reset and get-up); its output pose is bounded in speed and
+  acceleration (hips) and joint rate (trunk, head, limbs), limbs reach at most 96 % of
+  their length, grounded legs are solved last on the output pelvis, a short reach is
+  reported, never snapped. Every mode and weight change blends over time.
+- **The capsule leads** (reverses item D of 2026-11-09, "the capsule goes under the real
+  hips"): it moves by the planner's intent, re-centres slowly toward the support while
+  both feet are planted (the plan rebased so the pelvis's world target stays), and the
+  plan's pelvis stays within a bound of it; the pin pulls the real pelvis to the plan's
+  pelvis, at the body's strength and the support under the feet. The real pelvis's error
+  from the pin is classed small / medium sustained (recovery step reported) / large (let
+  go, with the release on). One strength (0..1) scales muscles and the pin.
+- **Why:** everything measured 2026-11-06..09 that read the lagging physics body back into
+  the plan jumped; every torque-level balancer fell; the capsule chasing the real hips
+  while the hold pulled the hips to the capsule was a loop. Bounded commanded motion is
+  how muscles work (activation), not a patch: no target change can make the plan jump.
+- **Kept from the committed walk:** through a timed swing the hips stay between the
+  feet's targets with the measured sway (`hipsSway` 2.7 cm, Orendurff 2004); without it
+  the hips went fully over the stance foot (side sway 12.2 cm, real 3.9-7).
+- **Removed:** `BodyGoals` (replaced by `TargetSet`), the hips' Fitts path, the joint
+  `blocked` flags (never set by the game), the hips raised by bisection for the ankle's
+  range (the ankle's range is Jolt's limit now), the per-limb turn orders.
+- **Balance:** by construction (support-weighted hips reference, the pin) plus the
+  planner's stepping on reports; no self-balancing controller. Capture-point stepping can
+  come later inside the planner.

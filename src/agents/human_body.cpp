@@ -193,7 +193,8 @@ math::Transform HumanBody::partPose(int part, const std::vector<math::Mat4>& mod
     return math::toTransform(models[static_cast<size_t>(p.joint)]) * p.shape;
 }
 
-void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
+void HumanBody::holdWeight(physics::PhysicsWorld& world, float strength) const {
+    const float k = std::clamp(strength, 0.0f, 1.0f);
     // Mass and moment of each part's subtree (children come after parents).
     for (size_t i = 0; i < parts_.size(); ++i) {
         beyondMass_[i] = parts_[i].mass;
@@ -215,9 +216,14 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
         math::Vec3 hold = -math::cross(centre - pivot, g * beyondMass_[i]);
         const float size = math::length(hold);
         if (size > p.strength) hold *= p.strength / size;
+        hold *= k;
         world.addTorque(p.body, hold);
         world.addTorque(parts_[static_cast<size_t>(p.parent)].body, -hold);
     }
+}
+
+void HumanBody::setStrength(physics::PhysicsWorld& world, float strength) const {
+    world.setRagdollStrength(ragdoll_, strength);
 }
 
 void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const {

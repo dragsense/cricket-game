@@ -890,6 +890,35 @@ void CricketApp::drawDebugGeometry(float alpha) {
         dd.sphere(high, radius, c, 8);
         dd.sphere(feetCentre, 0.03f, render::colors::kYellow, 8);
         dd.line(feetCentre, hips, h.supported() ? render::colors::kGreen : render::colors::kRed);
+        // The decider's targets and answer (DESIGN "Debug drawing"): a
+        // pinned foot's anchor as a ring sized by its support weight
+        // (white), a driven target magenta, the plan's pelvis (the hold's
+        // target) and its offset line from the capsule (cyan; red when
+        // clamped at its bound), a reach short of its target as a red line
+        // from the end to the target.
+        const motion::TargetSet& t = h.bodyTargets();
+        const motion::BodyQueue& q = h.bodyQueue();
+        if (!q.plan) return;
+        const math::Transform& root = h.root();
+        for (int i = 0; i < 2; ++i) {
+            const math::Vec3 at = root.transformPoint(t.foot[i].position);
+            if (t.foot[i].mode == motion::TargetMode::Pinned)
+                dd.circle(at, math::kUp, 0.02f + 0.08f * q.supportWeight[i], render::colors::kWhite, 12);
+            else if (t.foot[i].mode == motion::TargetMode::Driven)
+                dd.sphere(at, 0.025f, render::colors::kMagenta, 8);
+        }
+        for (int i = 0; i < 2; ++i)
+            if (t.hand[i].mode == motion::TargetMode::Driven)
+                dd.sphere(root.transformPoint(t.hand[i].position), 0.025f, render::colors::kMagenta, 8);
+        const math::Vec3 pelvis = root.transformPoint(math::Vec3((*q.plan)[0][3]));
+        dd.sphere(pelvis, 0.03f, render::colors::kCyan, 8);
+        dd.line(feet, pelvis, q.offsetClamped ? render::colors::kRed : render::colors::kCyan);
+        for (int e = 0; e < 4; ++e) {
+            const motion::ReachReport& r = q.reach[e];
+            if (r.reached) continue;
+            const math::Vec3 target = root.transformPoint(e < 2 ? t.hand[e].position : t.foot[e - 2].position);
+            dd.line(target - r.direction * r.shortfall, target, render::colors::kRed);
+        }
     };
     drawCapsule(sim_.fielder());
     if (!limbTest_) drawCapsule(sim_.bowler());

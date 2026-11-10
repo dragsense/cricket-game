@@ -360,7 +360,9 @@ StepRun stepRun(float seconds, float turnAt) {
         h.tick(kDt);
         world.step(kDt);
         if (!h.supported()) r.dropped = true;
-        h.rig().localToModel(h.pose(), planned);
+        // The target is the decider's plan (the walking pose is not what the muscles follow).
+        if (!h.bodyQueue().plan) continue;
+        planned = *h.bodyQueue().plan;
         if (!h.physicalModels(world, 1.0f, real)) continue;
         {
             const math::Vec3 p = h.root().transformPoint(math::Vec3(real[0][3]));
@@ -413,3 +415,4 @@ TEST_CASE("stepping on the physics body: steady chest, planted feet, a smooth ta
                 r.chestSwing, 100.0f * r.footSlide, r.targetJerk, r.pelvisAccel, r.dropped ? "yes" : "no");
     CHECK_FALSE(r.dropped);
 }
+
