@@ -635,6 +635,25 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
     - **Open:** real pelvis accel and foot slide worse than the committed walk; side sway a
       little low; a hand let go returns in ~0.1 s (blendTime); arrow-key limb cases not yet
       run (the user's check before commit).
+  - [x] **G. Reach in the documented order; lowest hips from the knees** (2026-11-11, the
+    user's approval and game check; DECISIONS 2026-11-11, BIOMECHANICS 9.1, 9.4, 9.7):
+    - Low hand target: lumbar spine and pelvis tilt first, legs last; the hips no lower
+      than a grounded knee at 90° (two feet) / 67° (one foot); pelvis tilt within
+      `reach.pelvis*Deg`. Config `decider.twoLegKneeMaxDeg` / `oneLegKneeMaxDeg`.
+    - Measured (plan; before in brackets): hand at the toes knees 64/46 (152/149) deg,
+      pelvis tilt 51 (8), trunk bend 62 (18), hips drop 12 (69) cm; foot 0.8 m ahead stance
+      knee 67 (127) deg, short 12 cm (reported). Stepping test unchanged.
+    - Measurement cases in `tests/test_human.cpp` ("measure: ...", skipped by default; run
+      with `--no-skip -tc="measure*"`).
+    - **Open:** the real body misses a foot target 0.5 m behind by 50 cm (it did before
+      too: the physics body, not the plan).
+  - [x] **H. Limbs reach to a 5° bend; limb test jumps and stands on the ground** (2026-11-11,
+    the user's check; DECISIONS 2026-11-11 later): `decider.limbMinBendDeg` 5 replaces
+    `reachClamp` 0.96 (it bent every knee and elbow 32.5°). Standing knees 32.5 -> 5.1°,
+    walking x1 straighter knee 33-46 -> 7-31°. Limb test: a press jumps the target 0.1 m,
+    never under the ground; a foot target on the ground is pinned there (weight on it).
+    - **Open:** at pace x2.49 a knee reaches 0.0° at some moment (the bound is 5°):
+      not measured yet which leg or when.
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 

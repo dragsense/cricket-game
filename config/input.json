@@ -45,9 +45,10 @@
     "RandomBowl": ["U"],
     "SlowMotion": ["I"],
     // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,
-    // left foot, right hand, left hand); the arrows move its target relative
-    // to the camera (Up away, Down near, Left/Right sideways; with Shift,
-    // Up/Down raise/lower it); it stays where it is left. R resets the pose.
+    // left foot, right hand, left hand); each arrow press jumps its target one
+    // step (engine.json debug.limbTestStep) relative to the camera (Up away,
+    // Down near, Left/Right sideways; with Shift, Up/Down raise/lower it); it
+    // stays where it is left. R resets the pose.
     "PoseLimb": ["F"],
     "PoseAway": ["Up"],
     "PoseNear": ["Down"],

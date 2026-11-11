@@ -436,7 +436,7 @@ bool CricketApp::pumpEvents() {
     return running;
 }
 
-void CricketApp::updatePose(float seconds) {
+void CricketApp::updatePose(float /*seconds: the target jumps per press, not per second*/) {
     agents::Human& fielder = sim_.fielder();
     if (actions_.pressed(input_, core::Action::ClearReach)) {
         // R: the targets go and the body is back at its standing pose.
@@ -449,15 +449,16 @@ void CricketApp::updatePose(float seconds) {
         poseActive_ = false;
     }
     if (input_.uiWantsKeyboard) return;
+    // Each press jumps the target one step (no slide).
     auto axis = [&](core::Action pos, core::Action neg) {
-        return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
+        return (actions_.pressed(input_, pos) ? 1.0f : 0.0f) - (actions_.pressed(input_, neg) ? 1.0f : 0.0f);
     };
     const float side = axis(core::Action::PoseRight, core::Action::PoseLeft);
     const float ahead = axis(core::Action::PoseAway, core::Action::PoseNear);
     if (side == 0.0f && ahead == 0.0f) return;
 
-    // The target starts where the limb is; the arrows move it relative to the
-    // camera on the ground plane, or up/down with Shift.
+    // The target starts where the limb is; each arrow press jumps it one step
+    // relative to the camera on the ground plane, or up/down with Shift.
     const bool hand = poseLimb_ >= 2;
     const bool left = poseLimb_ % 2 == 1;
     if (!poseActive_) {
@@ -471,9 +472,10 @@ void CricketApp::updatePose(float seconds) {
     const math::Vec3 right = math::cross(forward, math::kUp);
     const math::Vec3 move = actions_.down(input_, core::Action::ModShift) ? math::kUp * ahead + right * side
                                                                     : forward * ahead + right * side;
-    poseTarget_ += move * (cfg_.engine.getFloat("debug.limbTestSpeed", 0.5f) * seconds);
-    // The target goes anywhere (in the air or below the ground); the leg
-    // reaches as near as the body allows.
+    poseTarget_ += move * cfg_.engine.getFloat("debug.limbTestStep", 0.1f);
+    // The target goes anywhere in the air, never under the ground (y = 0);
+    // the limb reaches as near as the body allows.
+    poseTarget_.y = std::max(poseTarget_.y, 0.0f);
     if (hand) fielder.setPoseHand(left, poseTarget_);
     else fielder.setPoseFoot(left ? motion::Foot::Left : motion::Foot::Right, poseTarget_);
 }

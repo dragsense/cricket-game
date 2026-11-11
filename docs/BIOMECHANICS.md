@@ -682,8 +682,24 @@ while reaching.
   two is at the knee (model peaks ~16° vs. ~52°)
   ([arXiv 1910.01184](https://arxiv.org/pdf/1910.01184);
   [BMC Musculoskelet Disord 10:15](https://link.springer.com/doi/10.1186/1471-2474-10-15))
-  **[P]**. Real pickups mix both; fielders lower the body with the legs rather than
-  bending the back (section 8) **[T]**.
+  **[P]**. Real pickups mix both.
+- **The three named postures** (definitions, not measurements): stoop, knee < 45° and
+  trunk ~90°; semi-squat, knee ~90° and trunk ~45°; squat, knee ~135° and trunk < 30°
+  ([Straker 2003](https://www.sciencedirect.com/science/article/abs/pii/S0169814102001919);
+  [review PMC8720246](https://pmc.ncbi.nlm.nih.gov/articles/PMC8720246/)) **[T]**.
+- **What people choose (added 2026-11-11).** Many default to the stoop, the cheapest in
+  metabolic cost (review above) **[T]**. Measured self-chosen box lifts (6–15 kg) from the
+  ground: knee flexion ~48° (novices), ~71° (experts); asked to change technique, people
+  change mostly the knees and keep their own lumbar bend
+  ([Dundee, intrinsic lumbar curvature](https://discovery.dundee.ac.uk/en/publications/variation-in-lifting-kinematics-related-to-individual-intrinsic-l/))
+  **[P]**. The lower the target, the more trunk, hip and knee flexion all grow
+  ([OSU 2002](https://spine.osu.edu/sites/default/files/uploads/Publications/2002/OccupationalErgonomics_2002_3-2_99-103.pdf))
+  **[P]**. Not found: measured angles for a light object (the 39-subject
+  [Burgess-Limerick 1995](https://www.researchgate.net/publication/15557341_Self-Selected_Manual_Lifting_Technique_Functional_Consequences_of_the_Interjoint_Coordination)
+  study is paywalled).
+- **Fielders (section 8):** a pickup on the run lowers the body by a long final step
+  rather than by bending the back **[T]**. That is a step (a planner's job), not a deeper
+  squat on planted feet.
 
 **Order used by the game.** Each stage takes only the error the previous stage could not
 remove: arm (shoulder, elbow) → clavicle → spine (lumbar first for bending, thoracic for
@@ -728,8 +744,14 @@ hip-heavy late (9.1); side bend shared evenly.
   **[P]**. These are means, not hard limits.
 - **Kneeling:** no kinematic source was found for half-kneeling pickups. The cricket
   "long barrier" puts one knee down beside the other foot's heel **[T]**.
-- M2 starts with **no squat or drop limit** (the user's choice), so the solve can be
-  observed. A minimum hip height and the one-knee drop come later.
+- M2 started with **no squat or drop limit** (the user's choice), so the solve could be
+  observed. Measured 2026-11-11 without it: a hand at the toes squatted the stance knees
+  to 150–164° with only 26° of trunk and hip bend, past every posture above. **Limit
+  since 2026-11-11 (the user's approval):** the hips go no lower than puts a grounded
+  knee at **90°** on two feet (the semi-squat; measured self-chosen ground lifts 48–71°,
+  above) or **67°** on one foot (the largest mean stance knee of a maximal one-leg foot
+  reach, 9.7). Past that the reach is reported short (a step is the planner's job). The
+  one-knee drop comes later.
 
 ### 9.5 Balance compensation
 - A forward reach moves the CoM forward. The body responds with a backward shift of the
@@ -765,6 +787,36 @@ hip-heavy late (9.1); side bend shared evenly.
   path); the reach starts one movement time (plus a lunge's time) before that, so it
   arrives as the ball does; a moving ball is grabbed on contact.
 
+### 9.7 Foot reach on one leg (added 2026-11-11)
+The star excursion balance test: standing on one leg, the other foot reaches as far as
+it can along 8 lines and touches down lightly. Change from standing at maximum reach,
+healthy controls (n = 18), mean in degrees
+([PLOS ONE 2019, PMC6347240](https://pmc.ncbi.nlm.nih.gov/articles/PMC6347240/)) **[P]**:
+
+| Reach direction | Stance knee flexion | Stance hip flexion | Trunk flexion | Trunk turn to stance side |
+|---|---|---|---|---|
+| Forward | 55 | 9 | 5 | 1 |
+| Forward-across | 61 | 12 | 8 | 3 |
+| Across (behind the stance foot's side) | 67 | 32 | 6 | 5 |
+| Back-across | 59 | 46 | 1 | 5 |
+| Back | 50 | 53 | 0 | 1 |
+| Back-out | 35 | 47 | 1 | 2 |
+| Out to the side | 24 | 38 | 1 | 5 |
+| Forward-out | 45 | 13 | 2 | −5 |
+
+- **Hip and knee flexion make the reach:** they explain 62–95 % of the reach distance in
+  all 8 directions ([Robinson & Gribble 2008](https://meridian.allenpress.com/jat/article/50/4/358/112375/Trunk-Rotation-Differences-at-Maximal-Reach-of-the),
+  cited there) **[P]**. The trunk stays nearly upright (0–8°).
+- So the stance leg **does lower the hips**, with the knee at most ~55–67°; reaching
+  back, the pelvis tilts forward on the stance hip (hip flexion ~50°) while the trunk
+  stays up.
+- **The hips stay over the stance foot** while the foot is in the air (it is a balance
+  test: the foot only touches). They carry over to the reaching foot only once it lands
+  and takes weight (a step, section 3.1 and 4).
+- Limits: small sample; a maximal test, so everyday foot reaches use less. Not found:
+  lunge pelvis travel (only the preferred forward lunge step, ~90 cm,
+  [PubMed 23584319](https://pubmed.ncbi.nlm.nih.gov/23584319/)) **[P]**.
+
 ### Implementation notes (`config/human_joints.json` "reach")
 - Each tick (late update, after foot repositioning), every stage reduces the error and
   passes the rest on: arm → clavicle → spine → pelvis → body translation → lunge → hold.
@@ -774,7 +826,12 @@ hip-heavy late (9.1); side bend shared evenly.
   bone is clamped by its swing-twist limit (`human_joints.json`).
 - Pelvis tilt limit from 9.3, raised with knee flexion (80° straight, 110° bent).
 - Body translation is an offset *added* to the foot repositioning offset; leg length
-  clamps it. No minimum squat height at first.
+  clamps it. The lowest hips come from the grounded knees (9.4: 90° on two feet, 67° on
+  one).
+- The decider (`motion::BodyDecider`, 2026-11-11): for a hand target below the hips the
+  trunk queue is lumbar spine, pelvis tilt, upper spine, chest, clavicle, and the legs
+  last (9.1's order; the earlier legs-first queue squatted instead of bending). The
+  pelvis tilt keeps to `reach.pelvisMinDeg` / `pelvisMaxDeg` (80° forward, 9.3).
 - Timing: all stages start together; each has a spring, stiffest for the arm and softest
   for the pelvis and body, so the hand arrives first and the body settles last (9.6).
 - Balance: the hips shift opposite to the CoM excursion; the free arm extends backward.

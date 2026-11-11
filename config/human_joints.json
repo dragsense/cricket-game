@@ -182,10 +182,12 @@
     // BIOMECHANICS 9.1). Their combined place share is split by it.
     "lumbarHipBandsDeg": [30, 60, 90],
     "lumbarHipRatio": [1.9, 0.9, 0.4],
-    // A limb reaches at most this share of its length: the knee and elbow
-    // keep a bend, so no straight-limb singularity and no knee snap (quiet
-    // standing knee 0-5 deg flexion, BIOMECHANICS 2; 0.96 is ~16 deg).
-    "reachClamp": 0.96,
+    // A limb reaches at most its span with the knee or elbow bent this much
+    // (deg): quiet standing knee 0-5 deg flexion (BIOMECHANICS 2). It
+    // replaces reachClamp 0.96, which bent every knee and elbow 32.5 deg
+    // (measured 2026-11-11; the old note "~16 deg" was wrong). The two-bone
+    // solve's soften keeps the straight limb from snapping.
+    "limbMinBendDeg": 5,
     // s: a target's mode or weight change blends over this (no switch);
     // a foot's support weight over supportBlendTime (the weight shift of a
     // step: double support is 10-12 % of a 1.0-1.2 s stride, BIOMECHANICS 4).
@@ -205,7 +207,14 @@
     "limbMaxRate": 12.0,
     // m: the plan's pelvis stays within this of the root, level (the capsule
     // leads; the pelvis moves around it: half a step plus the stance).
-    "hipsOffsetMax": 0.35
+    "hipsOffsetMax": 0.35,
+    // The lowest hips: no grounded knee bends past this (deg). Two feet: the
+    // semi-squat ~90 (Straker 2003; measured self-chosen ground lifts 48-71,
+    // BIOMECHANICS 9.1, 9.4). One foot: 67, the largest mean stance knee of a
+    // maximal one-leg foot reach (star excursion test, PMC6347240, 9.7).
+    // The pelvis tilt of a reach keeps to reach.pelvisMinDeg / pelvisMaxDeg.
+    "twoLegKneeMaxDeg": 90,
+    "oneLegKneeMaxDeg": 67
   },
 
   // Muscles (BIOMECHANICS 14): each joint's motor drives it toward the planned

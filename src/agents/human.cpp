@@ -961,7 +961,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.passiveChest = jointsConfig_->getFloat("decider.passiveInfluence.chest", deciderSettings_.passiveChest);
         auto dv = [&](const char* key, float value) { return jointsConfig_->getFloat(key, value); };
         deciderSettings_.hipsSway = dv("decider.hipsSway", deciderSettings_.hipsSway);
-        deciderSettings_.reachClamp = dv("decider.reachClamp", deciderSettings_.reachClamp);
+        deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));
         deciderSettings_.blendTime = dv("decider.blendTime", deciderSettings_.blendTime);
         deciderSettings_.supportBlendTime = dv("decider.supportBlendTime", deciderSettings_.supportBlendTime);
         deciderSettings_.hipsMaxSpeed = dv("decider.hipsMaxSpeed", deciderSettings_.hipsMaxSpeed);
@@ -971,6 +971,12 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.headMaxRate = dv("decider.headMaxRate", deciderSettings_.headMaxRate);
         deciderSettings_.limbMaxRate = dv("decider.limbMaxRate", deciderSettings_.limbMaxRate);
         deciderSettings_.hipsOffsetMax = dv("decider.hipsOffsetMax", deciderSettings_.hipsOffsetMax);
+        deciderSettings_.twoLegKneeMax =
+            math::radians(dv("decider.twoLegKneeMaxDeg", math::degrees(deciderSettings_.twoLegKneeMax)));
+        deciderSettings_.oneLegKneeMax =
+            math::radians(dv("decider.oneLegKneeMaxDeg", math::degrees(deciderSettings_.oneLegKneeMax)));
+        deciderSettings_.pelvisMin = reach_.pelvisMin;  // reach.pelvisMinDeg / pelvisMaxDeg (BIOMECHANICS 9.3)
+        deciderSettings_.pelvisMax = reach_.pelvisMax;
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
@@ -1099,10 +1105,22 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         handPath_.on = footPath_.on = false;
     } else if (posedFoot_ >= 0 && !poseHandLast_) {
         const int f = posedFoot_;
+        const int ankle = f == 0 ? joints_.legL.end : joints_.legR.end;
         math::Vec3 goal = math::inverse(root_).transformPoint(poseFootGoal_);
-        goal.y = std::max(goal.y, liftedAnkleMin_);  // lifted: it clears the ground
-        t.foot[f].mode = motion::TargetMode::Driven;
-        t.foot[f].position = travel(footPath_, goal, f == 0 ? joints_.legL.end : joints_.legR.end);
+        if (goal.y <= liftedAnkleMin_) {
+            // On or under the ground: the foot is at once on the ground under
+            // the target and stands there (pinned: it carries weight, the
+            // hips go between the feet); it stays there after.
+            const math::Vec3 spot(goal.x, liftedAnkleMin_ - toeClearance_, goal.z);
+            stepper_.place(static_cast<motion::Foot>(f), spot);
+            t.foot[f].mode = motion::TargetMode::Pinned;
+            t.foot[f].position = spot;
+            footPath_.on = false;
+        } else {
+            // Above the ground: the foot is held up there (no weight on it).
+            t.foot[f].mode = motion::TargetMode::Driven;
+            t.foot[f].position = travel(footPath_, goal, ankle);
+        }
     } else {
         footPath_.on = false;
     }

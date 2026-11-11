@@ -62,6 +62,6 @@
     // speed, Grieve & Gear 1966): length x sqrt(k), duration / sqrt(k).
     "speedStep": 1.2,
     "speedMin": 0.5,
-    "speedMax": 3.0
+    "speedMax": 2.5          // top pace ~1.67 m/s: 0.63 m steps in 0.38 s
   }
 }

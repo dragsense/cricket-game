@@ -581,3 +581,39 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Balance:** by construction (support-weighted hips reference, the pin) plus the
   planner's stepping on reports; no self-balancing controller. Capture-point stepping can
   come later inside the planner.
+
+## 2026-11-11: Reach trunk queue in the documented order; lowest hips from the knees
+- **Decision (the user's approval, 2026-11-11):** in `motion::BodyDecider` a hand target
+  below the hips bends first (lumbar spine with the pelvis tilt, Esola split, then the
+  upper spine, chest, clavicle) and lowers the hips with the legs last, as BIOMECHANICS
+  9.1 orders it (the queue had the legs first). The hips go no lower than puts a grounded
+  knee at 90° on two feet (semi-squat) or 67° on one (largest mean stance knee of a
+  maximal one-leg foot reach, 9.7); this replaces "no squat or drop limit" (2026-10-25).
+  The reach's pelvis tilt keeps to `reach.pelvisMinDeg` / `pelvisMaxDeg` (80° forward).
+  Past the bounds the reach is reported short (a step is a planner's job).
+- **Why:** measured before (real Human, 3 s holds): a hand at the toes squatted the knees
+  to 150-164° with 26° of trunk and hip bend; a foot 0.8 m ahead bent the stance knee to
+  127°. Measured humans: self-chosen ground lifts 48-71° knee, stoop the common default;
+  one-leg foot reach 24-67° stance knee with the trunk upright (BIOMECHANICS 9.1, 9.7).
+  After: hand at the toes knees 46-64°, pelvis tilt 51°, trunk 62°; foot reaches hold the
+  stance knee at 67°. Walking unchanged (stepping test numbers identical; the stance knee
+  peaks at 45° in a step, under the bound).
+- **Rejected:** hips travelling toward a foot target in the air (measured: they stay over
+  the stance foot until the foot takes weight).
+
+## 2026-11-11 (later): Limbs reach to a 5° knee/elbow bend; limb test jumps and stands on the ground
+- **Decision (the user's approval and game check, 2026-11-11):** the decider's limb reach
+  is the limb's span with the knee or elbow bent `decider.limbMinBendDeg` (5°, quiet
+  standing 0-5°, BIOMECHANICS 2), from its own two segment lengths; it replaces
+  `reachClamp` 0.96, which bent every knee and elbow 32.5° (the old note "~16 deg" was
+  wrong). General: every action's hips height and reach come from it.
+- **Limb test:** an arrow press jumps the target `debug.limbTestStep` (0.1 m), no slide;
+  the target never goes under the ground (y = 0); a foot target at the ground puts the
+  foot there at once, pinned (it carries weight, the hips go between the feet), above
+  the ground it is held up (Driven, no weight). The old test forced a foot target 1.2 cm
+  above the ground and always Driven, so the body always stood on one leg.
+- **Why:** measured: standing knees 32.5° (real 0-5°), the straighter knee while walking
+  never under 33° (real ~5° mid-stance). After: standing 5.1°, walking x1 7-31°; the
+  stepping test's foot slide 3.3 -> 2.0 cm, chest swing 2.2 -> 1.7°.
+- **Rejected:** stepping the limb-test foot with the step planner (the user: the limb test
+  only jumps the target).

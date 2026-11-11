@@ -56,8 +56,9 @@
     // (the code stays); F chooses a hand or foot and the mouse moves its target
     // (input.json "PoseLimb") to study how the body follows. Restart to apply.
     "limbTest": true,
-    // Limb test: how fast the arrows move the target (m/s).
-    "limbTestSpeed": 0.5
+    // Limb test: each arrow press jumps the target this far (m) to its new
+    // point at once (no slide), so the body shows what it does for that point.
+    "limbTestStep": 0.1
   },
   // Picking test driver (T): the ball starts `distance` m in front of the
   // fielder and moves straight past them (no physics) at a random speed
