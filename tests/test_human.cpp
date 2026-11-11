@@ -353,6 +353,7 @@ StepRun stepRun(float seconds, float turnAt) {
     bool have = false, holding[2] = {false, false};
     math::Vec3 pelvisHist[7], planHist[7];
     float planAccel = 0.0f, sideMin = 9.0f, sideMax = -9.0f;
+    const math::Vec3 sideAxis = h.root().transformDirection(math::Vec3(1.0f, 0.0f, 0.0f));  // +X left, at the start
     int pelvisCount = 0;
     const int ticks = static_cast<int>(seconds * 120.0f);
     for (int i = 0; i < ticks; ++i) {
@@ -366,9 +367,12 @@ StepRun stepRun(float seconds, float turnAt) {
         if (!h.physicalModels(world, 1.0f, real)) continue;
         {
             const math::Vec3 p = h.root().transformPoint(math::Vec3(real[0][3]));
-            if (i * kDt > 0.6f && i * kDt < turnAt) {  // walking straight: the pelvis's side sway (the body's own side)
-                sideMin = std::min(sideMin, real[0][3].x);
-                sideMax = std::max(sideMax, real[0][3].x);
+            if (i * kDt > 0.6f && i * kDt < turnAt) {
+                // Walking straight: the pelvis's side sway in the world, across
+                // the starting heading (not from the root: that follows the hips).
+                const float side = math::dot(p, sideAxis);
+                sideMin = std::min(sideMin, side);
+                sideMax = std::max(sideMax, side);
             }
             for (int k = 6; k > 0; --k) pelvisHist[k] = pelvisHist[k - 1];
             pelvisHist[0] = p;
@@ -607,4 +611,198 @@ void walkKnees(int presses) {
 TEST_CASE("measure: knees while walking" * doctest::skip()) {
     walkKnees(0);
     walkKnees(5);
+}
+
+// Measurement (on demand): when a knee goes (nearly) straight while walking
+// at the top pace, which leg, planted or not, its span, and the hips' bounds.
+TEST_CASE("measure: straight knee while walking" * doctest::skip()) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    for (int i = 0; i < 5; ++i) h.changeWalkSpeed(1);
+    const char* legs[2][3] = {{"thigh_l", "shin_l", "foot_l"}, {"thigh_r", "shin_r", "foot_r"}};
+    math::Vec3 lastAnkle[2];
+    int straight[2] = {0, 0}, straightPlanted[2] = {0, 0}, printed = 0, ticks = 0;
+    for (int i = 0; i < 480; ++i) {
+        h.setStepInput(math::Vec2(0.0f, 1.0f));
+        h.tick(kDt);
+        world.step(kDt);
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        for (int l = 0; l < 2; ++l) {
+            const int a = h.rig().findJoint(legs[l][0]), b = h.rig().findJoint(legs[l][1]), c = h.rig().findJoint(legs[l][2]);
+            const math::Vec3 hip(p[static_cast<size_t>(a)][3]), knee(p[static_cast<size_t>(b)][3]), ankle(p[static_cast<size_t>(c)][3]);
+            const float speed = i > 0 ? math::distance(ankle, lastAnkle[l]) / kDt : 0.0f;
+            lastAnkle[l] = ankle;
+            if (i < 120) continue;
+            const float knee0 = flexionDeg(p, h, legs[l][0], legs[l][1], legs[l][2]);
+            if (knee0 >= 1.0f) continue;
+            const bool planted = speed < 0.05f;
+            ++straight[l];
+            if (planted) ++straightPlanted[l];
+            if (printed < 8) {
+                ++printed;
+                const float len = math::distance(hip, knee) + math::distance(knee, ankle);
+                std::printf("  t %.3f s: %s knee %.1f deg, foot %s (%.2f m/s), span %.4f of leg, support %.2f, "
+                            "height clamped %s\n",
+                            i * kDt, l == 0 ? "left" : "right", knee0, planted ? "planted" : "moving", speed,
+                            math::distance(hip, ankle) / len, h.bodyQueue().supportWeight[l],
+                            h.bodyQueue().heightClamped ? "yes" : "no");
+            }
+        }
+        if (i >= 120) ++ticks;
+    }
+    std::printf("knee under 1 deg: left %d ticks (%d planted), right %d ticks (%d planted), of %d\n", straight[0],
+                straightPlanted[0], straight[1], straightPlanted[1], ticks);
+}
+
+// Measurement (on demand): a foot goal behind; the hip's extension the plan
+// asks for and the real body's, in the pelvis's frame (+: thigh behind).
+TEST_CASE("measure: hip extension for a foot behind" * doctest::skip()) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    const int pelvis = h.rig().findJoint("pelvis"), thigh = h.rig().findJoint("thigh_l"), shin = h.rig().findJoint("shin_l");
+    auto extension = [&](const std::vector<math::Mat4>& m) {
+        const math::Quat inv = math::inverse(math::toTransform(m[static_cast<size_t>(pelvis)]).rotation);
+        const math::Vec3 d = inv * (math::Vec3(m[static_cast<size_t>(shin)][3]) - math::Vec3(m[static_cast<size_t>(thigh)][3]));
+        return math::degrees(std::atan2(-d.z, -d.y));
+    };
+    for (float back : {0.2f, 0.3f, 0.4f, 0.5f}) {
+        h.resetPhysicsBody();
+        for (int i = 0; i < 30; ++i) { h.tick(kDt); world.step(kDt); }
+        const math::Vec3 goal = h.root().transformPoint(math::Vec3(0.1f, 0.1f, -back));
+        for (int i = 0; i < 360; ++i) {
+            h.setPoseFoot(motion::Foot::Left, goal);
+            h.tick(kDt);
+            world.step(kDt);
+        }
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        const bool haveReal = h.physicalModels(world, 1.0f, real);
+        std::printf("foot %.1f m behind: hip extension plan %5.1f deg, real %5.1f deg; knee plan %5.1f, real %5.1f deg; "
+                    "ankle miss plan %4.1f cm, real %4.1f cm\n",
+                    back, extension(p), haveReal ? extension(real) : 0.0f, flexionDeg(p, h, "thigh_l", "shin_l", "foot_l"),
+                    haveReal ? flexionDeg(real, h, "thigh_l", "shin_l", "foot_l") : 0.0f,
+                    100.0f * math::distance(h.ankle(true, p, h.root()), goal),
+                    haveReal ? 100.0f * math::distance(h.ankle(true, real, h.root()), goal) : 0.0f);
+    }
+}
+
+// Measurement (on demand): a foot goal behind, over time: does the real foot
+// catch the ground (toe and ankle heights), and where are the hips (real vs plan)?
+TEST_CASE("measure: foot behind over time" * doctest::skip()) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    const int pelvis = h.rig().findJoint("pelvis"), thigh = h.rig().findJoint("thigh_l"), shin = h.rig().findJoint("shin_l");
+    const int foot = h.rig().findJoint("foot_l"), toe = h.rig().findJoint("toe_l");
+    auto extension = [&](const std::vector<math::Mat4>& m) {
+        const math::Quat inv = math::inverse(math::toTransform(m[static_cast<size_t>(pelvis)]).rotation);
+        const math::Vec3 d = inv * (math::Vec3(m[static_cast<size_t>(shin)][3]) - math::Vec3(m[static_cast<size_t>(thigh)][3]));
+        return math::degrees(std::atan2(-d.z, -d.y));
+    };
+    auto worldY = [&](const std::vector<math::Mat4>& m, int j) { return h.root().transformPoint(math::Vec3(m[static_cast<size_t>(j)][3])).y; };
+    for (float back : {0.4f, 0.5f}) {
+        h.resetPhysicsBody();
+        for (int i = 0; i < 30; ++i) { h.tick(kDt); world.step(kDt); }
+        const math::Vec3 goal = h.root().transformPoint(math::Vec3(0.1f, 0.1f, -back));
+        std::printf("foot %.1f m behind (goal ankle height 0.10 m):\n", back);
+        for (int i = 1; i <= 360; ++i) {
+            h.setPoseFoot(motion::Foot::Left, goal);
+            h.tick(kDt);
+            world.step(kDt);
+            if (i % 30 != 0 || !h.physicalModels(world, 1.0f, real)) continue;
+            const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+            std::printf("  t %.2f s: hip ext plan %5.1f real %5.1f deg | pelvis y plan %.3f real %.3f m | "
+                        "ankle y plan %.3f real %.3f | toe y plan %.3f real %.3f m | ankle miss %4.1f cm\n",
+                        i * kDt, extension(p), extension(real), worldY(p, pelvis), worldY(real, pelvis), worldY(p, foot),
+                        worldY(real, foot), worldY(p, toe), worldY(real, toe),
+                        100.0f * math::distance(h.ankle(true, real, h.root()), goal));
+        }
+    }
+}
+
+// Measurement (on demand): W held for 3 s; the capsule against the real
+// hips, the real hips against the plan's and the feet, the side jerk.
+TEST_CASE("measure: capsule and hips through W steps" * doctest::skip()) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward), left = h.root().transformDirection(math::Vec3(1, 0, 0));
+    float capMax = 0.0f, capSum = 0.0f, lagPlanMax = 0.0f, behindFeetMax = 0.0f, sideAccel = 0.0f;
+    float sideMin = 9.0f, sideMax = -9.0f, frontLagMax = 0.0f;
+    float yawP[2] = {99, -99}, rollP[2] = {99, -99}, yawR[2] = {99, -99}, rollR[2] = {99, -99};
+    auto angles = [&](const math::Mat4& m, float* yaw, float* roll) {
+        const math::Vec3 f = math::normalize(math::Vec3(m[2])), l = math::normalize(math::Vec3(m[0]));  // character space
+        const float y = math::degrees(std::atan2(f.x, f.z)), r = math::degrees(std::asin(std::clamp(l.y, -1.0f, 1.0f)));
+        yaw[0] = std::min(yaw[0], y); yaw[1] = std::max(yaw[1], y); roll[0] = std::min(roll[0], r); roll[1] = std::max(roll[1], r);
+    };
+    int n = 0;
+    math::Vec3 hist[7];
+    for (int i = 0; i < 360; ++i) {
+        h.setStepInput(math::Vec2(0.0f, 1.0f));
+        h.tick(kDt);
+        world.step(kDt);
+        math::Vec3 capFeet, centre, hips;
+        float ht = 0.0f, rad = 0.0f;
+        if (!h.capsuleDebug(capFeet, ht, rad, centre, hips) || !h.bodyQueue().plan) continue;
+        const math::Vec3 plan = h.root().transformPoint(math::Vec3((*h.bodyQueue().plan)[0][3]));
+        if (!h.physicalModels(world, 1.0f, real)) continue;
+        const float ankL = math::dot(h.ankle(true, real, h.root()), fwd), ankR = math::dot(h.ankle(false, real, h.root()), fwd);
+        for (int k = 6; k > 0; --k) hist[k] = hist[k - 1];
+        hist[0] = hips;
+        if (i < 60) continue;  // steady walking only
+        const math::Vec3 c = capFeet - hips;
+        const float cap = std::sqrt(c.x * c.x + c.z * c.z);
+        capMax = std::max(capMax, cap);
+        capSum += cap;
+        lagPlanMax = std::max(lagPlanMax, math::dot(plan - hips, fwd));
+        behindFeetMax = std::max(behindFeetMax, math::dot(centre - hips, fwd));
+        frontLagMax = std::max(frontLagMax, std::max(ankL, ankR) - math::dot(hips, fwd));
+        const float s = math::dot(hips, left);
+        sideMin = std::min(sideMin, s);
+        sideMax = std::max(sideMax, s);
+        const math::Vec3 a = (hist[0] - 2.0f * hist[3] + hist[6]) / (9.0f * kDt * kDt);
+        sideAccel = std::max(sideAccel, std::abs(math::dot(a, left)));
+        angles((*h.bodyQueue().plan)[0], yawP, rollP);
+        angles(real[0], yawR, rollR);
+        ++n;
+        if (i % 30 == 0)
+            std::printf("  t %.2f s: capsule-hips %4.1f cm | hips behind plan %5.1f cm, behind feet centre %5.1f cm, "
+                        "front ankle ahead %5.1f cm | hips fwd %.3f m\n",
+                        i * kDt, 100.0f * cap, 100.0f * math::dot(plan - hips, fwd), 100.0f * math::dot(centre - hips, fwd),
+                        100.0f * (std::max(ankL, ankR) - math::dot(hips, fwd)), math::dot(hips, fwd));
+    }
+    std::printf("capsule from real hips: max %.1f cm, mean %.1f cm | real hips behind plan: max %.1f cm | behind feet "
+                "centre: max %.1f cm | front ankle ahead of hips: max %.1f cm | side sway %.1f cm, side accel %.1f m/s^2 | "
+                "dropped %s\n",
+                100.0f * capMax, n ? 100.0f * capSum / n : 0.0f, 100.0f * lagPlanMax, 100.0f * behindFeetMax,
+                100.0f * frontLagMax, 100.0f * (sideMax - sideMin), sideAccel, h.supported() ? "no" : "yes");
+    std::printf("pelvis turn (yaw) range: plan %.1f deg, real %.1f deg | pelvis drop (roll) range: plan %.1f deg, real %.1f deg\n",
+                yawP[1] - yawP[0], yawR[1] - yawR[0], rollP[1] - rollP[0], rollR[1] - rollR[0]);
 }

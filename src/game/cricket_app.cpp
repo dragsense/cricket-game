@@ -914,7 +914,7 @@ void CricketApp::drawDebugGeometry(float alpha) {
                 dd.sphere(root.transformPoint(t.hand[i].position), 0.025f, render::colors::kMagenta, 8);
         const math::Vec3 pelvis = root.transformPoint(math::Vec3((*q.plan)[0][3]));
         dd.sphere(pelvis, 0.03f, render::colors::kCyan, 8);
-        dd.line(feet, pelvis, q.offsetClamped ? render::colors::kRed : render::colors::kCyan);
+        dd.line(feet, pelvis, render::colors::kCyan);
         for (int e = 0; e < 4; ++e) {
             const motion::ReachReport& r = q.reach[e];
             if (r.reached) continue;

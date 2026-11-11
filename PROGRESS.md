@@ -654,6 +654,24 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
     never under the ground; a foot target on the ground is pinned there (weight on it).
     - **Open:** at pace x2.49 a knee reaches 0.0° at some moment (the bound is 5°):
       not measured yet which leg or when.
+  - [~] **I. The capsule follows the real hips; the hold rides the plan** (2026-11-11, the
+    user's call; DECISIONS 2026-11-11 night; committed, the user's game check pending):
+    the capsule moves under the physics pelvis every tick (`moveCharacter`, it still
+    collides); the hold's anchor rides the plan's pelvis (target offset 0, so the damper
+    damps toward the plan's speed); removed: intent velocity, `character.recentreRate`,
+    `decider.hipsOffsetMax`; `passiveInfluence.hips` 0.
+    - Measured (W 3 s; before -> anchor on the feet' centre -> anchor on the plan): capsule
+      from the real hips 19.5 -> 0.5 -> 0.6 cm (mean); real hips behind the plan 2.4 -> 8.8
+      -> 1.2 cm; real pelvis accel 20.6 -> 15.1 -> 9.4 m/s^2 (real walking ~2-4); foot slide
+      2.0 -> 2.2 -> 1.4 cm; side sway 2.4 -> 3.5 -> 4.3 cm (real 2.5-6); side accel 1.6 ->
+      1.8 -> 3.4 m/s^2. All tests pass. The stepping test's side sway is now measured in the
+      world (from the root it read 0.2 cm, as the root follows the hips).
+    - **Open:** the hips 13.7 cm behind the feet's centre (the plan: half the swing foot's
+      way); the pelvis neither turns (0.1°, real ±4.5°) nor drops (0.5°, real ±4°): the
+      foot's queue moves the pelvis only past the leg's reach and the leg IK ignores the
+      hip's limits. Next (the user's idea): the lifted leg moves the pelvis by its share
+      (forward, side, turn) once the hip joint has its part; research the hip-pelvis rhythm
+      first (BIOMECHANICS 4.3 has the gait timing, added today).
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 

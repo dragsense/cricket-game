@@ -53,11 +53,8 @@
       // weight goes down the thighs onto the knees); below it the spring catches.
       "freeDown": 0.03
     },
-    // The capsule leads (DECISIONS 2026-11-10): the planner's intent moves
-    // it, the plan's pelvis moves around it within decider.hipsOffsetMax;
-    // with both feet planted it re-centres toward the support (the feet) at
-    // this rate (1/s), the pelvis's offset shrinking by the same amount.
-    "recentreRate": 2.0,
+    // The capsule follows the real hips (DECISIONS 2026-11-11); the hold's
+    // anchor rides the plan's pelvis.
     // The real pelvis off the hold's target, level (m): under small nothing;
     // past medium for sustained s a recovery step is reported to the
     // planner; past large the hold lets go (the strength goes) when the

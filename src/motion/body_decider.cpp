@@ -278,7 +278,7 @@ void BodyDecider::decide(const TargetSet& t, const BodyDeciderSettings& s, BodyQ
     out.count = 0;
     out.plan = nullptr;
     out.planned.fill(0);
-    out.offsetClamped = out.heightClamped = false;
+    out.heightClamped = false;
     for (ReachReport& r : out.reach) r = {};
     if (!rig_) return;
     if (!seeded_) seed(rig_->restPose());
@@ -737,21 +737,9 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
         have = want;
         hipsVel_ = math::Vec3(0.0f);
     }
-    // Hard constraint: around the root (the capsule leads). The height under
-    // every grounded leg's reach is the desired pose's (solveLegs), so the
-    // hips get there within their bounds.
-    {
-        const math::Vec3 flat = level(have.position);
-        const float r = math::length(flat);
-        if (r > s.hipsOffsetMax && r > 0.0f) {
-            const math::Vec3 n = flat / r;
-            have.position -= n * (r - s.hipsOffsetMax);
-            hipsVel_ -= n * std::max(0.0f, math::dot(hipsVel_, n));
-            out.offsetClamped = true;
-        }
-    }
+    // The height under every grounded leg's reach is the desired pose's
+    // (solveLegs), so the hips get there within the legs' bounds.
     placePelvis(output_, have);
-    out.pelvisOffset = level(have.position);
 
     // The trunk and head joints toward the desired ones by rate.
     for (int j : {joints_.spine[0], joints_.spine[1], joints_.spine[2], joints_.clavicles[0], joints_.clavicles[1]})

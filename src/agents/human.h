@@ -560,10 +560,7 @@ private:
     MuscleTiming muscleTiming_;
     std::vector<math::Mat4> physicsModels_;   // the physics body now (character space)
     rig::Pose physicsPose_;                   // scratch: the physics body's locals (a get-up seeds the plan from it)
-    // The capsule leads (DECISIONS 2026-11-10): it moves by the planner's
-    // intent (world, m/s), the plan's pelvis around it within its bound; the
-    // body's strength and the real pelvis's error from the hold's target.
-    math::Vec3 intentVelocity_{0.0f};
+    // The body's strength and the real pelvis's error from the hold's target.
     float strength_ = 1.0f, appliedStrength_ = 1.0f;
     PelvisError pelvisError_ = PelvisError::Small;
     float pelvisErrorNow_ = 0.0f, pelvisErrorTime_ = 0.0f;

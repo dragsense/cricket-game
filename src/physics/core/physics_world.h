@@ -56,9 +56,6 @@ struct CharacterSettings {
     // m: the hips may sink this far below the pose's pelvis with no hold
     // (their weight goes down the legs); below it the spring catches them.
     float supportFreeDown = 0.03f;
-    // The capsule leads; the pelvis moves around it. With both feet planted
-    // the capsule re-centres toward the support at this rate (1/s).
-    float recentreRate = 2.0f;
     // The real pelvis off the pin's target (m, level): under `small` nothing;
     // past `medium` for `sustained` s a recovery step is reported; past
     // `large` the strength goes (ragdoll) when the release is on.

@@ -144,7 +144,6 @@ PhysicsSettings readPhysicsSettings(const core::Config& c) {
     ch.supportMaxForce = c.getFloat("character.support.maxForce", ch.supportMaxForce);
     ch.supportMaxTorque = c.getFloat("character.support.maxTorque", ch.supportMaxTorque);
     ch.supportFreeDown = c.getFloat("character.support.freeDown", ch.supportFreeDown);
-    ch.recentreRate = c.getFloat("character.recentreRate", ch.recentreRate);
     ch.errorSmall = c.getFloat("character.pelvisError.small", ch.errorSmall);
     ch.errorMedium = c.getFloat("character.pelvisError.medium", ch.errorMedium);
     ch.errorLarge = c.getFloat("character.pelvisError.large", ch.errorLarge);

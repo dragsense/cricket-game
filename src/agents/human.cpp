@@ -385,17 +385,13 @@ void Human::followCapsule(math::Vec3 from, float dt) {
     if (!physics_ || capsule_ == physics::kInvalidCharacter || dt <= 0.0f) return;
     math::Vec3 velocity = (root_.position - from) / dt;  // the walker's move (turning only now)
     if (humanBody_.ready() && supportOn_) {
-        // The capsule leads (DECISIONS 2026-11-10): the planner's intent
-        // moves it; the plan's pelvis moves around it within its bound (the
-        // decider). With both feet planted it re-centres toward the support
-        // (the decider's hips reference) at recentreRate; as the plan stays
-        // put in the world (rebase), the pelvis's offset shrinks by the same
-        // amount. It never follows the real pelvis (that looped).
-        const physics::CharacterSettings& c = physics_->settings().character;
-        const float planted = std::min(queue_.supportWeight[0], queue_.supportWeight[1]);
-        const math::Vec3 toSupport =
-            root_.rotation * math::Vec3(queue_.hipsReference.x, 0.0f, queue_.hipsReference.z);
-        velocity = intentVelocity_ + toSupport * (c.recentreRate * planted);
+        // The capsule follows the real hips (DECISIONS 2026-11-11): under the
+        // physics pelvis every tick, moved (not placed) so it still collides.
+        // No loop: the hold's anchor rides the plan's pelvis, not the capsule,
+        // and the plan stays put in the world as the root moves (rebase).
+        const math::Vec3 hips = physics_->transform(humanBody_.parts()[0].body).position;
+        const math::Vec3 at = physics_->characterFeet(capsule_);
+        velocity = math::Vec3(hips.x - at.x, 0.0f, hips.z - at.z) / dt;
     }
     const math::Vec3 feet = physics_->moveCharacter(capsule_, velocity, dt);
     const math::Transform before = root_;
@@ -559,13 +555,6 @@ void Human::walk(float dt) {
                 stepPlanner_.retarget(
                     stepper_.stepSpot(static_cast<motion::Foot>(stepPlanner_.foot()), stepInput_, stepSettings_));
             }
-            // The player's intent carries the capsule (it leads; the body
-            // follows around it): the step's pace along the input while a
-            // step runs (the feet's middle advances a step per step).
-            const float pace = stepSettings_.stepLength / std::max(stepSettings_.stepDuration, 0.05f);
-            intentVelocity_ = input && stepPlanner_.running()
-                                  ? root_.rotation * (math::normalize(math::Vec3(stepInput_.x, 0.0f, stepInput_.y)) * pace)
-                                  : math::Vec3(0.0f);
             return;
         }
         stepper_.tick(dt, stepInput_, stepSettings_);
@@ -576,7 +565,6 @@ void Human::walk(float dt) {
         stepper_.rebase(before, root_);
         return;
     }
-    intentVelocity_ = math::Vec3(0.0f);
     if (picking && !(bowlTurn && bowlStage_ == BowlStage::Back && strideWaiting_)) {  // turning side-on, the feet step round
         // Only a lunge step moves a foot; back in gait mode after the pick,
         // the gait's settle steps it back to stance (the ideal standing spot).
@@ -970,7 +958,6 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.trunkMaxRate = dv("decider.trunkMaxRate", deciderSettings_.trunkMaxRate);
         deciderSettings_.headMaxRate = dv("decider.headMaxRate", deciderSettings_.headMaxRate);
         deciderSettings_.limbMaxRate = dv("decider.limbMaxRate", deciderSettings_.limbMaxRate);
-        deciderSettings_.hipsOffsetMax = dv("decider.hipsOffsetMax", deciderSettings_.hipsOffsetMax);
         deciderSettings_.twoLegKneeMax =
             math::radians(dv("decider.twoLegKneeMaxDeg", math::degrees(deciderSettings_.twoLegKneeMax)));
         deciderSettings_.oneLegKneeMax =
@@ -993,19 +980,18 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
     physicsModels_.resize(static_cast<size_t>(rig_.numJoints()));
     physicsPose_ = rig_.restPose();
     stepPlanner_ = motion::StepPlanner{};
-    intentVelocity_ = math::Vec3(0.0f);
     strength_ = appliedStrength_ = 1.0f;
     pelvisError_ = PelvisError::Small;
     pelvisErrorNow_ = pelvisErrorTime_ = 0.0f;
     restPelvisHeight_ = std::max(models_[static_cast<size_t>(joints_.pelvis)][3].y, 0.1f);
-    // The capsule's hold: a hidden kinematic body at the capsule's feet,
+    // The capsule's hold: a hidden kinematic body riding the plan's pelvis,
     // sprung to the pelvis on all six axes (physics_world.json "character").
     physics::BodyDesc anchor;
     anchor.shape = physics::ShapeType::Sphere;
     anchor.radius = 0.01f;
     anchor.kinematic = true;
     anchor.collides = false;
-    anchor.pose = math::Transform{root_.position, math::identityQuat()};
+    anchor.pose = math::Transform{world.transform(humanBody_.parts()[0].body).position, root_.rotation};
     anchor_ = world.createBody(anchor);
     const physics::CharacterSettings& c = world.settings().character;
     // The hold moves the whole body (not the pelvis alone) at its frequency:
@@ -1145,20 +1131,20 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     world.setCharacterHeight(capsule_, rig_.height() * std::clamp(pelvisY / restPelvisHeight_, 0.0f, 1.0f));
 
     if (supportOn_) {
-        // The hold rides the capsule's feet (the root), turned the root's
-        // way, and pulls the pelvis to where the plan has it: the capsule
-        // leads, the plan's pelvis stays within its bound of the root (the
-        // decider's constraint). Never the real hips (that looped).
-        const math::Vec3 capsuleFeet = world.characterFeet(capsule_);
-        const math::Quat turn = root_.rotation;
-        world.moveKinematic(anchor_, math::Transform{capsuleFeet, turn}, dt);
-        // Never higher than standing (as the capsule is never taller than the
-        // player): pulled higher, the hold would lift the feet off the ground.
+        // The hold rides the plan's pelvis (turned the root's way, yaw only)
+        // and pulls the real pelvis onto it: the spring by the gap, the
+        // damper by the speed off the PLAN's (a still anchor would damp the
+        // hips toward standing still and hold them back). Not the capsule:
+        // that follows the real hips, and a hold riding it would chase them
+        // (the 11-09 loop). Never higher than standing (as the capsule is
+        // never taller than the player): pulled higher, the hold would lift
+        // the feet off the ground.
         math::Transform planned = humanBody_.partPose(0, target);
         planned.position.y -= std::max(0.0f, pelvisY - restPelvisHeight_);
         const math::Transform pelvis = root_ * planned;  // world
-        const math::Quat back = math::inverse(turn);
-        world.setSupportTarget(support_, back * (pelvis.position - capsuleFeet), back * pelvis.rotation);
+        const math::Quat turn = root_.rotation;
+        world.moveKinematic(anchor_, math::Transform{pelvis.position, turn}, dt);
+        world.setSupportTarget(support_, math::Vec3(0.0f), math::inverse(turn) * pelvis.rotation);
         // The hold's strength: eased back in after a recovery, the body's
         // strength, and the support under the feet (none in flight: the
         // body is ballistic then).
@@ -1221,7 +1207,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     root_.position = feet;
     previousRoot_ = root_;
     stepper_.rebase(before, root_);
-    world.resetBody(anchor_, math::Transform{feet, root_.rotation});
+    world.resetBody(anchor_, math::Transform{pelvis, root_.rotation});  // the plan starts at the landed pelvis
     // The plan starts over from the landed pose (no fixed get-up).
     humanBody_.boneModels(world, 1.0f, rig_, current_, root_, physicsModels_);
     rig_.modelToLocal(physicsModels_, physicsPose_);
@@ -1719,7 +1705,7 @@ void Human::resetPhysicsBody() {
     if (!physics_ || !humanBody_.ready()) return;
     rig_.localToModel(current_, models_);
     humanBody_.reset(*physics_, models_, root_);
-    physics_->resetBody(anchor_, math::Transform{root_.position, root_.rotation});
+    physics_->resetBody(anchor_, math::Transform{(root_ * humanBody_.partPose(0, models_)).position, root_.rotation});
     physics_->setJointEnabled(support_, true);
     supportOn_ = armed_ = true;
     supportShare_ = 1.0f;
@@ -1728,7 +1714,6 @@ void Human::resetPhysicsBody() {
     pelvisError_ = PelvisError::Small;
     pelvisErrorNow_ = pelvisErrorTime_ = 0.0f;
     stepPlanner_ = motion::StepPlanner{};
-    intentVelocity_ = math::Vec3(0.0f);
     decider_.seed(current_);  // the plan starts over from the standing pose
     const physics::CharacterSettings& c = physics_->settings().character;
     physics_->setSupportLimits(support_, c.supportMaxForce, c.supportMaxTorque);

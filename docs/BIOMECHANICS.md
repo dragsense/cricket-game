@@ -277,6 +277,27 @@ foot). Sources: ([Wikipedia gait cycle](https://en.wikipedia.org/wiki/Bipedal_ga
     swing-leg side.
   - Obliquity (frontal drop): about 8° range (±4°). The swing-side hip drops.
   - Sagittal tilt: about 5° range.
+  - Sample and speed (added 2026-11-11): healthy controls, n = 20, walking slowly
+    (0.71 m/s); the paper gives no pelvic data at their own speed (1.28 m/s) **[P]**.
+- **When the pelvis turns and drops (added 2026-11-11):**
+  - Turn: the pelvis is turned furthest forward on a side at that foot's strike and
+    furthest back at the opposite foot's strike, about 4° each side of straight
+    ([Musculoskeletal Key, Biomechanics](https://musculoskeletalkey.com/biomechanics-2/)) **[T]**;
+    it follows the swing leg and turns it inward through the hip
+    ([OUHSC pelvic rotation](https://ouhsc.edu/bserdac/dthompso/web/gait/knmatics/pelrot1.htm)) **[T]**.
+    So it is largest when the feet are furthest apart fore-aft and straight at midstance.
+  - Drop: the side whose foot is off the ground falls, because nothing holds it up;
+    the stance hip's abductors (gluteus medius and minimus) stop it at about 4° and
+    lift it back, with a slight overcorrection
+    ([O&P Library, Normal Gait](https://www.oandplibrary.org/alp/chap13-01.asp);
+    [StatPearls, Trendelenburg gait](https://www.ncbi.nlm.nih.gov/books/NBK555987/)) **[T]**.
+    The drop peaks just after the opposite toe-off and lasts under ~20 % of the cycle
+    (secondary sources; the exact % from a normative dataset was not found).
+  - Clinical line: a drop over 4° in single stance counts as a weak abductor
+    (Westhoff 2005, cited in StatPearls) **[P]**.
+  - All three pelvic motions are about 4° and follow the swing limb (O&P Library) **[T]**.
+  - Speed: as speed rises, the pelvis turns more in phase with the thigh (Liang 2014,
+    20 men, 1-5 km/h); no table of turn amplitude against step length was found.
 - Pelvic rotation contributes little (under 3 %) to step length
   ([VU Amsterdam](https://research.vu.nl/en/publications/pelvic-step-the-contribution-of-horizontal-pelvis-rotation-to-ste/)),
   so it is mostly a visual detail, not a gait driver.

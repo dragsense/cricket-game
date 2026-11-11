@@ -617,3 +617,21 @@ Dated log. Format: decision, reason, alternatives rejected.
   stepping test's foot slide 3.3 -> 2.0 cm, chest swing 2.2 -> 1.7°.
 - **Rejected:** stepping the limb-test foot with the step planner (the user: the limb test
   only jumps the target).
+
+## 2026-11-11 (night): The capsule follows the real hips; the hold rides the plan
+- **Decision (the user's call, 2026-11-11):** the capsule goes under the physics pelvis
+  every tick (moved, so it still collides); the root rides it. The capsule's hold (the
+  hidden kinematic anchor sprung to the pelvis) rides the plan's pelvis, yaw from the
+  root, target offset 0. Reverses "the capsule leads" (2026-11-10).
+- **Removed:** the intent velocity, `character.recentreRate`, `decider.hipsOffsetMax`
+  (its bound only existed to drag the plan along with a leading capsule; the legs' reach
+  bounds the hips); `passiveInfluence.hips` 0 (it pulled the plan toward the root, now
+  the real hips).
+- **Why:** measured with W held: the capsule ran 19.5 cm ahead of the real hips (its pace
+  a step per step, the hips half the foot's way), then the recentre pulled it back. Now
+  0.6 cm; real pelvis accel 20.6 -> 9.4 m/s^2, foot slide 2.0 -> 1.4 cm.
+- **No loop** (the 2026-11-09 one came from a hold riding a capsule that follows the real
+  hips): the anchor rides the plan, and the plan stays put in the world as the root moves
+  (rebase).
+- **Rejected:** the anchor at the feet's centre: its damper damps the hips toward the
+  feet's speed (still with both feet down), the real hips 8.8 cm behind the plan.

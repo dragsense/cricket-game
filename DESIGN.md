@@ -320,7 +320,7 @@ Decider (`motion::BodyDecider`; knows no action; never reads the physics body pe
      queue in real body order; short → reported 5 Posture: chest upright, head level, free
      arms swing (Collins 2009) and settle in the chest's frame
    → output pose: hips speed/acceleration-bounded, joint rates bounded, warm-started from
-     last tick; hard constraints: pelvis within hipsOffsetMax of the root, below every
+     last tick; hard constraint: pelvis below every
      grounded leg's reach; grounded legs solved last on the output pelvis
         ▼
 Muscles (`agents::HumanBody`): holdWeight x strength, Jolt Ragdoll::DriveToPoseUsingMotors
@@ -370,8 +370,6 @@ its bound (`offsetClamped`), the feet targets clamp to reach and report short.
 - Knees snapping straight: `reachClamp` (0.96) lower; legs too bent standing: higher.
 - Head over-rotating: `headMaxRate` (6 rad/s) lower; `passiveInfluence.head` toward 1.
 - Trunk whipping in reaches: `trunkMaxRate` (4 rad/s).
-- Capsule drifting from the feet: `character.recentreRate` (2 /s) higher; the body
-  dragged by the capsule: `hipsOffsetMax` (0.35 m) larger.
 - Falls / recovery: `pelvisError` thresholds and `release.on`; muscles and pin through
   `Human::setStrength`.
 
@@ -384,8 +382,8 @@ go). Numbers: `Human::pelvisError()` / `pelvisErrorDistance()`, `BodyQueue::reac
 physics body"): no snapping: the plan's pelvis speed and acceleration under their bounds
 through a sudden stance change and a 0.5 m landing; no head over-rotation: the real chest
 swing under 10 deg through steps; no foot sliding: a pinned foot's plan position within
-2 mm through a step, the real ankle's slide measured; no capsule drift: the root within
-hipsOffsetMax of the plan's pelvis, re-centred after the step; no switches: support
+2 mm through a step, the real ankle's slide measured; no capsule drift: the capsule under
+the real pelvis every tick (DECISIONS 2026-11-11 night); no switches: support
 weights and activations change by at most dt/blendTime per tick; a far target reports
 short; a target let go blends back without a jump.
 

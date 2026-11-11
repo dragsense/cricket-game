@@ -28,9 +28,8 @@
 // acceleration (the hips), and bounded joint rates (trunk, head, limbs):
 // commanded motion is bounded by muscle activation, so nothing in the plan
 // can jump. The planted legs are solved last, on the output pelvis, so a
-// pinned foot stays put whatever the hips do. Hard constraints on the output
-// pelvis: within hipsOffsetMax of the root (the capsule leads; the pelvis
-// moves around it) and no higher than every grounded leg reaches.
+// pinned foot stays put whatever the hips do. Hard constraint on the output
+// pelvis: no higher than every grounded leg reaches.
 // No allocations after init().
 
 #include "ik/limb_ik.h"
@@ -84,8 +83,6 @@ struct BodyQueue {
     // What the decider decided this tick, for the planner and debug drawing.
     float supportWeight[2] = {1.0f, 1.0f};  // left, right foot
     math::Vec3 hipsReference{0.0f};         // where support puts the hips (character space)
-    math::Vec3 pelvisOffset{0.0f};          // the output pelvis from the root, level (character space)
-    bool offsetClamped = false;             // the pelvis sits on its bound around the root
     bool heightClamped = false;             // a grounded leg holds the hips lower than wanted
     ReachReport reach[4];                   // hand L, hand R, foot L, foot R
 };
@@ -133,9 +130,6 @@ struct BodyDeciderSettings {
     // rates (rad/s).
     float hipsMaxSpeed = 2.0f, hipsMaxAccel = 8.0f, hipsMaxTurnRate = 4.0f;
     float trunkMaxRate = 4.0f, headMaxRate = 6.0f, limbMaxRate = 12.0f;
-    // m: the output pelvis stays within this of the root, level (the capsule
-    // leads; the pelvis moves around it).
-    float hipsOffsetMax = 0.35f;
     // The lowest hips: no grounded knee bends past this (rad) on two feet
     // (the semi-squat, BIOMECHANICS 9.4) or on one (the largest mean stance
     // knee of a maximal one-leg foot reach, 9.7).

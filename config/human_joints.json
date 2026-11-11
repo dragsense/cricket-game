@@ -174,7 +174,7 @@
     // is stabilised in space in walking, pitch only ~2-5 deg, Pozzo et al.
     // 1990); hands: looser (the arms swing freely, ~15-30 deg at the
     // shoulder, Collins et al. 2009). Feet on the ground stay put (100 %).
-    "passiveInfluence": { "head": 0.9, "hands": 0.5, "hips": 0.3, "chest": 0.5 },
+    "passiveInfluence": { "head": 0.9, "hands": 0.5, "hips": 0.0, "chest": 0.5 },
     // Where research measured the split, it replaces the place share: in a
     // forward bend the lumbar spine (spine_01) and the hips (pelvis tilt) move
     // together, lumbar : hip ratio per band of trunk flexion (upper bound,
@@ -205,9 +205,6 @@
     "trunkMaxRate": 4.0,
     "headMaxRate": 6.0,
     "limbMaxRate": 12.0,
-    // m: the plan's pelvis stays within this of the root, level (the capsule
-    // leads; the pelvis moves around it: half a step plus the stance).
-    "hipsOffsetMax": 0.35,
     // The lowest hips: no grounded knee bends past this (deg). Two feet: the
     // semi-squat ~90 (Straker 2003; measured self-chosen ground lifts 48-71,
     // BIOMECHANICS 9.1, 9.4). One foot: 67, the largest mean stance knee of a

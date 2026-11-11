@@ -261,9 +261,8 @@ TEST_CASE("body decider: a foot target out of reach is reported short, the leg k
     CHECK(f.queue.reach[2].shortfall > 0.1f);
     CHECK(f.queue.reach[2].direction.z > 0.5f);
     CHECK(f.kneeAngle(0) > math::radians(3.0f));
-    // The stance foot stayed, the plan's hips stayed within the root's bound.
+    // The stance foot stayed, the plan's hips stayed.
     CHECK(math::distance(f.planPos(f.joints.legs[1].end), f.pos(f.joints.legs[1].end)) < 0.002f);
-    CHECK(level(f.queue.pelvisOffset) <= f.settings.hipsOffsetMax + 1e-3f);
 }
 
 TEST_CASE("body decider: a hand let go blends back to rest without a jump") {
