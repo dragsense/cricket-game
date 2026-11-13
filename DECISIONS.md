@@ -654,5 +654,10 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** turning Jolt's twist axis onto the main axis of the swing joints (exact
   limits, but it changes how Jolt bounds the ranges and could part them from the plan's
   limits).
-- **Open:** the gravity hold and the motor each go up to the strength (a joint can give up
-  to twice it); to share one limit next, measured.
+- **Later the same day (the user's yes):** the gravity hold and the motor share one
+  limit. `HumanBody::holdWeight` gives each part's need to `PhysicsWorld::setRagdollHold`.
+  The drive keeps the hold within the muscle on each axis, at the body's strength, and
+  the motor gets what is left. Before, each went up to the strength, so a joint could give
+  twice it. Measured: stepping, reach and limb cases unchanged (they never come near a
+  limit). Arm held straight ahead: 0.1 cm below the plan; with an 8 N m shoulder flexor
+  35.5 cm (the old hold's own 120 N m limit carried it).

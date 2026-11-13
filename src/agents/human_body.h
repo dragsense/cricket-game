@@ -89,11 +89,11 @@ public:
 
     // Every muscle carries the weight of the parts beyond it (away from the
     // pelvis), as real muscles hold posture: a torque on the part and the
-    // opposite on its parent, no harder than its strength. Jolt's motors
-    // (drivePose) then only correct what is left. Call each tick before the
-    // step. No allocations.
-    // `strength` (0..1) scales the hold (a hit, a fall, a get-up).
-    void holdWeight(physics::PhysicsWorld& world, float strength = 1.0f) const;
+    // opposite on its parent. The hold and Jolt's motor (drivePose) share
+    // the muscle's strength: drivePose gives the hold within it, at the
+    // body's strength (setStrength), and the motor corrects with what is
+    // left. Call each tick before drivePose. No allocations.
+    void holdWeight(physics::PhysicsWorld& world) const;
     // Every muscle's torque limit at `strength` (0..1) of its real one.
     void setStrength(physics::PhysicsWorld& world, float strength) const;
     // Every muscle pulls its joint toward the pose `models` (character space,
@@ -134,6 +134,7 @@ private:
     mutable std::vector<math::Quat> rotations_;  // scratch: the pose drive's targets, sized at init
     mutable std::vector<float> beyondMass_;         // scratch per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // scratch per part: their mass x centre of mass (world)
+    mutable std::vector<math::Vec3> hold_;          // scratch per part: the torque its weight needs (world)
 };
 
 } // namespace agents

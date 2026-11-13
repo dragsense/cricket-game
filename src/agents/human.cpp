@@ -1140,7 +1140,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     const physics::CharacterSettings& c = world.settings().character;
     // The muscles: they carry the weight beyond each joint, and Jolt's pose
     // drive corrects toward this tick's pose; both at the body's strength.
-    humanBody_.holdWeight(world, strength_);
+    humanBody_.holdWeight(world);
     if (strength_ != appliedStrength_) {
         humanBody_.setStrength(world, strength_);
         appliedStrength_ = strength_;

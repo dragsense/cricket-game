@@ -312,9 +312,15 @@ public:
     // Jolt Ragdoll::DriveToPoseUsingMotors: every joint's motor pulls its part
     // toward `rotations[i]`, the part body's rotation relative to its parent's
     // body (body space; [0], the root, unused), as strong as its MotorDesc
-    // (a directional joint: as strong as the muscle pulling that way).
+    // (a directional joint: as strong as the muscle pulling that way), less
+    // the gravity hold (setRagdollHold), which it applies.
     // `count`: the ragdoll's parts. No allocations.
     void driveRagdollToPose(RagdollId id, const math::Quat* rotations, int count);
+    // The gravity hold for the next driveRagdollToPose: per part (as built,
+    // [0] unused), the torque (world) it needs about its joint. The drive
+    // gives it at the body's strength within the joint's muscles and the
+    // motor gets what is left of them. No allocations.
+    void setRagdollHold(RagdollId id, const math::Vec3* torques, int count);
     // Every motor's torque limit at `scale` (0..1) of its MotorDesc's: the
     // body's strength (hits, falls, get-up). No allocations.
     void setRagdollStrength(RagdollId id, float scale);

@@ -685,8 +685,10 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
     pulling that way, picked each tick. Measured: stepping, reach and arrow-key limb cases
     are unchanged (nothing reaches its limit there). Weak-muscle checks show the right
     muscle acting each way. All tests pass (agents 15, physics 15).
-    - **Next:** the gravity hold and the motor share one limit (now each can give up to
-      the strength); then the jump plan (BIOMECHANICS 6).
+    - [x] The gravity hold and the motor share one limit (2026-11-13, the user's yes):
+      before, each could give the full strength. Cases unchanged; a weak (8 N m) shoulder
+      flexor now lets the straight arm sink 35.5 cm, as it should.
+    - **Next:** the jump plan (BIOMECHANICS 6), the whole chain first.
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 

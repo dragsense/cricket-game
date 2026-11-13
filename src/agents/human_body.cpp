@@ -201,6 +201,7 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     rotations_.assign(parts_.size(), math::identityQuat());
     beyondMass_.assign(parts_.size(), 0.0f);
     beyondMoment_.assign(parts_.size(), math::Vec3(0.0f));
+    hold_.assign(parts_.size(), math::Vec3(0.0f));
     LOG_INFO("human body: Jolt ragdoll, {} parts, {:.1f} kg", parts_.size(), totalMass_);
     return true;
 }
@@ -210,8 +211,7 @@ math::Transform HumanBody::partPose(int part, const std::vector<math::Mat4>& mod
     return math::toTransform(models[static_cast<size_t>(p.joint)]) * p.shape;
 }
 
-void HumanBody::holdWeight(physics::PhysicsWorld& world, float strength) const {
-    const float k = std::clamp(strength, 0.0f, 1.0f);
+void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
     // Mass and moment of each part's subtree (children come after parents).
     for (size_t i = 0; i < parts_.size(); ++i) {
         beyondMass_[i] = parts_[i].mass;
@@ -226,17 +226,14 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world, float strength) const {
     const math::Vec3 g = world.world().gravity;
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
+        hold_[i] = math::Vec3(0.0f);
         if (p.parent < 0 || !p.muscle || beyondMass_[i] <= 0.0f) continue;
         // Gravity's turn on everything beyond the joint, about the joint.
         const math::Vec3 pivot = boneWorld(world, static_cast<int>(i)).position;
         const math::Vec3 centre = beyondMoment_[i] / beyondMass_[i];
-        math::Vec3 hold = -math::cross(centre - pivot, g * beyondMass_[i]);
-        const float size = math::length(hold);
-        if (size > p.strength) hold *= p.strength / size;
-        hold *= k;
-        world.addTorque(p.body, hold);
-        world.addTorque(parts_[static_cast<size_t>(p.parent)].body, -hold);
+        hold_[i] = -math::cross(centre - pivot, g * beyondMass_[i]);
     }
+    world.setRagdollHold(ragdoll_, hold_.data(), static_cast<int>(hold_.size()));
 }
 
 void HumanBody::setStrength(physics::PhysicsWorld& world, float strength) const {
