@@ -213,6 +213,13 @@ void Human::loadLocomotion(const core::Config& c) {
         j.recoverTime = c.getFloat("jump.recoverTime", j.recoverTime);
         j.maxFlight = c.getFloat("jump.maxFlight", j.maxFlight);
     }
+    for (auto [block, shares] : {std::pair{"step", &stepPassive_}, std::pair{"jump", &jumpPassive_}}) {
+        const std::string at = std::string(block) + ".passive.";
+        shares->head = c.getFloat(at + "head", shares->head);
+        shares->hands = c.getFloat(at + "hands", shares->hands);
+        shares->hips = c.getFloat(at + "hips", shares->hips);
+        shares->chest = c.getFloat(at + "chest", shares->chest);
+    }
     baseStep_ = stepSettings_;
     speedScale_ = 1.0f;
 }
@@ -857,6 +864,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             }
         }
         jumpPlanner_.tick(dt, jumpPlan_, t);
+        t.passive = jumpPassive_;
         handPath_.on = footPath_.on = false;
         decider_.decide(t, deciderSettings_, queue_);  // the decider as for everything else
         return queue_.plan;
@@ -865,6 +873,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         // The step: the planner places the stepping foot (Start, Up, Land);
         // on landing the stepper keeps the spot.
         stepPlanner_.tick(dt, stepPlan_, t);
+        t.passive = stepPassive_;
         if (stepPlanner_.landed()) {
             const motion::Foot f = static_cast<motion::Foot>(stepPlanner_.foot());
             stepper_.place(f, stepPlanner_.landing());

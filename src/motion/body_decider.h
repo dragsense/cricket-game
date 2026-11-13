@@ -216,7 +216,7 @@ private:
     // Free arms (no goal) swing to cancel the plan's turning and settle to
     // their rest in the chest's frame.
     void freeArms(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
-    void passiveHands(const bool free[2], const BodyDeciderSettings& s, BodyQueue& out);
+    void passiveHands(const bool free[2], float share, BodyQueue& out);
     // The head level in the world, facing the chest's way (desired pose).
     void levelHead(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
 

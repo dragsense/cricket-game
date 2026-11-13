@@ -302,6 +302,8 @@ private:
     // bounds while it runs.
     motion::JumpPlanner jumpPlanner_;
     motion::JumpPlannerSettings jumpPlan_;
+    // Each action's passive shares (locomotion.json "step.passive", "jump.passive").
+    motion::PassiveShares stepPassive_, jumpPassive_;
     bool jumpHeld_ = false;
     bool holdOff_ = false;  // the hold's joint off for the jump's push and flight
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward

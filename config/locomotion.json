@@ -56,6 +56,10 @@
     "stepHeight": 0.2,       // m ankle apex: the knee bends, the heel rises (about 25 cm, 4.5)
     "toeClearance": 0.012,   // m, a lifted foot's lowest point above the ground at least (minimum toe clearance 1.1-1.3 cm, Winter; BIOMECHANICS 4.5)
     "swingPeakAt": 0.35,     // apex early in the swing (heel up first, toes low at landing)
+    // The walk's passive shares (0..1): how far each part without a goal goes
+    // back to its own target while stepping (were human_joints.json
+    // decider.passiveInfluence, which stays for standing).
+    "passive": { "head": 0.9, "hands": 0.5, "hips": 0.0, "chest": 0.5 },
     // E / Q change the pace by this factor per press (within speedMin..speedMax
     // times the steps above). Faster walking takes both longer and quicker
     // steps (step length and cadence each grow with about the square root of
@@ -77,6 +81,9 @@
     "landDrop": 0.15,      // m, the hips sink as the landing absorbs (peak knee 58-102 deg, Heebner 2017) [E]
     "landTime": 0.22,      // s, touchdown to the lowest (time to peak knee flexion 0.18-0.26 s, Heebner 2017)
     "recoverTime": 0.5,    // s, back up to standing [E]
-    "maxFlight": 1.2       // s, at most in the air before the landing starts anyway
+    "maxFlight": 1.2,      // s, at most in the air before the landing starts anyway
+    // The jump's own passive shares (0..1): the gaze stays level; the chest and
+    // the hands go back less, so they move with the body [E: tune in the game].
+    "passive": { "head": 0.9, "hands": 0.2, "hips": 0.0, "chest": 0.2 }
   }
 }

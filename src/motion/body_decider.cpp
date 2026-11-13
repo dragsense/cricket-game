@@ -10,6 +10,9 @@ namespace motion {
 
 namespace {
 
+// A passive share: the action's own (TargetSet::passive) or, negative, the decider's.
+float passiveShare(float given, float fallback) { return std::clamp(given >= 0.0f ? given : fallback, 0.0f, 1.0f); }
+
 // --- Limb reach math (law of cosines; BIOMECHANICS 9). Pure, no allocations. ---
 
 constexpr float kReachEpsilon = 1e-4f;  // m; closer than this counts as reached
@@ -439,7 +442,7 @@ void BodyDecider::supportAndHips(const TargetSet& t, const BodyDeciderSettings& 
         // the root) pulling by its passive share; as high as every grounded
         // leg reaches at the clamp (the knees keep their bend; a slope or a
         // stair comes in through the feet's heights).
-        const float k = std::clamp(s.passiveHips, 0.0f, 1.0f);
+        const float k = passiveShare(t.passive.hips, s.passiveHips);
         float height = restPelvis_.position.y + (centre.y - restAnkleY);
         bool any = false;
         for (int i = 0; i < 2; ++i) {
@@ -563,7 +566,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     // Posture: the chest back toward upright by its passive share when no
     // hand drives the trunk (a hand's trunk serves the hand fully).
     if (act_[HandLW] <= 0.0f && act_[HandRW] <= 0.0f && act_[ChestW] <= 0.0f) {
-        const float k = std::clamp(s.passiveChest, 0.0f, 1.0f);
+        const float k = passiveShare(t.passive.chest, s.passiveChest);
         bool turned = false;
         for (int j : joints_.spine)
             if (j >= 0 && k > 0.0f) {
@@ -1067,7 +1070,7 @@ void BodyDecider::freeArms(const TargetSet& t, const BodyDeciderSettings& s, Bod
     for (int h = 0; h < 2; ++h)
         if (free[h]) place(h);
     if (totalMass_ <= 0.0f || t.dt <= 0.0f) {
-        passiveHands(free, s, out);
+        passiveHands(free, passiveShare(t.passive.hands, s.passiveHands), out);
         return;
     }
     const math::Vec3 com = planCentreOfMass();
@@ -1105,16 +1108,16 @@ void BodyDecider::freeArms(const TargetSet& t, const BodyDeciderSettings& s, Bod
         armAngle_[h] += (cancel - pendulum * armAngle_[h]) * t.dt;
         place(h);
     }
-    passiveHands(free, s, out);
+    passiveHands(free, passiveShare(t.passive.hands, s.passiveHands), out);
 }
 
-void BodyDecider::passiveHands(const bool free[2], const BodyDeciderSettings& s, BodyQueue& out) {
+void BodyDecider::passiveHands(const bool free[2], float share, BodyQueue& out) {
     // A hand without a goal still has its target (hanging at rest in the
     // chest's frame): the swing goes on, and the hand goes the passive share
     // of the way from where the swing has it to that target (the elbow
     // bending back, as it hangs).
     Plan& d = desired_;
-    const float k = std::clamp(s.passiveHands, 0.0f, 1.0f);
+    const float k = share;
     if (k <= 0.0f) return;
     const math::Quat chest = joints_.spine[2] >= 0 ? planRot(d, joints_.spine[2]) : math::identityQuat();
     const math::Vec3 chestPos = joints_.spine[2] >= 0 ? planPos(d, joints_.spine[2]) : math::Vec3(0.0f);
@@ -1147,7 +1150,7 @@ void BodyDecider::levelHead(const TargetSet& t, const BodyDeciderSettings& s, Bo
     if (parent < 0 || below < 0) return;
     const math::Vec3 f = planRot(d, below) * math::kForward;
     math::Quat want = math::slerp(math::fromAxisAngle(math::kUp, std::atan2(f.x, f.z)) * restHead_, restHead_,
-                                  std::clamp(s.passiveHead, 0.0f, 1.0f));
+                                  passiveShare(t.passive.head, s.passiveHead));
     if (act_[HeadW] > 0.0f) {
         const Target& head = given(t, HeadW);
         const float k = act_[HeadW] * std::clamp(head.weightRotation, 0.0f, 1.0f);

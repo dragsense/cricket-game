@@ -38,6 +38,13 @@ struct Target {
     math::Vec3 contactNormal = math::kUp;
 };
 
+// The passive shares (0..1) the planner gives for its action: how far each
+// part without a goal goes back to its own target (decider.passiveInfluence
+// in human_joints.json). Negative: the decider's own (idle).
+struct PassiveShares {
+    float head = -1.0f, hands = -1.0f, hips = -1.0f, chest = -1.0f;
+};
+
 struct TargetSet {
     Target hand[2];  // left, right: the wrist
     Target foot[2];  // left, right: the ankle
@@ -48,6 +55,7 @@ struct TargetSet {
     float hipsWeightVertical = 1.0f, hipsWeightHorizontal = 1.0f;
     float dt = 0.0f;        // s, this tick (the fixed physics step)
     float strength = 1.0f;  // 0..1, the whole body's: hits, falls, get-up (scales motors and the pin)
+    PassiveShares passive;  // the action's own passive shares (each negative: the decider's)
 };
 
 } // namespace motion
