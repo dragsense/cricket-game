@@ -678,6 +678,16 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
       (forward, side, turn) once the hip joint has its part; research the hip-pelvis rhythm
       first (BIOMECHANICS 4.3 has the gait timing, added today).
 
+  - [x] **J. Two muscles per joint axis** (2026-11-13, the user's call; DECISIONS
+    2026-11-13; the user's game check pending): `muscles.directional` gives knee, hip,
+    ankle, shoulder, elbow and wrist a strength each way about their main axis (holding
+    values, BIOMECHANICS 14). Knee: Jolt's twist min/max. Swing joints: the muscle
+    pulling that way, picked each tick. Measured: stepping, reach and arrow-key limb cases
+    are unchanged (nothing reaches its limit there). Weak-muscle checks show the right
+    muscle acting each way. All tests pass (agents 15, physics 15).
+    - **Next:** the gravity hold and the motor share one limit (now each can give up to
+      the strength); then the jump plan (BIOMECHANICS 6).
+
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 
 Goal: a standing bowler (no run-up) delivers the ball. The bowling hand makes a full

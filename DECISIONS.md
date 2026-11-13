@@ -635,3 +635,24 @@ Dated log. Format: decision, reason, alternatives rejected.
   (rebase).
 - **Rejected:** the anchor at the feet's centre: its damper damps the hips toward the
   feet's speed (still with both feet down), the real hips 8.8 cm behind the plan.
+
+## 2026-11-13: Two muscles per joint axis (strength per direction)
+- **Decision (the user's call):** a joint's muscle has one strength toward each way about
+  its main axis (`human_joints.json` `muscles.directional`: knee, hip, ankle, shoulder,
+  elbow, wrist; holding values, BIOMECHANICS 14). The joint's other axes, the gravity
+  hold, and the trunk, neck and toes keep `maxTorque`.
+- **How:** Jolt keeps a min and a max torque on the twist motor, so a hinge (knee, toe)
+  gets its exact pair. Both swing axes share one limit, so on a swing axis
+  `PhysicsWorld::driveRagdollToPose` picks, each tick, the strength of the muscle that the
+  motor pulls with about that axis. That pull is the spring's push toward the target less
+  the damping of the turn, so braking uses the opposite muscle.
+- **Measured:** stepping, reach and limb-test cases are unchanged within 0.1-2 cm
+  (nothing reaches its limit there; the capsule and the gravity hold carry the weight).
+  A check with a 5 N m knee flexor slowed the knee (59 vs 70 deg at 0.3 s). A 5 N m hip
+  flexor slowed the lift (67 vs 82 deg at 0.5 s), and a 5 N m hip extensor could not stop
+  it (91 deg, target 82.5). So the right muscle acts each way.
+- **Rejected:** turning Jolt's twist axis onto the main axis of the swing joints (exact
+  limits, but it changes how Jolt bounds the ranges and could part them from the plan's
+  limits).
+- **Open:** the gravity hold and the motor each go up to the strength (a joint can give up
+  to twice it); to share one limit next, measured.

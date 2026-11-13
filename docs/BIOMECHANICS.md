@@ -655,7 +655,10 @@ A check against the literature found the approach right but several details off.
   one value for both directions. A jump needs, per leg × 73 kg: knee about 240–285, hip
   160–277 and ankle 153–204 N m. The knee is at about 60 % of that, so a jump would come
   out much lower. Knee extension alone is about 205 N m (section 14); separate caps per
-  direction would match the real values better.
+  direction would match the real values better. **Since 2026-11-13** the muscles have a
+  strength per direction (`muscles.directional`): knee extension 247, hip extension 197,
+  ankle plantarflexion 125 N m. These are holding (isometric) values, still below a
+  jump's peaks.
 - **Decider bounds:** the plan's hips are bounded to 2 m/s and 8 m/s². A jump needs a
   take-off of about 2.7 m/s and an upward acceleration of about (2.24 − 1) g ≈ 12 m/s²
   **[E]**.
@@ -1248,6 +1251,20 @@ MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6
   strength study, Danneskiold-Samsoe 2009, trunk and neck strength studies, PMC8783437,
   PMC5105238, PMC5200854 **[P]**. Gaps: toes (no data), one value per joint for both
   directions (means where flexion and extension differ).
+- **Strength per direction (added 2026-11-13; holding, isometric, men)** **[P]**:
+
+  | Joint | One way | Other way | Source |
+  |---|---|---|---|
+  | Knee | extension 247 (isokinetic 185) | flexion 95 isokinetic (isometric not found) | Harbo 2012 (178 subjects, 15-83 y) |
+  | Hip | extension 197 (isokinetic 178) | flexion 156 (isokinetic 138) | MVIC reference values; Harbo 2012 |
+  | Ankle | plantarflexion 117-131 | dorsiflexion 40-42 (20-29 y), 34 (30-39 y) | Moraux 2013 |
+  | Shoulder | extension 164 | flexion 77 (abduction 61, adduction 83) | MVIC reference values; Harbo 2012 |
+  | Elbow | extension 48 | flexion 77 (Harbo 2012: 51) | systematic review PMC5960876 |
+  | Wrist | extension 11 (isokinetic only) | flexion 25 | Harbo 2012 |
+
+  Gaps: trunk and neck per direction (not found), knee flexion and wrist extension
+  isometric, hip and shoulder rotations. In a jump the muscles give more than these
+  (section 6.4).
 - **Activation:** muscle excitation to force takes about 10-50 ms. It is how fast a
   muscle switches on, **not** how stiff a joint is (mistake found 2026-11-05).
 - **Stiffness (researched 2026-11-06):** joint stiffness is **not a fixed number per

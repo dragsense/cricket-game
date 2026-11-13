@@ -202,6 +202,13 @@ struct PhysicsWorld::Impl {
         JPH::SkeletonPose pose;      // the pose drive's targets, sized at load
         std::vector<BodyId> bodies;  // its parts' slots
         std::vector<float> baseTorque;  // per joint (parts with a parent, in order): its motor's full torque limit
+        // Per joint, as baseTorque: RagdollPart's directional strength.
+        struct Directional {
+            int axis = -1;
+            float plus = 0.0f, minus = 0.0f;
+        };
+        std::vector<Directional> directional;
+        float scale = 1.0f;  // setRagdollStrength
     };
     std::vector<RagdollSlot> ragdolls;
 
@@ -976,7 +983,16 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
     r.ragdoll = ragdoll;
     r.pose.SetSkeleton(skeleton);
     for (const RagdollPart& p : parts)
-        if (p.parent >= 0) r.baseTorque.push_back(std::max(p.motor.maxTorque, 0.0f));
+        if (p.parent >= 0) {
+            r.baseTorque.push_back(std::max(p.motor.maxTorque, 0.0f));
+            Impl::RagdollSlot::Directional d;
+            if (p.directionalAxis >= 0 && p.directionalAxis <= 2) {
+                d.axis = p.directionalAxis;
+                d.plus = std::max(p.plusTorque, 0.0f);
+                d.minus = std::max(p.minusTorque, 0.0f);
+            }
+            r.directional.push_back(d);
+        }
     for (size_t i = 0; i < parts.size(); ++i) {
         auto free = std::find_if(m.slots.begin(), m.slots.end(), [](const Impl::Slot& s) { return s.body.IsInvalid(); });
         free->body = ragdoll->GetBodyID(static_cast<int>(i));
@@ -987,8 +1003,37 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
         bodies.push_back(id);
     }
     m.ragdolls.push_back(std::move(r));
-    return static_cast<RagdollId>(m.ragdolls.size() - 1);
+    const RagdollId id = static_cast<RagdollId>(m.ragdolls.size() - 1);
+    setRagdollStrength(id, 1.0f);  // the directional limits
+    return id;
 }
+
+namespace {
+
+// A directional joint's limits: on the twist axis an exact pair (Jolt keeps a
+// min and a max); on a swing axis, which both swings share, the strength of
+// the muscle the motor pulls with about that axis now: the spring's push
+// toward the target, less its damping of the turn (Jolt's position motor in
+// stiffness mode; frequency mode: the gap's way alone).
+void applyDirectional(JPH::SwingTwistConstraint& c, int axis, float plus, float minus) {
+    if (axis == 0) {
+        c.GetTwistMotorSettings().SetTorqueLimits(-minus, plus);
+        return;
+    }
+    const JPH::Quat q = c.GetRotationInConstraintSpace();
+    JPH::Quat target = c.GetTargetOrientationCS();
+    if (q.Dot(target) < 0.0f) target = -target;  // the shortest way, as Jolt drives it
+    const float gap = 2.0f * (q.Conjugated() * target).GetXYZ()[axis];  // rad about the axis, body 2's frame
+    const JPH::Body* b1 = c.GetBody1();
+    const JPH::Body* b2 = c.GetBody2();
+    const JPH::Quat toWorld = b2->GetRotation() * c.GetConstraintToBody2Matrix().GetQuaternion();
+    const float turn = (toWorld.Conjugated() * (b2->GetAngularVelocity() - b1->GetAngularVelocity()))[axis];
+    const JPH::SpringSettings& s = c.GetSwingMotorSettings().mSpringSettings;
+    const float pull = s.mMode == JPH::ESpringMode::StiffnessAndDamping ? s.mStiffness * gap - s.mDamping * turn : gap;
+    c.GetSwingMotorSettings().SetTorqueLimit(pull >= 0.0f ? plus : minus);
+}
+
+} // namespace
 
 void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations, int count) {
     if (!impl_ || id >= impl_->ragdolls.size() || !rotations) return;
@@ -996,19 +1041,30 @@ void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations,
     const int n = std::min(count, static_cast<int>(r.pose.GetJointCount()));
     for (int i = 0; i < n; ++i) r.pose.GetJoint(i).mRotation = toJolt(math::normalize(rotations[i]));
     r.ragdoll->DriveToPoseUsingMotors(r.pose);
+    const size_t joints = std::min(static_cast<size_t>(r.ragdoll->GetConstraintCount()), r.directional.size());
+    for (size_t i = 0; i < joints; ++i) {
+        const Impl::RagdollSlot::Directional& d = r.directional[i];
+        if (d.axis < 1) continue;  // none, or twist (fixed limits)
+        JPH::TwoBodyConstraint* c = r.ragdoll->GetConstraint(static_cast<int>(i));
+        if (!c || c->GetSubType() != JPH::EConstraintSubType::SwingTwist) continue;
+        applyDirectional(*static_cast<JPH::SwingTwistConstraint*>(c), d.axis, d.plus * r.scale, d.minus * r.scale);
+    }
 }
 
 void PhysicsWorld::setRagdollStrength(RagdollId id, float scale) {
     if (!impl_ || id >= impl_->ragdolls.size()) return;
     Impl::RagdollSlot& r = impl_->ragdolls[id];
     const float k = std::clamp(scale, 0.0f, 1.0f);
-    const size_t n = std::min(static_cast<size_t>(r.ragdoll->GetConstraintCount()), r.baseTorque.size());
+    r.scale = k;
+    const size_t n = std::min({static_cast<size_t>(r.ragdoll->GetConstraintCount()), r.baseTorque.size(), r.directional.size()});
     for (size_t i = 0; i < n; ++i) {
         JPH::TwoBodyConstraint* c = r.ragdoll->GetConstraint(static_cast<int>(i));
         if (!c || c->GetSubType() != JPH::EConstraintSubType::SwingTwist) continue;
         JPH::SwingTwistConstraint* st = static_cast<JPH::SwingTwistConstraint*>(c);
         st->GetSwingMotorSettings().SetTorqueLimit(r.baseTorque[i] * k);
         st->GetTwistMotorSettings().SetTorqueLimit(r.baseTorque[i] * k);
+        const Impl::RagdollSlot::Directional& d = r.directional[i];
+        if (d.axis >= 0) applyDirectional(*st, d.axis, d.plus * k, d.minus * k);
     }
 }
 

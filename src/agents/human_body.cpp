@@ -151,6 +151,23 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             r.motor.maxTorque = strength;  // 0: no muscle (the joint hangs free)
             p.muscle = strength > 0.0f;
             p.strength = strength;
+            // Two muscles about one axis: which Jolt axis it is (twist X,
+            // normal Y, plane Z of the part's frame) and which way is +.
+            const std::string base = baseName(bone.name);
+            for (const MuscleSettings::Directional& d : muscles.directional) {
+                if (d.bone != base || !p.muscle) continue;
+                const math::Vec3 a = axisVec(d.axis);
+                const float dots[3] = {math::dot(a, x), math::dot(a, y), math::dot(a, z)};
+                int k = 0;
+                for (int i = 1; i < 3; ++i)
+                    if (std::abs(dots[i]) > std::abs(dots[k])) k = i;
+                // The right side is the left mirrored: rotations about Y and Z turn the other way.
+                const bool right = base != bone.name && bone.name.back() == 'r';
+                const bool flipped = (dots[k] < 0.0f) != (right && d.axis != 0);
+                r.directionalAxis = k;
+                r.plusTorque = flipped ? d.minus : d.plus;
+                r.minusTorque = flipped ? d.plus : d.minus;
+            }
         }
         owner[static_cast<size_t>(j)] = static_cast<int>(parts_.size());
         partOf_[static_cast<size_t>(j)] = static_cast<int>(parts_.size());

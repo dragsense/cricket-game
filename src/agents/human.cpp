@@ -906,6 +906,26 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
                 for (auto it = t->begin(); it != t->end(); ++it)
                     if (it->is_number()) muscles.maxTorque.emplace_back(it.key(), it->get<float>());
         if (auto m = root.find("muscles"); m != root.end())
+            if (auto t = m->find("directional"); t != m->end() && t->is_object())
+                for (auto it = t->begin(); it != t->end(); ++it) {
+                    const nlohmann::json& v = *it;
+                    if (!v.is_object() || !v.contains("axis") || !v.contains("plus") || !v.contains("minus")) {
+                        LOG_WARN("fielder: muscles.directional.{} needs axis, plus and minus", it.key());
+                        continue;
+                    }
+                    const std::string axis = v["axis"].is_string() ? v["axis"].get<std::string>() : "";
+                    if (axis != "x" && axis != "y" && axis != "z") {
+                        LOG_WARN("fielder: muscles.directional.{}.axis must be x, y or z", it.key());
+                        continue;
+                    }
+                    MuscleSettings::Directional d;
+                    d.bone = it.key();
+                    d.axis = axis[0] - 'x';
+                    d.plus = v["plus"].get<float>();
+                    d.minus = v["minus"].get<float>();
+                    muscles.directional.push_back(d);
+                }
+        if (auto m = root.find("muscles"); m != root.end())
             for (auto [key, list] : {std::pair{"stiffness", &muscles.stiffness}, std::pair{"jointDamping", &muscles.jointDamping}})
                 if (auto t = m->find(key); t != m->end() && t->is_object())
                     for (auto it = t->begin(); it != t->end(); ++it)

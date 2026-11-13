@@ -33,6 +33,17 @@ struct MuscleSettings {
     // Strongest torque per joint (N m), by bone name without its side
     // ("thigh" for thigh_l and thigh_r). A joint not listed has no muscle.
     std::vector<std::pair<std::string, float>> maxTorque;
+    // A strength per direction about one axis of the joint (its two muscles,
+    // e.g. knee extensors and flexors), by bone name without its side: the
+    // axis (0 x, 1 y, 2 z, the joint limits' frame) and the strongest torque
+    // toward + and - rotation about it, left side (the right side mirrors).
+    // The joint's other axes keep maxTorque.
+    struct Directional {
+        std::string bone;
+        int axis = 0;
+        float plus = 0.0f, minus = 0.0f;
+    };
+    std::vector<Directional> directional;
     // Measured joint stiffness (N m/rad) and damping (N m s/rad) by bone
     // name (BIOMECHANICS 14.2): such a joint's muscle is a spring that stiff;
     // a joint not listed pulls by activationTime instead.

@@ -221,7 +221,8 @@
     "damping": 1.0,          // ratio: reaches the pose without overshoot
     // Strongest torque per joint, N m (adult men; one value per joint for both
     // directions: the mean where flexion and extension differ). Not listed:
-    // no muscle.
+    // no muscle. A joint in "directional" uses these on its other axes only
+    // (and for the gravity hold).
     "maxTorque": {
       "spine_01": 270, "spine_02": 270, "chest": 270,  // trunk extension 268-283
       "head": 35,         // neck 28-41 (the head joint carries the neck)
@@ -235,6 +236,25 @@
                           // 70-86 is the isokinetic (moving) value
       "toe": 8            // toe flexors: 1st 1.54, lesser 0.95 N/kg (young men) = ~180 N at the toe pads,
                           // ~4.5 cm from the joint on our skeleton [force measured, lever ours]
+    },
+    // Two muscles about one axis (BIOMECHANICS 14.1): the strongest torque
+    // toward + and - rotation about "axis" (the sign guide above, left side;
+    // the right side mirrors). Holding (isometric) values, adult men, N m.
+    // Trunk, neck and toes: no per-direction data found, maxTorque only.
+    "directional": {
+      // Knee: + flexion (hamstrings; isometric not found: 1.3-1.9 N m/kg isokinetic
+      // x 73 kg; Harbo 2012 isokinetic 95), - extension (quadriceps; Harbo 2012 isometric 247).
+      "shin":      { "axis": "x", "plus": 117, "minus": 247 },
+      // Hip: + extension (197, MVIC reference values), - flexion (Harbo 2012 isometric 156).
+      "thigh":     { "axis": "x", "plus": 197, "minus": 156 },
+      // Ankle: + plantarflexion (Moraux 2013, 117-131), - dorsiflexion (Moraux 2013 men 20-29: 40-42).
+      "foot":      { "axis": "x", "plus": 125, "minus": 40 },
+      // Shoulder: + extension 164, - flexion 77 (MVIC reference values).
+      "upper_arm": { "axis": "x", "plus": 164, "minus": 77 },
+      // Elbow: + extension 48, - flexion 77 (isometric, men; systematic review, PMC5960876).
+      "forearm":   { "axis": "x", "plus": 48, "minus": 77 },
+      // Wrist: + extension (isometric not found: 11-13 isokinetic, Harbo 2012), - flexion (Harbo 2012 isometric 25).
+      "hand":      { "axis": "z", "plus": 12, "minus": 25 }
     },
     // A limb following its IK target pose (DECISIONS 2026-11-07): each joint's
     // muscle is a spring toward the target angle (Jolt's position motor,

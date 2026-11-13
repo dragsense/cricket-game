@@ -167,6 +167,14 @@ struct RagdollPart {
     float twistMin = 0.0f, twistMax = 0.0f;
     float normalHalfCone = 0.0f, planeHalfCone = 0.0f;
     MotorDesc motor;  // its muscle for the pose drive; maxTorque 0: none
+    // A strength per direction about one joint axis (two muscles pulling
+    // opposite ways): its motor never pushes harder than plusTorque toward +
+    // rotation of the part about that axis, minusTorque toward - (N m).
+    // Axis: 0 twist, 1 normal, 2 plane (a swing axis); -1: maxTorque on every
+    // axis. On a swing axis (both swings share one Jolt limit) the limit
+    // follows the way the motor pulls about it each tick.
+    int directionalAxis = -1;
+    float plusTorque = 0.0f, minusTorque = 0.0f;
 };
 
 class PhysicsWorld {
@@ -303,7 +311,8 @@ public:
     RagdollId createRagdoll(const std::vector<RagdollPart>& parts, uint32_t group, std::vector<BodyId>& bodies);
     // Jolt Ragdoll::DriveToPoseUsingMotors: every joint's motor pulls its part
     // toward `rotations[i]`, the part body's rotation relative to its parent's
-    // body (body space; [0], the root, unused), as strong as its MotorDesc.
+    // body (body space; [0], the root, unused), as strong as its MotorDesc
+    // (a directional joint: as strong as the muscle pulling that way).
     // `count`: the ragdoll's parts. No allocations.
     void driveRagdollToPose(RagdollId id, const math::Quat* rotations, int count);
     // Every motor's torque limit at `scale` (0..1) of its MotorDesc's: the
