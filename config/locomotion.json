@@ -47,13 +47,13 @@
   // Single steps while standing (motion::StepSettings): one foot at a time;
   // the body follows the feet (human_joints.json "reposition").
   "step": {
-    "stepLength": 0.4,       // m forward, ahead of the planted foot (short, comfortable step)
-    "backStepLength": 0.3,   // m back
-    "sideStepLength": 0.3,   // m to the side (the foot on that side leads)
+    "stepLength": 0.3,       // m forward, ahead of the planted foot (short, comfortable step; was 0.4, the user: too big)
+    "backStepLength": 0.22,  // m back
+    "sideStepLength": 0.22,  // m to the side (the foot on that side leads)
     "stepDuration": 0.6,     // s per step: weight shift, then the swing (about 0.4 s, BIOMECHANICS 4.2)
     "liftAt": 0.25,          // share of the step the foot stays down first while the hips move over the other foot
                              // (double support ~20 % of a walking cycle, BIOMECHANICS 4.2; the user's call 2026-11-09: with gravity a loaded foot cannot lift)
-    "stepHeight": 0.2,       // m ankle apex: the knee bends, the heel rises (about 25 cm, 4.5)
+    "stepHeight": 0.1,       // m ankle apex: the knee bends, the heel rises (was 0.2, the user: the foot lifts too high)
     "toeClearance": 0.012,   // m, a lifted foot's lowest point above the ground at least (minimum toe clearance 1.1-1.3 cm, Winter; BIOMECHANICS 4.5)
     "swingPeakAt": 0.35,     // apex early in the swing (heel up first, toes low at landing)
     // The walk's passive shares (0..1): how far each part without a goal goes
