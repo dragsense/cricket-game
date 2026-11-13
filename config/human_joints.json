@@ -82,74 +82,11 @@
     "headAimWeight": 1.0
   },
 
-  // Hand-driven reaching (M2), docs/BIOMECHANICS.md section 9. Stages: spine,
-  // pelvis, clavicle, then two-bone arm IK; the leftover error goes to the later stages.
-  "reach": {
-    "armReach": 0.97,         // share of full arm length; the elbow never locks straight
-    "wristOffset": 0.08,      // m; wrist goal back from the ball centre toward the reaching
-                              // shoulder, so the palm meets the ball (above it on the ground)
-    // Spine stage (BIOMECHANICS 9.3): one swing about the spine base, split into
-    // bend and twist; shares for [spine_01, spine_02, chest], normalised to 1.
-    // Twist is mostly thoracic (lumbar twist ~7 deg), bend mostly lumbar.
-    "spineBend": [0.6, 0.2, 0.2],
-    "spineTwist": [0.2, 0.4, 0.4],
-    "spineIterations": 2,     // re-solve to absorb clamping and the higher pivots
-    // Pelvis stage (BIOMECHANICS 9.3), rotation vector limits in degrees,
-    // character space: [forward tilt (hip flexion, + forward), turn, side tilt].
-    // Forward tilt 80 = hip flexion with straight knees (hamstrings).
-    "pelvisMinDeg": [-10, -30, -20],
-    "pelvisMaxDeg": [80, 30, 20],
-    // Body stage (repositionBody driven by the hand): the body moves toward
-    // the target by the leftover, in any direction; the hips shift against the
-    // centre of mass's overhang beyond the base of support (a capsule
-    // supportRadius m around the foot centres, BIOMECHANICS 3, 9.5) x
-    // balanceGain, at most maxHipShift m; then the reposition leg clamp keeps
-    // the planted feet within reach (no squat limit yet).
-    "supportRadius": 0.12,
-    "balanceGain": 1.5,
-    "maxHipShift": 0.3,
-    // After the leg IK the actual centre of mass is measured and the pelvis
-    // moved to cancel any overhang (a deep squat swings the knees forward,
-    // which no estimate sees); this many passes.
-    "balancePasses": 2,
-    // Elbow pole [out, down, back] for the left arm (mirrored for the right),
-    // made perpendicular to the shoulder-to-target line: the elbow bends away
-    // from the body for any target (ground, side, air).
-    "elbowPole": [0.4, -1.0, -0.6],
-    // Picking (Space), BIOMECHANICS 9.6: the reach starts at once; the wrist
-    // goal eases from its rest spot to the ball (following it if it moves)
-    // and back in Fitts' law time fittsA + fittsB log2(2D / fittsWidth) (s)
-    // for the hand's travel D (m); within gripTolerance (m) the ball is
-    // gripped and carried back. Alt+Space steps first: the foot nearer the
-    // ball lunges to land beside it, lungeShort m short of it (BIOMECHANICS
-    // 8), at most maxLunge m (0 = off).
-    "fittsA": 0.1,
-    "fittsB": 0.1,
-    "fittsWidth": 0.1,
-    "gripTolerance": 0.02,
-    "ballRadius": 0.036,
-    "maxLunge": 0.9,
-    "lungeShort": 0.25,
-    "lungeDuration": 0.4,
-    "lungeHeight": 0.06,
-    // Grip: fingers and thumb close fully once the hand is on the ball and stay
-    // closed while it is held; otherwise relaxedCurl of it (a natural hand).
-    // Full curl per joint [_01, _02, _03], degrees.
-    "relaxedCurl": 0.25,
-    // Palm centre palmCentre m down the hand from the wrist; it faces the side
-    // the fingers curl to; a held ball sits ballRadius + palmThickness m out
-    // from it. While reaching, the hand turns so the palm faces the ball.
-    "palmCentre": 0.05,
-    "palmThickness": 0.015,
-    "fingerCurlDeg": [35, 55, 40],
-    "thumbCurlDeg": [10, 30, 25]
-  },
-
   // Body repositioning (runs every tick after the foot targets are set;
   // BIOMECHANICS 3.1). The deepest crouch comes from the knee's joint limit.
   // Reaches are hip-to-ankle distances as a fraction of leg length (thigh + shin).
   // Body from the feet (motion::BodyReposition): the moving leg reaches with its
-  // own joints; past the hip's range the pelvis tilts (reach.pelvis*Deg limits),
+  // own joints; past the hip's range the pelvis tilts (decider.pelvis*Deg limits),
   // past the leg's length it moves toward the foot. No weights.
   // The body's decider (motion::BodyDecider, DECISIONS 2026-11-06): the parts a
   // target needs move together from the start, each with a share by its place
@@ -158,6 +95,11 @@
   // rest). 0.5 is a starting value, not a measured one.
   "decider": {
     "queueShare": 0.5,
+    // The pelvis tilt limits (BIOMECHANICS 9.3), rotation vector in degrees,
+    // character space: [forward tilt (hip flexion, + forward), turn, side tilt].
+    // Forward tilt 80 = hip flexion with straight knees (hamstrings).
+    "pelvisMinDeg": [-10, -30, -20],
+    "pelvisMaxDeg": [80, 30, 20],
     // Through a foot's swing the hips, between the feet, go this far (m)
     // toward the standing foot at mid-swing and back (a sine from toe-off to
     // heel strike; centre of mass side-to-side 3.9-7 cm in all over a stride,
@@ -209,7 +151,7 @@
     // semi-squat ~90 (Straker 2003; measured self-chosen ground lifts 48-71,
     // BIOMECHANICS 9.1, 9.4). One foot: 67, the largest mean stance knee of a
     // maximal one-leg foot reach (star excursion test, PMC6347240, 9.7).
-    // The pelvis tilt of a reach keeps to reach.pelvisMinDeg / pelvisMaxDeg.
+    // The pelvis tilt keeps to pelvisMinDeg / pelvisMaxDeg above.
     "twoLegKneeMaxDeg": 90,
     "oneLegKneeMaxDeg": 67
   },
@@ -217,6 +159,12 @@
   // Muscles (BIOMECHANICS 14): each joint's motor drives it toward the planned
   // pose, no harder than the joint really is, as fast as muscles switch on.
   "muscles": {
+    // A hand's or foot's goal (limb test) travels there in Fitts' law time
+    // fittsA + fittsB log2(2D / fittsWidth) (s) for the travel D (m),
+    // BIOMECHANICS 9.6, on a minimum-jerk path.
+    "fittsA": 0.1,
+    "fittsB": 0.1,
+    "fittsWidth": 0.1,
     "activationTime": 0.03,  // s, excitation to force (measured 10-50 ms): motor f = 1 / (2 pi t)
     "damping": 1.0,          // ratio: reaches the pose without overshoot
     // Strongest torque per joint, N m (adult men; one value per joint for both

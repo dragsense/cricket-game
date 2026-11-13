@@ -16,36 +16,18 @@ bool SimWorld::initFielder(const rig::SkeletonDef& def, const core::Config& join
     return fielder_.init(def, def.height, joints, locomotion) && fielder_.attachPhysics(physics_);
 }
 
-bool SimWorld::initBowler(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion,
-                          math::Vec3 position, float yaw) {
-    rig::SkeletonDef placed = def;
-    placed.spawnPosition = position;
-    placed.spawnYaw = yaw;
-    return bowler_.init(placed, placed.height, joints, locomotion) && bowler_.attachPhysics(physics_);
-}
-
 bool SimWorld::initPhysics(const core::Config& physicsWorld, const core::Config& scene) {
     (void)scene;
     if (!physics_.init(physics::readWorldSettings(physicsWorld), physics::readPhysicsSettings(physicsWorld))) return false;
-    // A rebuilt world: the fielders' bodies go back into it.
+    // A rebuilt world: the fielder's body goes back into it.
     if (fielder_.rig().numJoints() > 0 && !fielder_.attachPhysics(physics_)) return false;
-    if (bowler_.rig().numJoints() > 0 && !bowler_.attachPhysics(physics_)) return false;
     return true;
-}
-
-void SimWorld::launchBall(math::Vec3 position, math::Vec3 velocity) {
-    ball_.position = position;
-    ball_.velocity = velocity;
-    ballPrevious_ = ball_;
-    ballInFlight_ = true;
 }
 
 void SimWorld::tick(double dt) {
     previous_ = current_;
     time_ += dt;
     fielder_.tick(dt);
-    if (bowler_.rig().numJoints() > 0) bowler_.tick(dt);
-    ballPrevious_ = ball_;
     physics_.step(static_cast<float>(dt));
     if (!probeEnabled_) return;
 

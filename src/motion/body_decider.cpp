@@ -1,7 +1,6 @@
 #include "motion/body_decider.h"
 
 #include "ik/joint_limits.h"
-#include "motion/reach.h"
 
 #include <algorithm>
 #include <cassert>
@@ -10,6 +9,62 @@
 namespace motion {
 
 namespace {
+
+// --- Limb reach math (law of cosines; BIOMECHANICS 9). Pure, no allocations. ---
+
+constexpr float kReachEpsilon = 1e-4f;  // m; closer than this counts as reached
+
+// Rotation about `pivot` (unit axis, angle >= 0; 0 when already within reach)
+// that moves `end` so its distance to `target` becomes `reach`, or, if it
+// cannot, points it straight at the target: r = |end - pivot|, d = |target -
+// pivot|, reach^2 = r^2 + d^2 - 2 r d cos(angle).
+struct Swing {
+    math::Vec3 axis{1, 0, 0};
+    float angle = 0.0f;
+};
+
+Swing swingToward(math::Vec3 pivot, math::Vec3 end, math::Vec3 target, float reach) {
+    Swing s;
+    if (math::distance(end, target) - reach <= kReachEpsilon) return s;
+    const math::Vec3 toEnd = end - pivot, toTarget = target - pivot;
+    const float r = math::length(toEnd), d = math::length(toTarget);
+    if (r < math::kEpsilon || d < math::kEpsilon) return s;
+    const math::Vec3 a = toEnd / r, b = toTarget / d;
+    const math::Vec3 axis = math::cross(a, b);
+    const float sinAB = math::length(axis);
+    if (sinAB < math::kEpsilon) return s;  // already aligned (or exactly opposite): nothing to swing toward
+    const float between = std::atan2(sinAB, math::dot(a, b));
+    const float cosNeeded = math::clamp((r * r + d * d - reach * reach) / (2.0f * r * d), -1.0f, 1.0f);
+    s.angle = std::max(0.0f, between - std::acos(cosNeeded));
+    s.axis = axis / sinAB;
+    return s;
+}
+
+// How far (m, >= 0) `end` must go straight down so its distance to `target`
+// becomes `reach`: the smaller root of |target - end + d up| = reach (or, if
+// it cannot, down to the target's height). 0 when within reach or the target
+// is not below.
+float dropToward(math::Vec3 end, math::Vec3 target, float reach) {
+    const math::Vec3 v = target - end;
+    if (v.y >= 0.0f || math::length(v) - reach <= kReachEpsilon) return 0.0f;
+    // |v + d up|^2 = reach^2: d^2 + 2 v.y d + |v|^2 - reach^2 = 0.
+    const float disc = v.y * v.y - math::dot(v, v) + reach * reach;
+    return disc < 0.0f ? -v.y : -v.y - std::sqrt(disc);
+}
+
+// Clamps `q` per axis of its rotation vector (axis * angle, radians).
+math::Quat clampRotationVector(math::Quat q, math::Vec3 min, math::Vec3 max) {
+    const math::Vec3 c = math::clamp(math::rotationVector(q), min, max);
+    const float angle = math::length(c);
+    return angle < math::kEpsilon ? math::identityQuat() : math::fromAxisAngle(c / angle, angle);
+}
+
+// `target` moved toward `from` so it is at most `reach` away.
+math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach) {
+    const math::Vec3 d = target - from;
+    const float len = math::length(d);
+    return len <= reach ? target : from + d * (reach / len);
+}
 
 // Turns smaller than this (rad) are no direction at all.
 constexpr float kMinAngle = 1e-4f;

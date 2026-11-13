@@ -31,9 +31,6 @@ int main(int /*argc*/, char** /*argv*/) {
     configs.humanJoints.load(configs.dir + "/human_joints.json");
     configs.locomotion.load(configs.dir + "/locomotion.json");
     configs.physicsWorld.load(configs.dir + "/physics_world.json");
-    configs.ballLaunch.load(configs.dir + "/ball_launch.json");
-    configs.throwing.load(configs.dir + "/throw.json");
-    configs.bowling.load(configs.dir + "/bowling.json");
 
     game::CricketApp app(std::move(configs));
     return app.run();

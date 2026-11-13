@@ -29,20 +29,13 @@ constexpr const char* kActionNames[] = {
     "StepForward", "StepBack", "StepLeft", "StepRight",
     "WalkFaster", "WalkSlower",
     "Jump",
-    "ModShift", "ModCtrl",
+    "ModShift",
     "ToggleMouseLook",
     "FreeView",
-    "ClearReach",
-    "Pick",
-    "PickStep",
-    "ThrowBall",
-    "GiveBall",
-    "BowlAim",
-    "RandomBowl",
+    "ResetPose",
     "SlowMotion",
     "PoseLimb",
     "PoseAway", "PoseNear", "PoseLeft", "PoseRight",
-    "LaunchBall1", "LaunchBall2", "LaunchBall3", "LaunchBall4", "LaunchBall5",
 };
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == static_cast<int>(Action::Count));
 
@@ -98,27 +91,15 @@ ActionMap::ActionMap() {
     bind(Action::WalkSlower, Key::Q);
     bind(Action::Jump, Key::Space);
     bind(Action::ModShift, Key::LeftShift, Key::RightShift);
-    bind(Action::ModCtrl, Key::LeftCtrl, Key::RightCtrl);
     bind(Action::ToggleMouseLook, Key::Tab);
     bind(Action::FreeView, Key::V);
-    bind(Action::ClearReach, Key::R);
-    bind(Action::Pick, Key::P);
-    bind(Action::PickStep, Key::LeftAlt, Key::RightAlt);
-    bind(Action::ThrowBall, Key::T);
-    bind(Action::GiveBall, Key::C);
-    bind(Action::BowlAim, Key::B);
-    bind(Action::RandomBowl, Key::U);
+    bind(Action::ResetPose, Key::R);
     bind(Action::SlowMotion, Key::I);
     bind(Action::PoseLimb, Key::F);
     bind(Action::PoseAway, Key::Up);
     bind(Action::PoseNear, Key::Down);
     bind(Action::PoseLeft, Key::Left);
     bind(Action::PoseRight, Key::Right);
-    bind(Action::LaunchBall1, Key::Num1);
-    bind(Action::LaunchBall2, Key::Num2);
-    bind(Action::LaunchBall3, Key::Num3);
-    bind(Action::LaunchBall4, Key::Num4);
-    bind(Action::LaunchBall5, Key::Num5);
 }
 
 void ActionMap::load(const Config& config) {

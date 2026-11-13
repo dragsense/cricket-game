@@ -136,7 +136,7 @@ struct BodyDeciderSettings {
     float twoLegKneeMax = 1.5708f, oneLegKneeMax = 1.1694f;  // 90, 67 deg
     // A reach's pelvis tilt from standing, rotation vector (rad, character
     // space): forward tilt (hip flexion, +X), turn (Y), side tilt (Z);
-    // reach.pelvisMinDeg / pelvisMaxDeg (BIOMECHANICS 9.3).
+    // decider.pelvisMinDeg / pelvisMaxDeg (BIOMECHANICS 9.3).
     math::Vec3 pelvisMin{-0.1745f, -0.5236f, -0.3491f}, pelvisMax{1.3963f, 0.5236f, 0.3491f};
 };
 

@@ -21,14 +21,6 @@ struct ProbeState {
     math::Transform transform;
 };
 
-// The ball's state. No ball physics for now (2026-11-05, the user's call):
-// the ball becomes a generic Jolt body later, like a bat or stumps.
-struct BallState {
-    math::Vec3 position{0.0f};
-    math::Vec3 velocity{0.0f};
-    math::Quat orientation = math::identityQuat();
-};
-
 class SimWorld {
 public:
     void configure(const core::Config& config);
@@ -41,25 +33,8 @@ public:
     physics::PhysicsWorld& physicsWorld() { return physics_; }
     const physics::PhysicsWorld& physicsWorld() const { return physics_; }
 
-    // Releases the ball here with this velocity; stopBall() ends it. No ball
-    // physics yet: the released ball stays where it was let go.
-    void launchBall(math::Vec3 position, math::Vec3 velocity);
-    void stopBall() { ballInFlight_ = false; }
-    bool ballInFlight() const { return ballInFlight_; }
-    const BallState& ball() const { return ball_; }
-    math::Vec3 ballPosition(float alpha) const { return math::lerp(ballPrevious_.position, ball_.position, alpha); }
-    math::Transform ballTransform(float alpha) const {
-        return {ballPosition(alpha), math::slerp(ballPrevious_.orientation, ball_.orientation, alpha), math::Vec3(1.0f)};
-    }
-
     agents::Human& fielder() { return fielder_; }
     const agents::Human& fielder() const { return fielder_; }
-    // The bowler (M5): the same body, standing at `position` facing `yaw`
-    // radians, holding a ball. Load-time only.
-    bool initBowler(const rig::SkeletonDef& def, const core::Config& joints, const core::Config& locomotion,
-                    math::Vec3 position, float yaw);
-    agents::Human& bowler() { return bowler_; }
-    const agents::Human& bowler() const { return bowler_; }
 
     // Interpolated probe transform for rendering.
     math::Transform probeTransform(float alpha) const {
@@ -72,10 +47,7 @@ public:
 private:
     ProbeState previous_, current_;
     agents::Human fielder_;
-    agents::Human bowler_;
     physics::PhysicsWorld physics_;
-    BallState ball_, ballPrevious_;
-    bool ballInFlight_ = false;
     double time_ = 0;
     bool probeEnabled_ = true;
     float pathRadius_ = 12.0f;  // metres

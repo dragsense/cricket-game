@@ -56,20 +56,13 @@ enum class Action : uint8_t {
     StepForward, StepBack, StepLeft, StepRight,
     WalkFaster, WalkSlower,  // the steps' pace: longer and quicker steps, or shorter and slower
     Jump,                    // held (Space): crouch; let go: jump straight up
-    ModShift, ModCtrl,  // held modifiers (bowling wheel, limb test up/down)
+    ModShift,  // held modifier (limb test: up/down)
     ToggleMouseLook,
     FreeView,    // the camera orbits freely; the player keeps their heading
-    ClearReach,  // drop the hand target (left-drag moves the ball, which is the target)
-    Pick,              // reach for the ball, grip it, carry it back
-    PickStep,          // held with Pick: step toward the ball first
-    ThrowBall,         // release the ball from the batting position toward the fielder
-    GiveBall,          // put the ball straight into the fielder's hand
-    BowlAim,           // switch control (move, camera, mouse aim) between fielder and bowler
-    RandomBowl,        // the bowler bowls a random action at once (the camera follows him)
-    SlowMotion,        // toggle slow motion for the bowling action
+    ResetPose,   // limb test: drop the targets, the body back at its standing pose
+    SlowMotion,        // toggle slow motion for the whole game
     PoseLimb,          // limb test: choose the next limb (right foot, left foot, right hand, left hand)
     PoseAway, PoseNear, PoseLeft, PoseRight,  // limb test: move the target (camera-relative; Shift: up/down)
-    LaunchBall1, LaunchBall2, LaunchBall3, LaunchBall4, LaunchBall5,  // ball physics presets
     Count
 };
 

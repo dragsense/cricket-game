@@ -18,7 +18,7 @@ namespace motion {
 
 // config/locomotion.json "jump" (BIOMECHANICS 6).
 struct JumpPlannerSettings {
-    float crouchDrop = 0.3f;   // m, the hips below standing at the bottom (COM drop 0.36 m, 6.1)
+    float crouchDrop = 0.4f;   // m, the hips below standing at the bottom (COM drop 0.36 m, deep 0.47 m, 6.1)
     float crouchTime = 0.7f;   // s, standing to the bottom (countermovement 0.70 s)
     float pushTime = 0.3f;     // s, the bottom to take-off (propulsion 0.30 s)
     float pushLift = 0.1f;     // m, the hips above standing at take-off (heels high)
@@ -28,6 +28,7 @@ struct JumpPlannerSettings {
     float maxFlight = 1.2f;    // s, at most in the air before the landing starts anyway
     // The plan's hips bounds while jumping (the walk's stay as they are).
     float hipsMaxSpeed = 3.2f, hipsMaxAccel = 15.0f;
+    float kneeMax = 1.9199f;  // rad, the deepest grounded knee while jumping (110 deg; the walk's stays 90)
 };
 
 class JumpPlanner {

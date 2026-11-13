@@ -52,26 +52,13 @@
   "debug": {
     "showOverlay": true,
     "debugDraw": true,
-    // Limb test: hides the bowler, the throw and bowling arcs and WASD walking
-    // (the code stays); F chooses a hand or foot and the mouse moves its target
+    // Limb test: F chooses a hand or foot and the arrows move its target
     // (input.json "PoseLimb") to study how the body follows. Restart to apply.
     "limbTest": true,
     // Limb test: each arrow press jumps the target this far (m) to its new
     // point at once (no slide), so the body shows what it does for that point.
-    "limbTestStep": 0.1
-  },
-  // Picking test driver (T): the ball starts `distance` m in front of the
-  // fielder and moves straight past them (no physics) at a random speed
-  // (m/s), rolling for groundShare of throws, else at a random height (m),
-  // up to sideSpread m to either side; it stops passDistance m behind them.
-  "feeder": {
-    "distance": 12.0,
-    "speedMin": 3.0,
-    "speedMax": 6.0,
-    "heightMin": 0.4,
-    "heightMax": 1.8,
-    "groundShare": 0.5,
-    "sideSpread": 1.0,
-    "passDistance": 5.0
+    "limbTestStep": 0.1,
+    // I: slow motion, the whole game at this share of real speed.
+    "slowMotionFactor": 0.2
   }
 }

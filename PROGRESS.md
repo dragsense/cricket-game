@@ -8,6 +8,15 @@ body does the motion; line, length and speed come from it. Reworked 2026-10-28 (
 user's yes): two clicks on one arm circle; the body is never controlled, it follows the
 hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
 
+**2026-11-14 cleanup (the user's call): only walk and jump stay.** Removed: throw and
+bowling (`motion/throw_arc`, the bowler, the aim circles, `throw.json`, `bowling.json`),
+hand reach and picking (`motion/reach`, grip, ball in hand), the ball gameplay (launch,
+feeder, `ball_launch.json`; the scene's ball stays as a prop) and `wip/` patches. Kept:
+walk, jump, the limb test, slow motion (`engine.json debug.slowMotionFactor`). The
+decider's reach math moved into `body_decider.cpp`; the pelvis limits are now
+`decider.pelvisMinDeg/MaxDeg`, the limb test's Fitts timing `muscles.fitts*`. The items
+6.1 and 6.1d below describe code that is gone (history only).
+
 - [x] **6.1 Action point and release** (the user: "feels better"; commit dbcbde0 has the
   full version with trunk coil and lean, back-foot step, stride, hips-then-shoulders and
   front arm).

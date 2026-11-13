@@ -70,7 +70,7 @@
   // (the capsule's hold carries the hips with it), free in the air, then
   // a sink on landing.
   "jump": {
-    "crouchDrop": 0.3,     // m, the hips below standing at the bottom (COM drop 0.36 m, McHugh 2024; the decider's 90 deg knee bound limits it)
+    "crouchDrop": 0.4,     // m, the hips below standing at the bottom (COM drop 0.36 m self-selected, 0.47 m deep, McHugh 2024)
     "crouchTime": 0.7,     // s, standing to the bottom (countermovement 0.70 s, McHugh 2024)
     "pushTime": 0.3,       // s, the bottom to take-off (propulsion 0.30 s, McHugh 2024)
     "pushLift": 0.1,       // m, the hips above standing at take-off (heels high: ankle 137 deg, McErlain-Naylor 2014) [E]
@@ -80,6 +80,9 @@
     "maxFlight": 1.2,      // s, at most in the air before the landing starts anyway
     // The plan's hips bounds while jumping (take-off ~2.7 m/s; the walk keeps decider.hipsMax*).
     "hipsMaxSpeed": 3.2,
-    "hipsMaxAccel": 15.0
+    "hipsMaxAccel": 15.0,
+    // The deepest grounded knee while jumping (the walk and reach keep decider.twoLegKneeMaxDeg 90):
+    // a jump's bottom knee ~100 deg flexion (included 81 +- 16, McErlain-Naylor 2014), deeper in a deep crouch.
+    "kneeMaxDeg": 110
   }
 }

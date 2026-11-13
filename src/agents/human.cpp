@@ -2,7 +2,6 @@
 
 #include "core/config.h"
 #include "core/log.h"
-#include "motion/reach.h"
 
 #include <algorithm>
 #include <cmath>
@@ -109,6 +108,13 @@ void moveBodyToFeet(BodyState& body, const LegSupport& left, const LegSupport& r
     }
 }
 
+// Fitts' law movement time (s) to move `distance` onto a target `width`
+// wide: a + b * log2(2D / W), never below a (MacKenzie 1992; BIOMECHANICS 9.6).
+float movementTime(float distance, float width, float a, float b) {
+    const float id = std::log2(std::max(2.0f * distance / std::max(width, 1e-3f), 1.0f));
+    return a + b * id;
+}
+
 } // namespace
 
 bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion) {
@@ -133,47 +139,6 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
     reposition_.damping = joints.getFloat("reposition.damping", reposition_.damping);
     reposition_.stanceDrop = math::radians(joints.getFloat("reposition.stanceDropDeg", math::degrees(reposition_.stanceDrop)));
     stanceBlendHeight_ = joints.getFloat("reposition.stanceBlendHeight", stanceBlendHeight_);
-    // The fielder starts with the ball in the right hand, picking with it.
-    phase_ = Phase::Idle;
-    holding_ = true;
-    reachLeft_ = false;
-    handMode_ = HandMode::Auto;
-    reach_.armReach = joints.getFloat("reach.armReach", reach_.armReach);
-    reach_.wristOffset = joints.getFloat("reach.wristOffset", reach_.wristOffset);
-    // Weights are normalised so each set sums to 1.
-    auto weights = [&](const char* key, math::Vec3 v) {
-        v = joints.getVec3(key, v);
-        v = math::Vec3(std::max(v.x, 0.0f), std::max(v.y, 0.0f), std::max(v.z, 0.0f));
-        const float sum = v.x + v.y + v.z;
-        return sum > 0.0f ? v / sum : math::Vec3(1.0f / 3.0f);
-    };
-    reach_.spineBend = weights("reach.spineBend", reach_.spineBend);
-    reach_.spineTwist = weights("reach.spineTwist", reach_.spineTwist);
-    reach_.spineIterations = joints.getInt("reach.spineIterations", reach_.spineIterations);
-    auto degs = [&](const char* key, math::Vec3 radiansV) {
-        return math::radians(joints.getVec3(key, math::degrees(radiansV)));
-    };
-    reach_.pelvisMin = degs("reach.pelvisMinDeg", reach_.pelvisMin);
-    reach_.pelvisMax = degs("reach.pelvisMaxDeg", reach_.pelvisMax);
-    reach_.supportRadius = joints.getFloat("reach.supportRadius", reach_.supportRadius);
-    reach_.balanceGain = joints.getFloat("reach.balanceGain", reach_.balanceGain);
-    reach_.maxHipShift = joints.getFloat("reach.maxHipShift", reach_.maxHipShift);
-    reach_.balancePasses = joints.getInt("reach.balancePasses", reach_.balancePasses);
-    reach_.fittsA = joints.getFloat("reach.fittsA", reach_.fittsA);
-    reach_.fittsB = joints.getFloat("reach.fittsB", reach_.fittsB);
-    reach_.fittsWidth = joints.getFloat("reach.fittsWidth", reach_.fittsWidth);
-    reach_.gripTolerance = joints.getFloat("reach.gripTolerance", reach_.gripTolerance);
-    reach_.ballRadius = joints.getFloat("reach.ballRadius", reach_.ballRadius);
-    reach_.relaxedCurl = joints.getFloat("reach.relaxedCurl", reach_.relaxedCurl);
-    reach_.palmCentre = joints.getFloat("reach.palmCentre", reach_.palmCentre);
-    reach_.palmThickness = joints.getFloat("reach.palmThickness", reach_.palmThickness);
-    reach_.fingerCurl = degs("reach.fingerCurlDeg", reach_.fingerCurl);
-    reach_.thumbCurl = degs("reach.thumbCurlDeg", reach_.thumbCurl);
-    reach_.maxLunge = joints.getFloat("reach.maxLunge", reach_.maxLunge);
-    reach_.lungeShort = joints.getFloat("reach.lungeShort", reach_.lungeShort);
-    reach_.lungeDuration = joints.getFloat("reach.lungeDuration", reach_.lungeDuration);
-    reach_.lungeHeight = joints.getFloat("reach.lungeHeight", reach_.lungeHeight);
-    reach_.elbowPole = joints.getVec3("reach.elbowPole", reach_.elbowPole);
     return setHeight(height);
 }
 
@@ -249,6 +214,7 @@ void Human::loadLocomotion(const core::Config& c) {
         j.maxFlight = c.getFloat("jump.maxFlight", j.maxFlight);
         j.hipsMaxSpeed = c.getFloat("jump.hipsMaxSpeed", j.hipsMaxSpeed);
         j.hipsMaxAccel = c.getFloat("jump.hipsMaxAccel", j.hipsMaxAccel);
+        j.kneeMax = math::radians(c.getFloat("jump.kneeMaxDeg", math::degrees(j.kneeMax)));
     }
     baseStep_ = stepSettings_;
     speedScale_ = 1.0f;
@@ -279,39 +245,6 @@ bool Human::setHeight(float height) {
     joints_.spine[0] = rig_.findJoint("spine_01");
     joints_.spine[1] = rig_.findJoint("spine_02");
     joints_.spine[2] = joints_.chest;
-    const char* fingerNames[5] = {"index", "middle", "ring", "pinky", "thumb"};
-    for (int side = 0; side < 2; ++side)
-        for (int f = 0; f < 5; ++f)
-            for (int k = 0; k < 3; ++k)
-                joints_.fingers[side][f][k] = rig_.findJoint(std::string(fingerNames[f]) + "_0" + std::to_string(k + 1) +
-                                                             (side == 0 ? "_l" : "_r"));
-    // Curl axes: each finger bone turns toward the palm (palm normal -X on
-    // the left, +X on the right) about cross(bone direction, palm normal); each
-    // thumb bone turns toward the ball held in front of the palm, about
-    // cross(bone direction, ball - bone start). Rest joint frames are aligned
-    // with the character, so rest offsets are hand-space directions; the last
-    // bone keeps its parent's axis.
-    const rig::Pose& rest = rig_.restPose();
-    for (int side = 0; side < 2; ++side) {
-        const math::Vec3 palm(side == 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
-        const math::Vec3 ball = ballSpot(side == 0);
-        for (int f = 0; f < 5; ++f) {
-            math::Vec3 at(0.0f);  // bone start in hand space
-            for (int k = 0; k < 3; ++k) {
-                math::Vec3& axis = joints_.curlAxis[side][f][k];
-                const int joint = joints_.fingers[side][f][k];
-                const int child = k < 2 ? joints_.fingers[side][f][k + 1] : -1;
-                if (joint >= 0) at += rest.locals[static_cast<size_t>(joint)].position;
-                if (child < 0) {
-                    axis = k > 0 ? joints_.curlAxis[side][f][k - 1] : math::Vec3(0.0f, 0.0f, -palm.x);
-                    continue;
-                }
-                const math::Vec3 dir = math::safeNormalize(rest.locals[static_cast<size_t>(child)].position, -math::kUp);
-                const math::Vec3 toward = f < 4 ? palm : math::safeNormalize(ball - at, palm);
-                axis = math::safeNormalize(math::cross(dir, toward), math::Vec3(0.0f, 0.0f, -palm.x));
-            }
-        }
-    }
     joints_.legL = chain("thigh_l", "shin_l", "foot_l", {-1, 0, 0});
     joints_.legR = chain("thigh_r", "shin_r", "foot_r", {-1, 0, 0});
     joints_.armL = chain("upper_arm_l", "forearm_l", "hand_l", {1, 0, 0});
@@ -336,45 +269,16 @@ bool Human::setHeight(float height) {
         if (children[static_cast<size_t>(p)]++ == 0) segmentEnd_[static_cast<size_t>(p)] = j;
         else segmentEnd_[static_cast<size_t>(p)] = -1;
     }
-    // Share of the mass that moves with the pelvis: all but the planted lower
-    // legs and feet, and half of each thigh (it turns about the hip).
-    float total = 0.0f, planted = 0.0f;
-    for (float m : segmentMass_) total += m;
-    for (const ik::TwoBoneChain* leg : {&joints_.legL, &joints_.legR})
-        planted += 0.5f * segmentMass_[static_cast<size_t>(leg->start)] + segmentMass_[static_cast<size_t>(leg->mid)] +
-                   segmentMass_[static_cast<size_t>(leg->end)];
-    for (int toe : {joints_.toeL, joints_.toeR})
-        if (toe >= 0) planted += segmentMass_[static_cast<size_t>(toe)];
-    pelvisMassShare_ = total > 0.0f ? 1.0f - planted / total : 1.0f;
-    const ik::TwoBoneChain& arm = joints_.armL;  // both arms weigh the same
-    armMassShare_ = total > 0.0f ? (segmentMass_[static_cast<size_t>(arm.start)] + segmentMass_[static_cast<size_t>(arm.mid)] +
-                                    segmentMass_[static_cast<size_t>(arm.end)]) / total
-                                 : 0.0f;
     models_.assign(static_cast<size_t>(rig_.numJoints()), math::Mat4(1.0f));
     body_ = BodyState{};
     body_.position = current_.locals[static_cast<size_t>(joints_.pelvis)].position;  // pelvis is the root joint
     rig_.localToModel(current_, models_);
-    restShoulderL_ = modelPos(models_, joints_.armL.start);
-    restShoulderR_ = modelPos(models_, joints_.armR.start);
-    restChest_ = modelPos(models_, joints_.spine[2] >= 0 ? joints_.spine[2] : joints_.pelvis);
-    restWristL_ = modelPos(models_, joints_.armL.end);
-    restWristR_ = modelPos(models_, joints_.armR.end);
-    liveShoulderL_ = restShoulderL_;
-    liveShoulderR_ = restShoulderR_;
-    if (joints_.spine[2] >= 0) {
-        // Shoulders in the chest's frame, so the bowling circles can follow the trunk.
-        const math::Mat4 toChest = math::inverse(models_[static_cast<size_t>(joints_.spine[2])]);
-        chestShoulderL_ = math::Vec3(toChest * math::Vec4(restShoulderL_, 1.0f));
-        chestShoulderR_ = math::Vec3(toChest * math::Vec4(restShoulderR_, 1.0f));
-    }
     // Deepest crouch: the leg with the knee bent to its joint limit.
     {
         const float thigh = math::distance(modelPos(models_, joints_.legL.start), modelPos(models_, joints_.legL.mid));
         const float shin = math::distance(modelPos(models_, joints_.legL.mid), modelPos(models_, joints_.legL.end));
         reposition_.minReach = bentReach(thigh, shin, limits_.limit(joints_.legL.mid).twistMax) / rig_.legLength();
     }
-    armLength_ = math::distance(modelPos(models_, joints_.armL.start), modelPos(models_, joints_.armL.mid)) +
-                 math::distance(modelPos(models_, joints_.armL.mid), modelPos(models_, joints_.armL.end));
     if (joints_.toeL >= 0) {
         rig_.localToModel(current_, models_);
         const math::Vec3 d = modelPos(models_, joints_.toeL) - modelPos(models_, joints_.legL.end);
@@ -431,11 +335,8 @@ void Human::tick(double dt) {
     previous_.locals = current_.locals;  // same size: no allocation
     previousRoot_ = root_;
     current_.locals = rig_.restPose().locals;
-    // Single steps: standing still (not walking or picking), a step input
-    // takes steps until the fielder walks or acts.
-    const bool standing = phase_ == Phase::Idle || phase_ == Phase::Pose;
-    if (!standing) stepWalk_ = false;
-    else if (math::length2(stepInput_) > 1e-6f) stepWalk_ = true;
+    // Single steps: a step input takes steps (held: walking).
+    if (math::length2(stepInput_) > 1e-6f) stepWalk_ = true;
     const math::Vec3 walkFrom = root_.position;
     walk(static_cast<float>(dt));
     followCapsule(walkFrom, static_cast<float>(dt));
@@ -448,76 +349,28 @@ void Human::tick(double dt) {
         targets_.footL.y += physics_->groundHeightAt(targets_.footL) - base;
         targets_.footR.y += physics_->groundHeightAt(targets_.footR) - base;
     }
-    // The body follows the feet (repositionBody); the limb test's pose is
-    // the decider's plan for the physics body: here it stands like idle.
+    // The body follows the feet (repositionBody); with the physics body the
+    // decider's plan (steps, jump, limb test) is what the muscles pull to.
     repositionBody(static_cast<float>(dt));
-    reachError_ = 0.0f;
-    updatePick(static_cast<float>(dt));
-    updateThrow(static_cast<float>(dt));
-    updateBowl(static_cast<float>(dt));
-    // While the step-first lunge is in the air the body follows the feet the
-    // usual way (repositionBody); the reach starts once the foot lands.
-    const bool reachNow = phase_ == Phase::Return || phase_ == Phase::Throw || phase_ == Phase::Bowl ||
-                          (phase_ == Phase::Reach && pickTime_ > 0.0f);
-    if (reachNow) {
-        twistChest();
-        if (phase_ != Phase::Bowl && phase_ != Phase::Throw) {  // throw, bowl: no reverse IK, the arm IK alone takes the hand
-            reachSpine();
-            reachPelvis();
-            reachBody();
-        }
-    }
     solveIk();
-    if (reachNow && !stepper_.stepping()) rebalance();  // a swinging foot is no support
     swingArms(static_cast<float>(dt));
     stabiliseHead(static_cast<float>(dt));
-    if (reachNow) {
-        reachArm(reachLeft_, goal_);
-        if (phase_ == Phase::Bowl && bowlStage_ != BowlStage::Circle) reachArm(!reachLeft_, frontGoal_);
-    }
-    // Fingers: closed around the ball while it is held (walking and running
-    // too), relaxed otherwise.
-    const bool closed = holding_;
-    grip(true, closed && reachLeft_ ? 1.0f : reach_.relaxedCurl);
-    grip(false, closed && !reachLeft_ ? 1.0f : reach_.relaxedCurl);
     limits_.apply(current_);
-    if (reachNow) {
-        // Measured after the limits, so a clamped arm shows as a miss.
-        rig_.localToModel(current_, models_);
-        const int hand = reachLeft_ ? joints_.armL.end : joints_.armR.end;
-        reachError_ = math::distance(modelPos(models_, hand), goal_);
-        const math::Vec3 ball =
-            root_.transformPoint(math::Vec3(models_[static_cast<size_t>(hand)] * math::Vec4(ballSpot(reachLeft_), 1.0f)));
-        if (released_) releasePosition_ = ball;
-        finishPick(static_cast<float>(dt));
-    }
-    // The full-physics body: its muscles pull toward this tick's pose (the
-    // limb test's: the decider's plan), the capsule holding it up.
+    // The full-physics body: its muscles pull toward the decider's plan,
+    // the capsule holding it up.
     if (physics_ && humanBody_.ready()) {
         rig_.localToModel(current_, models_);
-        const std::vector<math::Mat4>* plan = phase_ == Phase::Pose || phase_ == Phase::Idle ? limbTestPlan(static_cast<float>(dt)) : nullptr;
+        const std::vector<math::Mat4>* plan = limbTestPlan(static_cast<float>(dt));
         physicsTick(plan ? *plan : models_, static_cast<float>(dt));
-    }
-    // Shoulders carried by the chest (not the clavicle) while bowling, for
-    // the bowling circles next tick; at rest otherwise.
-    if (reachNow && phase_ == Phase::Bowl && joints_.spine[2] >= 0) {
-        const math::Mat4& chest = models_[static_cast<size_t>(joints_.spine[2])];
-        liveShoulderL_ = math::Vec3(chest * math::Vec4(chestShoulderL_, 1.0f));
-        liveShoulderR_ = math::Vec3(chest * math::Vec4(chestShoulderR_, 1.0f));
-    } else {
-        liveShoulderL_ = restShoulderL_;
-        liveShoulderR_ = restShoulderR_;
     }
 }
 
 void Human::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
-    // While picking the fielder stands (walk input waits for the return).
-    // Bowling turns the whole player to bowlYaw_ (side-on, then straight).
-    const bool picking = phase_ != Phase::Idle;
-    const bool bowlTurn = phase_ == Phase::Bowl && bowlStage_ != BowlStage::Circle;
+    // While posing (limb test) the fielder stands and does not turn.
+    const bool posing = phase_ == Phase::Pose;
     walker_.tick(dt, math::Vec2(0.0f),  // turning only: moving is by steps
-                 bowlTurn || (face_ && !picking), bowlTurn ? bowlYaw_ : faceYaw_, walkSettings_);
+                 face_ && !posing, faceYaw_, walkSettings_);
     const motion::WalkSettings& w = walkSettings_;
     const math::Transform from = root_;
     root_.position += walker_.velocity() * dt;
@@ -579,13 +432,9 @@ void Human::walk(float dt) {
         stepper_.rebase(before, root_);
         return;
     }
-    if (picking && !(bowlTurn && bowlStage_ == BowlStage::Back && strideWaiting_)) {  // turning side-on, the feet step round
-        // Only a lunge step moves a foot; back in gait mode after the pick,
-        // the gait's settle steps it back to stance (the ideal standing spot).
-        motion::StepSettings lunge;
-        lunge.stepDuration = reach_.lungeDuration;
-        lunge.stepHeight = reach_.lungeHeight;
-        stepper_.tick(dt, math::Vec2(0.0f), lunge);
+    if (posing) {
+        // No gait while posing: only a step already under way finishes.
+        stepper_.tick(dt, math::Vec2(0.0f), stepSettings_);
         return;
     }
     stepper_.tickGait(dt, velocity, motion::gaitTiming(timingSpeed, rig_.height(), w), w.stepHeight,
@@ -668,13 +517,8 @@ void Human::solveIk() {
     for (int i = 0; i < 2; ++i) {
         const motion::Foot f = static_cast<motion::Foot>(i);
         const math::Quat shin = modelRot(models_, legs[i]->mid);
-        // While bowling, the striding foot turns to point straight (the facing
-        // before the action) while it is in the air, and stays so.
-        const float straighten = stepper_.stepping() ? stepper_.swingProgress() : 1.0f;
-        const float yaw = phase_ == Phase::Bowl && strideFoot_ == i ? (bowlBaseYaw_ - walker_.yaw()) * straighten : 0.0f;
-
         const bool planted = !(stepper_.stepping() && stepper_.swingFoot() == i);
-        const math::Quat flat = math::fromAxisAngle(math::kUp, yaw) * math::fromAxisAngle(math::kRight, stepper_.footPitch(f));
+        const math::Quat flat = math::fromAxisAngle(math::kRight, stepper_.footPitch(f));
         const math::Quat limited = shin * ik::clampRotation(math::normalize(math::inverse(shin) * flat), limits_.limit(legs[i]->end));
         auto toesDown = [](math::Quat q) { return std::asin(math::clamp(-(q * math::kForward).y, -1.0f, 1.0f)); };
         const float tip = planted ? toesDown(limited) - toesDown(flat) : 0.0f;
@@ -683,7 +527,7 @@ void Human::solveIk() {
 
         const float pitch = std::max(stepper_.footPitch(f), heelLift_[i]) - toesUp;
         current_.locals[static_cast<size_t>(legs[i]->end)].rotation = math::normalize(
-            math::inverse(shin) * math::fromAxisAngle(math::kUp, yaw) * math::fromAxisAngle(math::kRight, pitch));
+            math::inverse(shin) * math::fromAxisAngle(math::kRight, pitch));
         if (toes[i] >= 0)
             current_.locals[static_cast<size_t>(toes[i])].rotation =
                 math::fromAxisAngle(math::kRight, std::min(stepper_.toeBend(f), -heelLift_[i]));  // toes stay flat
@@ -739,131 +583,6 @@ void Human::stabiliseHead(float dt) {
     const math::Quat level = math::normalize(math::inverse(modelRot(models_, parent)) * desired);
     math::Quat& head = current_.locals[static_cast<size_t>(joints_.head)].rotation;
     head = math::normalize(math::slerp(head, level, math::clamp(w.headStabilise, 0.0f, 1.0f)));
-}
-
-void Human::rotateInModel(int joint, math::Quat rotation) {
-    // Model rotation M = P * L, so a model-space rotation R becomes the local
-    // L' = P^-1 * R * P * L.
-    const math::Quat parent = modelRot(models_, rig_.parent(joint));
-    math::Quat& local = current_.locals[static_cast<size_t>(joint)].rotation;
-    local = math::normalize(math::inverse(parent) * rotation * parent * local);
-    local = ik::clampRotation(local, limits_.limit(joint));
-}
-
-void Human::reachSpine() {
-    // Stages run in recruitment order (BIOMECHANICS 9.1), each taking the
-    // error the ones before it left: spine, pelvis, body here; clavicle and
-    // arm in reachArm(), after the leg IK. One pass each, no retries.
-    const math::Vec3 target = reachGoal();
-    const float armReach = reach_.armReach * armLength_;
-    rig_.localToModel(current_, models_);
-    const int shoulder = reachLeft_ ? joints_.armL.start : joints_.armR.start;
-
-    // Swing the shoulder toward the target about the spine base (law of
-    // cosines), split into bend and twist (about the character's up), each
-    // shared over spine_01, spine_02 and chest by its weights (9.3: twist
-    // mostly thoracic, bend mostly lumbar), every bone clamped to its limit.
-    if (joints_.spine[0] < 0 || joints_.spine[1] < 0 || joints_.spine[2] < 0) return;
-    const float bendShare[3] = {reach_.spineBend.x, reach_.spineBend.y, reach_.spineBend.z};
-    const float twistShare[3] = {reach_.spineTwist.x, reach_.spineTwist.y, reach_.spineTwist.z};
-    for (int it = 0; it < reach_.spineIterations; ++it) {
-        const motion::Swing swing = motion::swingToward(modelPos(models_, joints_.spine[0]),
-                                                        modelPos(models_, shoulder), target, armReach);
-        math::Quat bend, twist;
-        math::swingTwist(math::fromAxisAngle(swing.axis, swing.angle), math::kUp, bend, twist);
-        for (int i = 0; i < 3; ++i) {
-            const math::Quat id = math::identityQuat();
-            rotateInModel(joints_.spine[i], math::slerp(id, bend, bendShare[i]) * math::slerp(id, twist, twistShare[i]));
-            rig_.localToModel(current_, models_);
-        }
-    }
-}
-
-void Human::reachPelvis() {
-    // Tilt forward (hip flexion), turn and side-tilt about the hip centre for
-    // what the spine could not reach: the same swing, clamped to the pelvis
-    // limits. The pelvis is the root joint, so its rotation is in character space.
-    const math::Vec3 target = reachGoal();
-    const float armReach = reach_.armReach * armLength_;
-    const int shoulder = reachLeft_ ? joints_.armL.start : joints_.armR.start;
-    const motion::Swing swing =
-        motion::swingToward(modelPos(models_, joints_.pelvis), modelPos(models_, shoulder), target, armReach);
-    math::Quat& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].rotation;
-    pelvis = motion::clampRotationVector(math::normalize(math::fromAxisAngle(swing.axis, swing.angle) * pelvis),
-                                         reach_.pelvisMin, reach_.pelvisMax);
-    rig_.localToModel(current_, models_);
-}
-
-void Human::reachBody() {
-    // RepositionBody driven by the hand (Step 2.4), on top of the foot
-    // repositioning (body_ is not changed, so both apply): the body moves
-    // toward the target by what is left (body += dir * error), the hips shift
-    // back against the centre of mass's overhang (counterbalance, x gain, at
-    // most maxHipShift), and the reposition leg clamp keeps both planted feet
-    // within reach (no squat limit). rebalance() then corrects the balance
-    // exactly after the leg IK.
-    const math::Vec3 target = reachGoal();
-    const float armReach = reach_.armReach * armLength_;
-    const int shoulder = reachLeft_ ? joints_.armL.start : joints_.armR.start;
-    math::Vec3& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
-
-    const math::Vec3 toTarget = target - modelPos(models_, shoulder);
-    const float distance = math::length(toTarget);
-    const math::Vec3 move = toTarget * (std::max(0.0f, distance - armReach) / std::max(distance, math::kEpsilon));
-    // Counterbalance estimate: a pelvis move carries pelvisMassShare_ of the
-    // mass; balanceOverhang() gives the pelvis move that cancels the overhang.
-    math::Vec3 shift = -balanceOverhang(move) * reach_.balanceGain;
-    const float shiftLength = math::length(shift);
-    if (shiftLength > reach_.maxHipShift) shift *= reach_.maxHipShift / shiftLength;
-    pelvis = clampPelvisToLegs(pelvis + move + shift);
-}
-
-void Human::rebalance() {
-    // Balance (BIOMECHANICS 3, 9.5), measured rather than predicted: a deep
-    // squat swings the knees forward, which no estimate sees. Each pass takes
-    // the actual centre of mass after the leg IK, moves the pelvis to cancel
-    // its overhang beyond the feet, clamps to the legs and solves them again.
-    math::Vec3& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
-    for (int i = 0; i < reach_.balancePasses; ++i) {
-        rig_.localToModel(current_, models_);
-        pelvis = clampPelvisToLegs(pelvis - balanceOverhang(math::Vec3(0.0f)));
-        solveIk();
-    }
-}
-
-math::Vec3 Human::balanceOverhang(math::Vec3 pelvisMove) {
-    // Centre of mass (models_ current) plus the reaching arm, which is posed
-    // last: its mass will sit about midway between the shoulder and its reach
-    // point. A pelvis move shifts it by pelvisMassShare_ of the move.
-    const math::Vec3 target = reachGoal();
-    const float armReach = reach_.armReach * armLength_;
-    const ik::TwoBoneChain& arm = reachLeft_ ? joints_.armL : joints_.armR;
-    const math::Vec3 shoulder = modelPos(models_, arm.start);
-    const math::Vec3 armNow = 0.5f * (shoulder + modelPos(models_, arm.end));
-    const math::Vec3 armThen = 0.5f * (shoulder + motion::clampToReach(shoulder, target, armReach));
-    const math::Vec3 com = modelCentreOfMass() + (armThen - armNow) * armMassShare_ + pelvisMove * pelvisMassShare_;
-
-    // Base of support: capsule around the foot centres (ankle to mid-foot).
-    const math::Transform toModel = math::inverse(root_);
-    const math::Vec3 half = 0.5f * math::kForward * ballDistance_;
-    const math::Vec3 footL = toModel.transformPoint(targets_.footL) + half;
-    const math::Vec3 footR = toModel.transformPoint(targets_.footR) + half;
-    const math::Vec2 e = motion::supportExcess(math::Vec2(com.x, com.z), math::Vec2(footL.x, footL.z),
-                                               math::Vec2(footR.x, footR.z), reach_.supportRadius);
-    return math::Vec3(e.x, 0.0f, e.y) / pelvisMassShare_;
-}
-
-math::Vec3 Human::clampPelvisToLegs(math::Vec3 pelvis) {
-    // The reposition leg clamp with both feet planted and no squat limit;
-    // legs stay within the IK soften ratio so the ankles reach their targets.
-    RepositionSettings legs = reposition_;
-    legs.minReach = 0.0f;
-    legs.maxReach = std::min(reposition_.maxReach, ik_.soften);
-    const math::Transform toModel = math::inverse(root_);
-    const math::Vec3 now = current_.locals[static_cast<size_t>(joints_.pelvis)].position;
-    const LegSupport left{modelPos(models_, joints_.legL.start) - now, toModel.transformPoint(targets_.footL)};
-    const LegSupport right{modelPos(models_, joints_.legR.start) - now, toModel.transformPoint(targets_.footR)};
-    return clampToLegs(pelvis, left, right, rig_.legLength(), legs);
 }
 
 math::Vec3 Human::modelCentreOfMass() {
@@ -972,9 +691,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         decider_.setMasses(mass, centre);
     }
     if (jointsConfig_) {
-        muscleTiming_.fittsA = jointsConfig_->getFloat("reach.fittsA", muscleTiming_.fittsA);
-        muscleTiming_.fittsB = jointsConfig_->getFloat("reach.fittsB", muscleTiming_.fittsB);
-        muscleTiming_.fittsWidth = jointsConfig_->getFloat("reach.fittsWidth", muscleTiming_.fittsWidth);
+        muscleTiming_.fittsA = jointsConfig_->getFloat("muscles.fittsA", muscleTiming_.fittsA);
+        muscleTiming_.fittsB = jointsConfig_->getFloat("muscles.fittsB", muscleTiming_.fittsB);
+        muscleTiming_.fittsWidth = jointsConfig_->getFloat("muscles.fittsWidth", muscleTiming_.fittsWidth);
         deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
         deciderSettings_.armCancel = jointsConfig_->getFloat("decider.armCancel", deciderSettings_.armCancel);
         deciderSettings_.passiveHead = jointsConfig_->getFloat("decider.passiveInfluence.head", deciderSettings_.passiveHead);
@@ -996,8 +715,11 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             math::radians(dv("decider.twoLegKneeMaxDeg", math::degrees(deciderSettings_.twoLegKneeMax)));
         deciderSettings_.oneLegKneeMax =
             math::radians(dv("decider.oneLegKneeMaxDeg", math::degrees(deciderSettings_.oneLegKneeMax)));
-        deciderSettings_.pelvisMin = reach_.pelvisMin;  // reach.pelvisMinDeg / pelvisMaxDeg (BIOMECHANICS 9.3)
-        deciderSettings_.pelvisMax = reach_.pelvisMax;
+        // The pelvis tilt limits (BIOMECHANICS 9.3), degrees in config.
+        deciderSettings_.pelvisMin =
+            math::radians(jointsConfig_->getVec3("decider.pelvisMinDeg", math::degrees(deciderSettings_.pelvisMin)));
+        deciderSettings_.pelvisMax =
+            math::radians(jointsConfig_->getVec3("decider.pelvisMaxDeg", math::degrees(deciderSettings_.pelvisMax)));
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
@@ -1075,8 +797,7 @@ bool Human::capsuleDebug(math::Vec3& feet, float& height, float& radius, math::V
 void Human::setJumpInput(bool held) {
     // Held: the crouch starts (standing, the physics body, no step under
     // way); let go: the push.
-    if (held && !jumpHeld_ && !jumpPlanner_.running() && !stepPlanner_.running() && physics_ && humanBody_.ready() &&
-        (phase_ == Phase::Idle || phase_ == Phase::Pose)) {
+    if (held && !jumpHeld_ && !jumpPlanner_.running() && !stepPlanner_.running() && physics_ && humanBody_.ready()) {
         jumpPlanner_.start(restPelvisHeight_);
     }
     if (!held && jumpHeld_) jumpPlanner_.release();
@@ -1095,7 +816,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             path.from = path.on && path.end == end ? path.at : math::Vec3(physicsModels_[static_cast<size_t>(end)][3]);
             path.end = end;
             path.time = 0.0f;
-            path.duration = motion::movementTime(math::distance(path.from, goal), muscleTiming_.fittsWidth,
+            path.duration = movementTime(math::distance(path.from, goal), muscleTiming_.fittsWidth,
                                                  muscleTiming_.fittsA, muscleTiming_.fittsB);
             path.on = true;
         }
@@ -1118,10 +839,10 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         t.foot[i].contactNormal = math::kUp;
     }
     if (poseHand_ && poseHandLast_) {
-        motion::Target& hand = t.hand[reachLeft_ ? 0 : 1];
+        motion::Target& hand = t.hand[poseLeft_ ? 0 : 1];
         hand.mode = motion::TargetMode::Driven;
         hand.position = travel(handPath_, math::inverse(root_).transformPoint(poseGoal_),
-                               reachLeft_ ? joints_.armL.end : joints_.armR.end);
+                               poseLeft_ ? joints_.armL.end : joints_.armR.end);
     } else {
         handPath_.on = false;
     }
@@ -1146,6 +867,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         jumpDeciderSettings_ = deciderSettings_;  // the walk's, with the jump's hips bounds
         jumpDeciderSettings_.hipsMaxSpeed = jumpPlan_.hipsMaxSpeed;
         jumpDeciderSettings_.hipsMaxAccel = jumpPlan_.hipsMaxAccel;
+        jumpDeciderSettings_.twoLegKneeMax = jumpPlan_.kneeMax;
         decider_.decide(t, jumpDeciderSettings_, queue_);
         return queue_.plan;
     }
@@ -1310,474 +1032,17 @@ math::Vec3 Human::centreOfMass() {
     return root_.transformPoint(modelCentreOfMass());
 }
 
-void Human::reachArm(bool left, math::Vec3 goal) {
-    // Bowling keeps the arm nearly straight: the reach limit is the circle's
-    // radius and the IK does not soften toward full extension.
-    const bool bowl = phase_ == Phase::Bowl;
-    const float armReach = bowl ? bowlRadius() : reach_.armReach * armLength_;
-    const ik::TwoBoneChain& arm = left ? joints_.armL : joints_.armR;
-    const int clavicle = left ? joints_.clavicleL : joints_.clavicleR;
-    rig_.localToModel(current_, models_);
-
-    // Clavicle: protract/elevate so the shoulder moves toward the goal.
-    if (clavicle >= 0) {
-        const motion::Swing swing =
-            motion::swingToward(modelPos(models_, clavicle), modelPos(models_, arm.start), goal, armReach);
-        rotateInModel(clavicle, math::fromAxisAngle(swing.axis, swing.angle));
-    }
-
-    // Arm: from the rest pose (no walk swing), two-bone IK toward the goal,
-    // never further than armReach so the elbow stays bent. The elbow points
-    // out, down and back (reach.elbowPole, mirrored for the right arm; +X is
-    // left), made perpendicular to the shoulder-to-goal line so it bends away
-    // from the body whatever the goal's direction.
-    const rig::Pose& rest = rig_.restPose();
-    current_.locals[static_cast<size_t>(arm.start)].rotation = rest.locals[static_cast<size_t>(arm.start)].rotation;
-    current_.locals[static_cast<size_t>(arm.mid)].rotation = rest.locals[static_cast<size_t>(arm.mid)].rotation;
-    rig_.localToModel(current_, models_);
-    const math::Vec3 shoulder = modelPos(models_, arm.start);
-    // Bowling, the front (non-bowling) arm: its hand is kept frontClear out
-    // from the chest's vertical axis (it never goes inside the body) and its
-    // elbow points out to its own side and down, so the forearm stays
-    // outside the chest when the hand comes across.
-    const bool front = bowl && left != reachLeft_;
-    if (front) {
-        const math::Vec3 chest = modelPos(models_, joints_.spine[2] >= 0 ? joints_.spine[2] : joints_.pelvis);
-        math::Vec3 off(goal.x - chest.x, 0.0f, goal.z - chest.z);
-        const float d = math::length(off);
-        if (d < bowl_.frontClear) {
-            off = d > 0.001f ? off / d : math::kForward;
-            goal.x = chest.x + off.x * bowl_.frontClear;
-            goal.z = chest.z + off.z * bowl_.frontClear;
-        }
-    }
-    const math::Vec3 dir = math::safeNormalize(goal - shoulder, -math::kUp);
-    math::Vec3 side(left ? reach_.elbowPole.x : -reach_.elbowPole.x, reach_.elbowPole.y, reach_.elbowPole.z);
-    if (front) side = math::Vec3(left ? 1.0f : -1.0f, -0.5f, 0.0f);  // +X is left
-    // Bowling with the yellow circle turned inward: the elbow hint moves
-    // toward outward-up on its own side (same out side as reach.elbowPole),
-    // by the share elbowSwivel_ (the bowling arm only).
-    if (bowl && !front && bowlStage_ != BowlStage::Circle && elbowSwivel_ > 0.0f) {
-        const math::Vec3 outUp(left ? 1.0f : -1.0f, 1.0f, 0.0f);  // +X is left
-        side = math::lerp(side, outUp, elbowSwivel_);
-    }
-    const math::Vec3 pole = math::safeNormalize(side - dir * math::dot(side, dir), side);
-    ik::solveTwoBone(arm, models_, motion::clampToReach(shoulder, goal, armReach), pole, bowl ? 1.0f : ik_.soften, current_);
-
-    // Palm toward the ball while reaching: turn the hand so its palm normal
-    // points from the palm centre at the ball (within the wrist's limits).
-    if (phase_ != Phase::Reach) return;
-    rig_.localToModel(current_, models_);
-    const math::Mat4& hand = models_[static_cast<size_t>(arm.end)];
-    const math::Vec3 palm = math::Vec3(hand * math::Vec4(0.0f, -reach_.palmCentre, 0.0f, 1.0f));
-    const math::Vec3 normal = modelRot(models_, arm.end) * math::Vec3(left ? -1.0f : 1.0f, 0.0f, 0.0f);
-    const math::Vec3 ball = math::inverse(root_).transformPoint(reachTarget_);
-    rotateInModel(arm.end, math::fromTo(normal, math::safeNormalize(ball - palm, normal)));
-}
-
-void Human::grip(bool left, float amount) {
-    // Each finger and thumb bone turns toward the palm about its curl axis.
-    const int side = left ? 0 : 1;
-    const float curl[3] = {reach_.fingerCurl.x, reach_.fingerCurl.y, reach_.fingerCurl.z};
-    const float thumb[3] = {reach_.thumbCurl.x, reach_.thumbCurl.y, reach_.thumbCurl.z};
-    for (int f = 0; f < 5; ++f) {
-        for (int k = 0; k < 3; ++k) {
-            const int j = joints_.fingers[side][f][k];
-            if (j < 0) continue;
-            current_.locals[static_cast<size_t>(j)].rotation =
-                math::fromAxisAngle(joints_.curlAxis[side][f][k], (f < 4 ? curl[k] : thumb[k]) * amount);
-        }
-    }
-}
-
-void Human::startPick(bool step) {
-    // At once, whatever the ball is doing: the hand on the ball's side
-    // (rest shoulders), unless a fixed one is set.
-    if (holding_ || phase_ != Phase::Idle) return;
-    const math::Vec3 ball = math::inverse(root_).transformPoint(reachTarget_);
-    reachLeft_ = handMode_ == HandMode::Left ||
-                 (handMode_ != HandMode::Right && math::distance(restShoulderL_, ball) <= math::distance(restShoulderR_, ball));
-    pickDuration_ = handTime(math::distance(reachLeft_ ? restWristL_ : restWristR_, ball));
-    phase_ = Phase::Reach;
-    pickTime_ = 0.0f;
-    if (step && reach_.maxLunge > 0.0f) lungeToward(ball);  // the reach waits for the foot to land
-}
-
-void Human::clearReach() {
-    if (phase_ == Phase::Reach) startReturn();
-}
-
-float Human::handTime(float distance) const {
-    return motion::movementTime(distance, reach_.fittsWidth, reach_.fittsA, reach_.fittsB);
-}
-
-void Human::startReturn() {
-    carryFrom_ = goal_;
-    returnDuration_ = handTime(math::distance(carryFrom_, reachLeft_ ? restWristL_ : restWristR_));
-    phase_ = Phase::Return;
-}
-
-motion::ThrowArc Human::slotArc() const {
-    return motion::makeThrowArc(restChest_, math::identityQuat(), reachLeft_, throw_.slotRadiusFactor * armLength_);
-}
-
-motion::ThrowArc Human::chestArc(float slotAngle, float tilt) const {
-    // Around the throwing shoulder, radius swingRadiusFactor x arm length,
-    // toward the slot point (angle 0), in the plane of
-    // the slot point and the facing direction (horizontal for a sidearm slot,
-    // upright for over- and underarm) turned by `tilt` about the chest-to-slot
-    // line. The trunk's current turn carries the shoulder, and so the circle,
-    // round the chest; the circle's angles stay those of the hand.
-    const motion::ThrowArc swing = motion::makeSwingArc(slotArc(), slotAngle, tilt);
-    const math::Vec3 shoulder = reachLeft_ ? restShoulderL_ : restShoulderR_;
-    const math::Vec3 toHand = slotArc().point(slotAngle) - shoulder;
-    motion::ThrowArc arc = swing;
-    arc.radius = throw_.swingRadiusFactor * armLength_;
-    arc.side = math::safeNormalize(toHand, swing.side);
-    arc.up = math::safeNormalize(swing.up - arc.side * math::dot(swing.up, arc.side), swing.up);
-    arc.normal = math::cross(arc.side, arc.up);
-    arc.centre = restChest_ + math::fromAxisAngle(twistAxis_, chestTwist_ * throw_.turnShare) * (shoulder - restChest_);
-    return arc;
-}
-
-math::Vec3 Human::heldHand(float twist) const {
-    // The hand stays where the slot click put it relative to the trunk: the
-    // trunk's turn (turnShare of the throw angle, about twistAxis_ through
-    // the chest) carries it, as it carries the shoulder.
-    return restChest_ + math::fromAxisAngle(twistAxis_, twist * throw_.turnShare) * (slotArc().point(throwSlot_) - restChest_);
-}
-
-void Human::beginThrow(float slotAngle) {
-    bowlTwist_ = false;
-    chestLean_ = 0.0f;
-    if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
-    throwSlot_ = slotAngle;
-    throwTilt_ = 0.0f;
-    throwBack_ = 0.0f;
-    throwStage_ = ThrowStage::Ready;
-    throwTime_ = 0.0f;
-    twistFrom_ = chestTwist_;
-    released_ = false;
-    throwFrom_ = phase_ == Phase::Return ? goal_ : (reachLeft_ ? restWristL_ : restWristR_);
-    goal_ = throwFrom_;
-    phase_ = Phase::Throw;
-}
-
-void Human::windThrow(float tilt, float backAngle) {
-    if (phase_ != Phase::Throw || throwStage_ == ThrowStage::Swing) return;
-    throwTilt_ = tilt;
-    throwBack_ = math::clamp(backAngle, -math::kTwoPi, 0.0f);
-    twistAxis_ = chestArc(throwSlot_, tilt).normal;
-    throwStage_ = ThrowStage::Wind;
-    throwTime_ = 0.0f;
-    twistFrom_ = chestTwist_;
-}
-
-void Human::tiltThrow(float tilt) {
-    if (phase_ != Phase::Throw || throwStage_ == ThrowStage::Swing) return;
-    throwTilt_ = tilt;
-    twistAxis_ = chestArc(throwSlot_, tilt).normal;
-}
-
-void Human::releaseThrow(float releaseAngle) {
-    if (phase_ != Phase::Throw || throwStage_ != ThrowStage::Wind) return;
-    releaseAngle_ = math::clamp(releaseAngle, throwBack_ + 0.1f, throwBack_ + math::kTwoPi);
-    throwStage_ = ThrowStage::Swing;
-    throwTime_ = 0.0f;
-    twistFrom_ = chestTwist_;
-    throwHeld_ = letGo_ = false;
-    // Stride (BIOMECHANICS 10.4: stride length goes with throw speed): with
-    // enough force the foot opposite the throwing hand steps along the
-    // throw's direction on the ground, longer the harder; the swing starts
-    // when it lands (front foot contact, then the trunk turns).
-    const float force = math::clamp(-throwBack_ / std::max(throw_.maxBack, 0.01f), 0.0f, 1.0f);
-    strideWaiting_ = false;
-    if (force >= throw_.strideForce && throw_.strideForce < 1.0f) {
-        const motion::Foot foot = reachLeft_ ? motion::Foot::Right : motion::Foot::Left;
-        const math::Vec3 along = chestArc(throwSlot_, throwTilt_).tangent(releaseAngle_);
-        const math::Vec3 flat = math::safeNormalize(math::Vec3(along.x, 0.0f, along.z), math::kForward);
-        const float share = (force - throw_.strideForce) / (1.0f - throw_.strideForce);
-        strideWaiting_ = stepper_.stepTo(foot, stepper_.foot(foot) + flat * math::lerp(throw_.minStride, throw_.maxStride, share));
-    }
-}
-
-void Human::cancelThrow() {
-    if (phase_ == Phase::Throw && throwStage_ != ThrowStage::Swing) startReturn();
-}
-
-void Human::updateThrow(float dt) {
-    // The trunk drives the throw (BIOMECHANICS 10.2, proximal to distal):
-    // the hand goes to the slot point and holds; the chest winds back to the
-    // force point carrying the hand with it (its place on the trunk does not
-    // change) and holds; then forward speeding up (s = t^2), the hand
-    // blending out onto the throw circle (around the shoulder) and on along
-    // it to the release point while it pushes out along the throw, on past it slowing down; then the hand returns and the
-    // chest turns back square. Character space.
-    if (phase_ != Phase::Throw) {
-        chestTwist_ -= chestTwist_ * std::min(1.0f, dt * throw_.untwistRate);
-        chestLean_ -= chestLean_ * std::min(1.0f, dt * throw_.untwistRate);
-        return;
-    }
-    throwTime_ += dt;
-    const motion::ThrowArc arc = chestArc(throwSlot_, throwTilt_);
-    auto smooth = [](float u) { return u * u * (3.0f - 2.0f * u); };
-    float t = throwTime_;
-    if (throwStage_ == ThrowStage::Ready) {
-        const float u = smooth(std::min(1.0f, t / std::max(throw_.readyTime, 0.01f)));
-        chestTwist_ = twistFrom_ * (1.0f - u);
-        goal_ = math::lerp(throwFrom_, slotArc().point(throwSlot_), u);
-        return;
-    }
-    if (throwStage_ == ThrowStage::Wind) {
-        // The hand keeps its place on the trunk as the chest winds back.
-        const float u = smooth(std::min(1.0f, t / std::max(throw_.windTime, 0.01f)));
-        chestTwist_ = math::lerp(twistFrom_, throwBack_, u);
-        goal_ = heldHand(chestTwist_);
-        return;
-    }
-    if (strideWaiting_) {
-        // The chest stays wound up while the stride foot is in the air.
-        throwTime_ = 0.0f;
-        strideWaiting_ = stepper_.stepping();
-        goal_ = heldHand(chestTwist_);
-        return;
-    }
-    const float swing = std::max(throw_.swingTime, 0.01f), follow = std::max(throw_.followTime, 0.01f);
-    const math::Vec3 pushDir = arc.tangent(releaseAngle_);
-    if (t < swing) {
-        // Forward with the trunk while blending out onto the throw circle, on
-        // it by blendShare of the way to the release; then on along it.
-        const float u = t / swing;
-        chestTwist_ = math::lerp(twistFrom_, releaseAngle_, u * u);
-        const float onOuter = smooth(std::min(1.0f, u * u / std::max(throw_.blendShare, 0.01f)));
-        goal_ = math::lerp(heldHand(chestTwist_), arc.point(chestTwist_), onOuter) + pushDir * (throw_.push * u * u);
-    } else if (holding_ && throw_.pauseAtRelease && !letGo_) {
-        // Test: wait at the release point with the ball.
-        throwHeld_ = true;
-        throwTime_ = swing;
-        chestTwist_ = releaseAngle_;
-        goal_ = arc.point(releaseAngle_) + pushDir * throw_.push;
-    } else if ((t -= swing) < follow) {
-        throwHeld_ = false;
-        if (holding_) {
-            // The ball leaves at the release point along the circle; its
-            // world position is taken from the solved hand (tick()). The
-            // farther the wind-up, the faster.
-            holding_ = false;
-            released_ = true;
-            const float force = math::clamp(-throwBack_ / std::max(throw_.maxBack, 0.01f), 0.0f, 1.0f);
-            releaseVelocity_ = root_.transformDirection(pushDir) * math::lerp(throw_.minSpeed, throw_.maxSpeed, force);
-        }
-        const float u = 1.0f - t / follow;
-        chestTwist_ = releaseAngle_ + throw_.followAngle * (1.0f - u * u);
-        goal_ = arc.point(chestTwist_) + pushDir * (throw_.push * u);
-    } else {
-        startReturn();
-        pickTime_ = 1.0f;
-    }
-}
-
-void Human::twistChest() {
-    // The trunk turns turnShare of the throw angle about twistAxis_ (the arm
-    // swings round the shoulder for the rest): pelvisShare on the pelvis (clamped to
-    // its limits), the rest over spine_01, spine_02 and chest by the reach
-    // twist weights (9.3: mostly thoracic), each clamped to its limit.
-    // Bowling turns the chest by chestLean_, chest bone first; what its
-    // limit leaves goes to spine_02, then spine_01 (the hips stay; the whole
-    // player turns for the rest, see walk()).
-    if (joints_.spine[0] < 0 || joints_.spine[1] < 0 || joints_.spine[2] < 0) return;
-    if (bowlTwist_) {
-        float left = chestLean_;
-        for (int i = 2; i >= 0 && std::fabs(left) >= 1e-4f; --i) {
-            const int joint = joints_.spine[i];
-            const math::Quat before = current_.locals[static_cast<size_t>(joint)].rotation;
-            rotateInModel(joint, math::fromAxisAngle(leanAxis_, left));
-            // What the limit let through: the turn about the vertical between before and after.
-            const math::Quat applied = current_.locals[static_cast<size_t>(joint)].rotation * math::inverse(before);
-            const math::Vec3 axis(applied.x, applied.y, applied.z);
-            left -= 2.0f * std::atan2(math::dot(axis, math::Vec3(0.0f, 1.0f, 0.0f)), applied.w) *
-                    (leanAxis_.y < 0.0f ? -1.0f : 1.0f);
-            rig_.localToModel(current_, models_);
-        }
-        return;
-    }
-    if (std::fabs(chestTwist_) < 1e-4f) return;
-    const float pelvisTurn = chestTwist_ * throw_.turnShare * throw_.pelvisShare;
-    math::Quat& pelvis = current_.locals[static_cast<size_t>(joints_.pelvis)].rotation;
-    pelvis = motion::clampRotationVector(
-        math::normalize(math::fromAxisAngle(twistAxis_, pelvisTurn) * pelvis),
-        reach_.pelvisMin,
-        reach_.pelvisMax);
-    rig_.localToModel(current_, models_);
-    const float share[3] = {reach_.spineTwist.x, reach_.spineTwist.y, reach_.spineTwist.z};
-    const float total = std::max(share[0] + share[1] + share[2], 1e-3f);
-    const float spine = chestTwist_ * throw_.turnShare * (1.0f - throw_.pelvisShare);
-    for (int i = 0; i < 3; ++i) {
-        rotateInModel(joints_.spine[i], math::fromAxisAngle(twistAxis_, spine * share[i] / total));
-        rig_.localToModel(current_, models_);
-    }
-}
-
-void Human::startBowl(float tilt, float releaseAngle) {
-    if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
-    throwTilt_ = tilt;
-    // Release between the horizontal behind and the horizontal in front.
-    releaseAngle_ = math::clamp(releaseAngle, -math::kHalfPi + 0.1f, math::kHalfPi);
-    throwTime_ = 0.0f;
-    released_ = false;
-    throwFrom_ = phase_ == Phase::Return ? goal_ : (reachLeft_ ? restWristL_ : restWristR_);
-    bowlStage_ = BowlStage::Circle;
-    phase_ = Phase::Bowl;
-}
-
-motion::ThrowArc Human::bowlArc(float tilt) const {
-    // The bowling circle around the rest shoulder, square to the batter,
-    // leaned by `tilt` out to the bowling-arm side; it stays put while the
-    // body moves.
-    return motion::makeBowlingArc(shoulderNow(reachLeft_) + releaseShift_, math::identityQuat(), reachLeft_,
-                                  bowlRadius(), tilt);
-}
-
-math::Vec3 Human::arcBetween(math::Vec3 from, math::Vec3 to, float u) const {
-    return arcAround(shoulderNow(reachLeft_), from, to, u);
-}
-
-math::Vec3 Human::frontPathPoint(math::Vec3 point, float gap, float u) const {
-    // From the front hand at rest round its own shoulder (via the front) to
-    // the end of the bowling hand's way, kept apart by frontGap per axis.
-    const math::Vec3 shoulder = shoulderNow(!reachLeft_);
-    const math::Vec3 end = actionPathPoint(point, gap, 1.0f);
-    return arcAround(shoulder, restHandNow(!reachLeft_), end - (end - shoulder) * bowl_.frontGap, u, true);
-}
-
-math::Vec3 Human::arcAround(math::Vec3 shoulder, math::Vec3 from, math::Vec3 to, float u, bool viaFront) {
-    // In the plane of the shoulder, `from` and `to`: round the shoulder the
-    // short way (with `viaFront`, the other way if the short way would set
-    // off backward), the radius going from from's to to's.
-    const math::Vec3 f = from - shoulder, d = to - shoulder;
-    const math::Vec3 e0 = math::safeNormalize(f, -math::kUp);
-    const math::Vec3 e1 = math::safeNormalize(d - e0 * math::dot(d, e0), math::kForward);
-    float total = std::atan2(math::dot(d, e1), math::dot(d, e0));  // 0..pi toward e1
-    if (viaFront && math::dot(e1, math::kForward) < 0.0f) total -= math::kTwoPi;
-    const float a = total * u;
-    const float r = math::lerp(math::length(f), math::length(d), u);
-    return shoulder + (e0 * std::cos(a) + e1 * std::sin(a)) * r;
-}
-
-math::Vec3 Human::shoulderNow(bool left) const { return left ? liveShoulderL_ : liveShoulderR_; }
-
-math::Vec3 Human::restHandNow(bool left) const {
-    return (left ? restWristL_ : restWristR_) + shoulderNow(left) - (left ? restShoulderL_ : restShoulderR_);
-}
-
-math::Vec3 Human::bottomPoint() const {
-    return (shoulderNow(reachLeft_)) - math::kUp * bowlRadius();
-}
-
-math::Vec3 Human::frontDownPoint(math::Vec3 point, float gap, float u) const {
-    return frontPathPoint(point, gap, 1.0f - u);  // back down the same way
-}
-
-math::Vec3 Human::actionPathPoint(math::Vec3 point, float gap, float u) const {
-    // From the resting hand round the shoulder to `gap` beyond the point.
-    const math::Vec3 shoulder = shoulderNow(reachLeft_);
-    const math::Vec3 d = point - shoulder;
-    return arcAround(shoulder, restHandNow(reachLeft_), point + math::safeNormalize(d, math::kUp) * gap, u, true);
-}
-
-motion::ThrowArc Human::actionCircle(float turn, float radius) const {
-    // +X is left: the bowling-arm side is +X for the left arm, -X for the
-    // right; the sign makes + turn go toward it.
-    const float side = reachLeft_ ? 1.0f : -1.0f;
-    motion::ThrowArc arc;
-    arc.centre = shoulderNow(reachLeft_);
-    arc.side = -math::kUp;
-    arc.up = math::fromAxisAngle(math::kUp, side * turn) * math::kForward;
-    arc.normal = math::cross(arc.side, arc.up);
-    arc.radius = radius;
-    return arc;
-}
-
-void Human::setActionPoint(math::Vec3 point) {
-    // The farther behind the shoulder, the more pace.
-    actionOffset_ = point - shoulderNow(reachLeft_);
-    const math::Vec3 d = math::safeNormalize(point - (shoulderNow(reachLeft_)), math::kUp);
-    bowlPace_ = math::clamp(0.5f * (1.0f - math::dot(d, math::kForward)), 0.0f, 1.0f);
-}
-
-void Human::actionBowl(math::Vec3 point, float gap, float turn) {
-    if (!holding_ || (phase_ != Phase::Idle && phase_ != Phase::Return)) return;
-    // + turn is outward (bowling-arm side): no swivel.
-    elbowSwivel_ = math::clamp(-turn / std::max(bowl_.elbowUpTurn, 0.01f), 0.0f, 1.0f);
-    // Only the bowling hand is driven; the body follows it through the reach
-    // stages (reverse IK).
-    setActionPoint(point);
-    actionGap_ = gap;
-    // Chest turn (side-on, away from the batter; the chest bone alone, the
-    // body stays): chestBase always, growing once the point is less than
-    // coilAhead in front of the shoulder, maxCoil an arm length behind.
-    const float ahead = point.z - (reachLeft_ ? restShoulderL_ : restShoulderR_).z;
-    coil_ = math::lerp(bowl_.chestBase, bowl_.maxCoil,
-                       math::clamp((bowl_.coilAhead - ahead) / std::max(bowl_.coilAhead + armLength_, 0.01f), 0.0f, 1.0f));
-    bowlBaseYaw_ = walker_.yaw();
-    bowlYaw_ = bowlBaseYaw_;
-    strideFoot_ = -1;
-    leanAxis_ = math::Vec3(0.0f, reachLeft_ ? 1.0f : -1.0f, 0.0f);
-    bowlTwist_ = true;
-    LOG_INFO("Bowl action: chest turn {:.0f} deg", math::degrees(coil_));
-    throwTime_ = 0.0f;
-    released_ = false;
-    throwFrom_ = phase_ == Phase::Return ? goal_ : (reachLeft_ ? restWristL_ : restWristR_);
-    bowlStage_ = BowlStage::Coil;
-    releaseShift_ = math::Vec3(0.0f);
-    frontGoal_ = restHandNow(!reachLeft_);
-    phase_ = Phase::Bowl;
-}
-
-bool Human::bodyTurned() const {
-    return std::abs(std::remainder(bowlYaw_ - walker_.yaw(), math::kTwoPi)) <= bowl_.turnDone;
-}
-
-void Human::downBowl() {
-    if (!actionHeld()) return;
-    // From the action point round the shoulder down to the bottom point.
-    // Whole-player turn once the hand leaves the action point: bodyBase (the
-    // release circle is picked only at the bottom).
-    backPoint_ = bottomPoint();
-    bodyTurn_ = (reachLeft_ ? 1.0f : -1.0f) * bowl_.bodyBase;  // + yaw: toward +X
-    bowlStage_ = BowlStage::Back;
-    throwTime_ = 0.0f;
-    strideWaiting_ = true;  // the front foot steps once the hand is part way down (updateBowl)
-}
-
-void Human::releaseBowl(float releaseAngle, float releaseTilt) {
-    if (!armDown()) return;
-    // From the bottom point on round the release circle the bowling way
-    // (larger angles: from the bottom, back, over the top) to the release.
-    releaseTilt_ = releaseTilt;
-    swingFrom_ = math::kPi;
-    swingTo_ = releaseAngle;
-    while (swingTo_ <= swingFrom_) swingTo_ += math::kTwoPi;
-    while (swingTo_ > swingFrom_ + math::kTwoPi) swingTo_ -= math::kTwoPi;
-    bowlStage_ = BowlStage::Swing;
-    throwTime_ = 0.0f;
-}
-
-void Human::cancelCoil() {
-    if (coiled() || armDown()) startReturn();
-}
-
 void Human::setPoseHand(bool left, math::Vec3 world) {
-    if (!physics_ || (phase_ != Phase::Idle && phase_ != Phase::Pose)) return;
+    if (!physics_) return;
     phase_ = Phase::Pose;
     poseHand_ = true;
     poseHandLast_ = true;
-    reachLeft_ = left;
+    poseLeft_ = left;
     poseGoal_ = world;
 }
 
 void Human::setPoseFoot(motion::Foot foot, math::Vec3 world) {
-    if (!physics_ || (phase_ != Phase::Idle && phase_ != Phase::Pose)) return;
+    if (!physics_) return;
     phase_ = Phase::Pose;
     posedFoot_ = static_cast<int>(foot);
     poseHandLast_ = false;
@@ -1810,220 +1075,6 @@ void Human::clearPose() {
     posedFoot_ = -1;
     poseHand_ = false;
     plantFeet();
-}
-
-void Human::updateBowl(float dt) {
-    // BIOMECHANICS 11.2: angles on the bowling circle (0 top, +90 in front),
-    // unwrapped so the hand only moves forward: start (front, low) -> past the
-    // bottom -> 3/2 pi (horizontal behind) -> top -> release, speeding up all
-    // the way; then it slows evenly to a stop on the follow-through while
-    // moving across the body, and the usual return carries it back.
-    // Character space (rest shoulder).
-    if (phase_ != Phase::Bowl) return;
-    throwTime_ += dt * bowl_.slowMotion;
-    const math::Vec3 actionPoint = shoulderNow(reachLeft_) + actionOffset_;  // rides the shoulder
-    const math::Vec3 bottom = bottomPoint();
-    auto smooth = [](float u) { return u * u * (3.0f - 2.0f * u); };
-    if (bowlStage_ == BowlStage::Coil) {
-        // The hand goes up round the shoulder from rest past the action point
-        // by the gap, then is pulled back onto it (the wrist loads) and holds.
-        const float reach = std::max(coilReach(), 0.01f);
-        const math::Vec3 rest = reachLeft_ ? restWristL_ : restWristR_;
-        chestLean_ = coil_ * smooth(std::min(1.0f, throwTime_ / reach));
-        math::Vec3 onPath;
-        if (throwTime_ < reach) {
-            const float u = smooth(throwTime_ / reach);
-            onPath = actionPathPoint(actionPoint, actionGap_, u);
-            goal_ = onPath + (throwFrom_ - rest) * (1.0f - u);
-        } else {
-            const float v = smooth(std::min(1.0f, (throwTime_ - reach) / std::max(bowl_.pullTime, 0.01f)));
-            onPath = math::lerp(actionPathPoint(actionPoint, actionGap_, 1.0f), actionPoint, v);
-            goal_ = onPath;
-        }
-        // The front hand starts frontDelay later on its own way and joins the
-        // bowling hand at the end of its way, then stays with it.
-        const float front = (throwTime_ - bowl_.frontDelay) / std::max(reach - bowl_.frontDelay, 0.01f);
-        frontGoal_ = frontPathPoint(actionPoint, actionGap_, smooth(math::clamp(front, 0.0f, 1.0f)));
-        return;
-    }
-    if (bowlStage_ == BowlStage::Back) {
-        // From the action point round the shoulder down to the bottom point,
-        // speeding up; then it holds there (Down) for the release click.
-        const float back = std::max(bowl_.backTime, 0.01f);
-        const float way = std::min(1.0f, throwTime_ / back);
-        if (strideWaiting_ && way * way >= bowl_.strideAt) {  // share of the way down (it speeds up as u^2)
-            // The front foot (opposite the bowling arm) steps straight ahead,
-            // to strideLength in front of the back foot (wherever a landing
-            // left it; a foot already ahead steps less).
-            strideWaiting_ = false;
-            const motion::Foot foot = reachLeft_ ? motion::Foot::Right : motion::Foot::Left;
-            const motion::Foot backFoot = reachLeft_ ? motion::Foot::Left : motion::Foot::Right;
-            const math::Vec3 straight = math::fromAxisAngle(math::kUp, bowlBaseYaw_ - walker_.yaw()) * math::kForward;
-            const float along = math::dot(stepper_.foot(backFoot) - stepper_.foot(foot), straight);
-            stepper_.stepTo(foot, stepper_.foot(foot) + straight * (along + bowl_.strideLength));
-            strideFoot_ = static_cast<int>(foot);
-        }
-        if (throwTime_ < back) {
-            const float u = throwTime_ / back;
-            chestLean_ = coil_;  // held
-            bowlYaw_ = bowlBaseYaw_ + bodyTurn_ * u * u;  // turns with the hand, full at the bottom point
-            goal_ = arcBetween(actionPoint, bottom, u * u);
-            frontGoal_ = frontDownPoint(actionPoint, actionGap_, u * u);  // the front hand down its own way, alongside
-            return;
-        }
-        bowlStage_ = BowlStage::Down;
-    }
-    if (bowlStage_ == BowlStage::Down) {
-        chestLean_ = coil_;
-        bowlYaw_ = bowlBaseYaw_ + bodyTurn_;
-        goal_ = bottom;
-        frontGoal_ = frontDownPoint(actionPoint, actionGap_, 1.0f);
-        return;
-    }
-    if (bowlStage_ == BowlStage::Swing) {
-        // The hand goes round speeding up (s = u^2); the reach stages turn,
-        // bend and fold the body after it.
-        const float swing = std::max(bowl_.swingTime, 0.01f),
-                    follow = std::max(bowl_.swingFollowTime, 0.01f);
-        float t = throwTime_;
-        if (t < swing) {
-            const float u = t / swing;
-            bowlYaw_ = bowlBaseYaw_ + bodyTurn_ * (1.0f - u * u);  // back with the hand, straight at the release
-            chestLean_ = coil_ * (1.0f - u * u);  // unwinds with the hand, square at the release
-            // From the bottom point onto the release circle by a quarter turn.
-            // The circle moves forward toward the batter as the arm comes
-            // over; the reach stages lean the body after the hand.
-            releaseShift_ = math::fromAxisAngle(math::kUp, bowlBaseYaw_ - walker_.yaw()) * math::kForward *
-                            (bowl_.releaseLean * u * u);
-            const float angle = swingFrom_ + (swingTo_ - swingFrom_) * u * u;
-            const float onCircle = smooth(math::clamp((angle - swingFrom_) / math::kHalfPi, 0.0f, 1.0f));
-            const motion::ThrowArc arc = bowlArc(releaseTilt_);
-            goal_ = arc.point(angle) + (bottom - arc.point(swingFrom_)) * (1.0f - onCircle);
-            // The front arm pulls down and tucks in to the side.
-            frontGoal_ = restHandNow(!reachLeft_);
-            return;
-        }
-        if (holding_) {
-            // Release on the circle's tangent. The world position is taken
-            // from the solved hand (tick()).
-            holding_ = false;
-            released_ = true;
-            // Along the facing before the action (toward the batter), whatever
-            // the body's turn still is.
-            const math::Quat facing = math::fromAxisAngle(math::kUp, bowlBaseYaw_);
-            releaseVelocity_ = (facing * bowlArc(releaseTilt_).tangent(swingTo_)) *
-                               math::lerp(bowl_.minSpeed, bowl_.maxSpeed, bowlPace_);
-        }
-        if ((t -= swing) < follow) {
-            // The arm carries on, slowing, and the hand is carried forward,
-            // so the body folds after it.
-            const float u = t / follow;
-            const float s = 1.0f - (1.0f - u) * (1.0f - u);
-            goal_ = bowlArc(releaseTilt_).point(swingTo_ + bowl_.followAngle * s) +
-                    math::kForward * (bowl_.followReach * smooth(u));
-            frontGoal_ = reachLeft_ ? restWristR_ : restWristL_;
-            return;
-        }
-        startReturn();
-        pickTime_ = 1.0f;
-        return;
-    }
-    const motion::ThrowArc arc = motion::makeBowlingArc(reachLeft_ ? restShoulderL_ : restShoulderR_, math::identityQuat(),
-                                                        reachLeft_, bowlRadius(), throwTilt_);
-    const float a0 = bowl_.startAngle;
-    const float a1 = math::kTwoPi - math::kHalfPi;  // horizontal behind
-    const float a2 = math::kTwoPi + releaseAngle_;  // release
-    const float setup = std::max(bowl_.setupTime, 0.01f);
-    const float t1 = std::max(bowl_.downBackTime, 0.01f);
-    const float t2 = std::max(bowl_.overTime, 0.01f);
-    const float t3 = std::max(bowl_.followTime, 0.01f);
-    // Down and back from rest (a0 + d u^2) ends at speed v1; over the top
-    // accelerates evenly to reach the release point at t2.
-    const float v1 = 2.0f * (a1 - a0) / t1;
-    const float acc = 2.0f * (a2 - a1 - v1 * t2) / (t2 * t2);
-    const float vRelease = v1 + acc * t2;
-    if (holding_ && throwTime_ >= setup + t1 + t2) {
-        // The ball leaves at the release point, along the circle; its world
-        // position is taken from the solved hand (tick()).
-        holding_ = false;
-        released_ = true;
-        releaseVelocity_ = root_.transformDirection(arc.tangent(a2)) * bowl_.speed;
-    }
-    float t = throwTime_;
-    if (t < setup) {
-        const float u = t / setup;
-        goal_ = math::lerp(throwFrom_, arc.point(a0), u * u * (3.0f - 2.0f * u));
-    } else if ((t -= setup) < t1) {
-        const float u = t / t1;
-        goal_ = arc.point(a0 + (a1 - a0) * u * u);
-    } else if ((t -= t1) < t2) {
-        goal_ = arc.point(a1 + v1 * t + 0.5f * acc * t * t);
-    } else if ((t -= t2) < t3) {
-        const math::Vec3 p = arc.point(a2 + vRelease * t - 0.5f * vRelease / t3 * t * t);
-        const math::Vec3 across(-p.x, p.y, p.z);
-        const float u = t / t3;
-        goal_ = math::lerp(p, across, bowl_.followAcross * u * u * (3.0f - 2.0f * u));
-    } else {
-        startReturn();
-        pickTime_ = 1.0f;
-    }
-}
-
-void Human::updatePick(float dt) {
-    if (phase_ == Phase::Idle || phase_ == Phase::Throw || phase_ == Phase::Bowl || phase_ == Phase::Pose) return;
-    const math::Transform toModel = math::inverse(root_);
-    const math::Vec3 ball = toModel.transformPoint(reachTarget_);
-
-    // Progress eases in and out (smoothstep) over the Fitts' law times, so
-    // the hand leads and the body, driven by the same goal through every
-    // stage, follows.
-    if (phase_ == Phase::Reach && stepper_.stepping() && pickTime_ <= 0.0f) return;
-    if (phase_ == Phase::Reach) pickTime_ = std::min(1.0f, pickTime_ + dt / std::max(pickDuration_, 0.05f));
-    else pickTime_ = std::max(0.0f, pickTime_ - dt / std::max(returnDuration_, 0.05f));
-    if (phase_ == Phase::Return && pickTime_ <= 0.0f) {
-        phase_ = Phase::Idle;
-        return;
-    }
-    const float s = pickTime_ * pickTime_ * (3.0f - 2.0f * pickTime_);
-
-    // Wrist goal on the ball: back from it toward the shoulder (palm on the ball).
-    const math::Vec3 shoulder = reachLeft_ ? restShoulderL_ : restShoulderR_;
-    const math::Vec3 onBall = ball + math::safeNormalize(shoulder - ball, math::kUp) * reach_.wristOffset;
-    const math::Vec3 end = phase_ == Phase::Reach ? onBall : carryFrom_;
-    goal_ = math::lerp(reachLeft_ ? restWristL_ : restWristR_, end, s);
-}
-
-void Human::finishPick(float) {
-    // The reach is done (at full stretch if the ball is out of reach): a hand
-    // on the ball grips it; either way it goes back to the standing pose.
-    if (phase_ != Phase::Reach || pickTime_ < 1.0f) return;
-    holding_ = reachError_ <= reach_.gripTolerance;
-    startReturn();
-}
-
-void Human::lungeToward(math::Vec3 ball) {
-    // The foot nearer the ball steps to land beside it (BIOMECHANICS 8: low
-    // pickups put the foot by the ball), lungeShort short of it, at most maxLunge.
-    const motion::Foot foot = math::distance(stepper_.foot(motion::Foot::Left), ball) <=
-                                      math::distance(stepper_.foot(motion::Foot::Right), ball)
-                                  ? motion::Foot::Left
-                                  : motion::Foot::Right;
-    const math::Vec3 from = stepper_.foot(foot);
-    const math::Vec3 flat(ball.x - from.x, 0.0f, ball.z - from.z);
-    const float length = math::clamp(math::length(flat) - reach_.lungeShort, 0.0f, reach_.maxLunge);
-    stepper_.stepTo(foot, from + math::safeNormalize(flat, math::kForward) * length);
-}
-
-math::Vec3 Human::ballSpot(bool left) const {
-    // Half the palm down the hand (-Y), out along the palm normal.
-    return math::Vec3(0.0f, -reach_.palmCentre, 0.0f) +
-           math::Vec3(left ? -1.0f : 1.0f, 0.0f, 0.0f) * (reach_.ballRadius + reach_.palmThickness);
-}
-
-math::Vec3 Human::ballInHand(const std::vector<math::Mat4>& models, const math::Transform& root) const {
-    // In front of the holding palm.
-    const ik::TwoBoneChain& arm = reachLeft_ ? joints_.armL : joints_.armR;
-    return root.transformPoint(math::Vec3(models[static_cast<size_t>(arm.end)] * math::Vec4(ballSpot(reachLeft_), 1.0f)));
 }
 
 bool Human::physicalModels(const physics::PhysicsWorld& world, float alpha, std::vector<math::Mat4>& models) const {

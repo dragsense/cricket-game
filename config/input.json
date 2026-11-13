@@ -11,57 +11,32 @@
     "StepBack": ["S"],
     "StepLeft": ["A"],
     "StepRight": ["D"],
-    // Held modifiers: Shift (bowling: wheel sets the gap; limb test: arrows go up/down), Ctrl (bowling: wheel sizes the action circle).
+    // Held modifier: Shift (limb test: arrows go up/down).
     "ModShift": ["LeftShift", "RightShift"],
-    "ModCtrl": ["LeftCtrl", "RightCtrl"],
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
     // V: free view; the camera can be moved to any angle while the player keeps
     // their heading. V again: the player turns with the camera again.
     "FreeView": ["V"],
-    // P: the fielder reaches for the ball at once (grip, carry back) with
-    // the hand on the ball's side; Alt+P steps toward it first. R abandons
-    // the pick.
-    "ClearReach": ["R"],
-    "Pick": ["P"],
-    "PickStep": ["LeftAlt", "RightAlt"],
-    // T: releases the ball from the batting position toward the fielder
-    // (config/ball_launch.json "toFielder"); walk to it and press P.
-    "ThrowBall": ["T"],
-    // C: the ball goes straight into the fielder's hand, ready to throw.
-    "GiveBall": ["C"],
-    // B: control the bowler instead of the fielder (WASD moves, the camera
-    // follows, the mouse picks the release point; after a click the wheel leans the
-    // circle); B again goes back.
-    "BowlAim": ["B"],
-    // U: the bowler bowls on his own, standing (no run-up): the hand goes to
-    // a random action point (bowling.json "random"), then down (the front
-    // foot strides) and the release at a random point. I toggles slow motion
-    // for the action.
     // E / Q: walk faster / slower (locomotion.json "step.speedStep"; from the next step).
     "WalkFaster": ["E"],
     "WalkSlower": ["Q"],
     // Space: held, the player crouches (arms back); let go, he jumps straight
     // up (locomotion.json "jump": the hips target down, then pushed up).
     "Jump": ["Space"],
-    "RandomBowl": ["U"],
+    // I: slow motion for the whole game (engine.json debug.slowMotionFactor).
     "SlowMotion": ["I"],
     // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,
     // left foot, right hand, left hand); each arrow press jumps its target one
     // step (engine.json debug.limbTestStep) relative to the camera (Up away,
     // Down near, Left/Right sideways; with Shift, Up/Down raise/lower it); it
     // stays where it is left. R resets the pose.
+    "ResetPose": ["R"],
     "PoseLimb": ["F"],
     "PoseAway": ["Up"],
     "PoseNear": ["Down"],
     "PoseLeft": ["Left"],
-    "PoseRight": ["Right"],
-    // 1-5: launch the ball with a physics preset (config/ball_launch.json).
-    "LaunchBall1": ["1"],
-    "LaunchBall2": ["2"],
-    "LaunchBall3": ["3"],
-    "LaunchBall4": ["4"],
-    "LaunchBall5": ["5"]
+    "PoseRight": ["Right"]
   }
 }
