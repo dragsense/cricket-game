@@ -1,9 +1,10 @@
 #pragma once
 // A standing jump as one target for the body's decider: the hips (the user's
 // design: the hips are the active target, every other part follows by its
-// passive share). The hips go down, then are pushed up past standing,
-// faster and faster; the physics body flies on that speed; on landing they
-// sink and rise back. Numbers BIOMECHANICS 6. Phases:
+// passive share; nothing in the decider is the jump's own). The hips go
+// down, then are pushed up past standing, faster and faster; the physics
+// body flies on that speed; on landing they sink and rise back. Numbers
+// BIOMECHANICS 6. Phases:
 //  Crouch: down (unweighting and braking); held at the bottom while the
 //   jump is held.
 //  Push: up past standing; take-off at its end.
@@ -26,9 +27,6 @@ struct JumpPlannerSettings {
     float landTime = 0.22f;    // s, touchdown to the lowest (peak knee flexion 0.18-0.26 s, 6.3)
     float recoverTime = 0.5f;  // s, the lowest back to standing
     float maxFlight = 1.2f;    // s, at most in the air before the landing starts anyway
-    // The plan's hips bounds while jumping (the walk's stay as they are).
-    float hipsMaxSpeed = 3.2f, hipsMaxAccel = 15.0f;
-    float kneeMax = 1.9199f;  // rad, the deepest grounded knee while jumping (110 deg; the walk's stays 90)
 };
 
 class JumpPlanner {

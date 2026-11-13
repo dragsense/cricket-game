@@ -561,6 +561,12 @@ TEST_CASE("TEMP jump" * doctest::skip()) {
             const int ph = static_cast<int>(h.jumpPhase());
             if (ph != 3) accel = std::max(accel, a);  // not in flight (there it is gravity)
             accelPhase[ph] = std::max(accelPhase[ph], a);
+            if (ph >= 3 && std::getenv("CRICKET_TRACE"))
+                std::printf("  t %.3f ph %d pelvis %+.3f vy %+.2f accel %5.1f (y %+6.1f) | ankles %.3f %.3f | knee L %3.0f plan %3.0f | held %d\n",
+                            i * kDt, ph, y - standY, (hist[0].y - hist[1].y) / kDt, a,
+                            (hist[0].y - 2.0f * hist[3].y + hist[6].y) / (9.0f * kDt * kDt), h.ankle(true, real, h.root()).y,
+                            h.ankle(false, real, h.root()).y, flexionDeg(real, h, "thigh_l", "shin_l", "foot_l"),
+                            flexionDeg(*h.bodyQueue().plan, h, "thigh_l", "shin_l", "foot_l"), h.supported() ? 1 : 0);
         }
     }
     std::printf("TEMP jump: crouch %.1f cm (knee max %.0f deg), peak %+.1f cm above standing, feet up %.3f m, up speed %.2f m/s, "

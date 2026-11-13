@@ -212,9 +212,6 @@ void Human::loadLocomotion(const core::Config& c) {
         j.landTime = c.getFloat("jump.landTime", j.landTime);
         j.recoverTime = c.getFloat("jump.recoverTime", j.recoverTime);
         j.maxFlight = c.getFloat("jump.maxFlight", j.maxFlight);
-        j.hipsMaxSpeed = c.getFloat("jump.hipsMaxSpeed", j.hipsMaxSpeed);
-        j.hipsMaxAccel = c.getFloat("jump.hipsMaxAccel", j.hipsMaxAccel);
-        j.kneeMax = math::radians(c.getFloat("jump.kneeMaxDeg", math::degrees(j.kneeMax)));
     }
     baseStep_ = stepSettings_;
     speedScale_ = 1.0f;
@@ -856,19 +853,12 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             const math::Vec3 l(physicsModels_[static_cast<size_t>(joints_.legL.end)][3]);
             const math::Vec3 r(physicsModels_[static_cast<size_t>(joints_.legR.end)][3]);
             if (std::min(l.y, r.y) <= ground + 0.02f) {
-                const math::Vec3 spots[2] = {math::Vec3(l.x, ground, l.z), math::Vec3(r.x, ground, r.z)};
                 jumpPlanner_.touchdown();
-                stepper_.place(motion::Foot::Left, spots[0]);
-                stepper_.place(motion::Foot::Right, spots[1]);
             }
         }
         jumpPlanner_.tick(dt, jumpPlan_, t);
         handPath_.on = footPath_.on = false;
-        jumpDeciderSettings_ = deciderSettings_;  // the walk's, with the jump's hips bounds
-        jumpDeciderSettings_.hipsMaxSpeed = jumpPlan_.hipsMaxSpeed;
-        jumpDeciderSettings_.hipsMaxAccel = jumpPlan_.hipsMaxAccel;
-        jumpDeciderSettings_.twoLegKneeMax = jumpPlan_.kneeMax;
-        decider_.decide(t, jumpDeciderSettings_, queue_);
+        decider_.decide(t, deciderSettings_, queue_);  // the decider as for everything else
         return queue_.plan;
     }
     if (stepPlanner_.running()) {

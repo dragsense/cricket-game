@@ -77,12 +77,6 @@
     "landDrop": 0.15,      // m, the hips sink as the landing absorbs (peak knee 58-102 deg, Heebner 2017) [E]
     "landTime": 0.22,      // s, touchdown to the lowest (time to peak knee flexion 0.18-0.26 s, Heebner 2017)
     "recoverTime": 0.5,    // s, back up to standing [E]
-    "maxFlight": 1.2,      // s, at most in the air before the landing starts anyway
-    // The plan's hips bounds while jumping (take-off ~2.7 m/s; the walk keeps decider.hipsMax*).
-    "hipsMaxSpeed": 3.2,
-    "hipsMaxAccel": 15.0,
-    // The deepest grounded knee while jumping (the walk and reach keep decider.twoLegKneeMaxDeg 90):
-    // a jump's bottom knee ~100 deg flexion (included 81 +- 16, McErlain-Naylor 2014), deeper in a deep crouch.
-    "kneeMaxDeg": 110
+    "maxFlight": 1.2       // s, at most in the air before the landing starts anyway
   }
 }
