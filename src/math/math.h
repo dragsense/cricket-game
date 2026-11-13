@@ -162,6 +162,9 @@ inline Mat4 trs(Vec3 t, Quat r, Vec3 s) {
 
 inline const float* data(const Mat4& m) { return glm::value_ptr(m); }
 
+// Minimum-jerk share of a move at time share u in [0, 1] (Flash & Hogan 1985).
+inline float minimumJerk(float u) { return u * u * u * (10.0f + u * (6.0f * u - 15.0f)); }
+
 } // namespace math
 
 #include "math/transform.h"

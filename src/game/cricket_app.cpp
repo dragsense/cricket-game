@@ -367,6 +367,7 @@ bool CricketApp::pumpEvents() {
     // walking); the body follows the feet. The heading only turns the player.
     controlled.setFacing(true, heading_);
     controlled.setStepInput(move);
+    controlled.setJumpInput(actions_.down(input_, core::Action::Jump));
     if (actions_.pressed(input_, core::Action::WalkFaster)) controlled.changeWalkSpeed(1);
     if (actions_.pressed(input_, core::Action::WalkSlower)) controlled.changeWalkSpeed(-1);
 

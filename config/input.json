@@ -20,14 +20,14 @@
     // V: free view; the camera can be moved to any angle while the player keeps
     // their heading. V again: the player turns with the camera again.
     "FreeView": ["V"],
-    // Space: the fielder reaches for the ball at once (grip, carry back) with
-    // the hand on the ball's side; Alt+Space steps toward it first. R abandons
+    // P: the fielder reaches for the ball at once (grip, carry back) with
+    // the hand on the ball's side; Alt+P steps toward it first. R abandons
     // the pick.
     "ClearReach": ["R"],
-    "Pick": ["Space"],
+    "Pick": ["P"],
     "PickStep": ["LeftAlt", "RightAlt"],
     // T: releases the ball from the batting position toward the fielder
-    // (config/ball_launch.json "toFielder"); walk to it and press Space.
+    // (config/ball_launch.json "toFielder"); walk to it and press P.
     "ThrowBall": ["T"],
     // C: the ball goes straight into the fielder's hand, ready to throw.
     "GiveBall": ["C"],
@@ -42,6 +42,9 @@
     // E / Q: walk faster / slower (locomotion.json "step.speedStep"; from the next step).
     "WalkFaster": ["E"],
     "WalkSlower": ["Q"],
+    // Space: held, the player crouches (arms back); let go, he jumps straight
+    // up (locomotion.json "jump": the hips target down, then pushed up).
+    "Jump": ["Space"],
     "RandomBowl": ["U"],
     "SlowMotion": ["I"],
     // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,

@@ -28,6 +28,7 @@ constexpr const char* kActionNames[] = {
     "ToggleOverlay", "ToggleDebugDraw", "ReloadConfig", "Quit",
     "StepForward", "StepBack", "StepLeft", "StepRight",
     "WalkFaster", "WalkSlower",
+    "Jump",
     "ModShift", "ModCtrl",
     "ToggleMouseLook",
     "FreeView",
@@ -95,12 +96,13 @@ ActionMap::ActionMap() {
     bind(Action::StepRight, Key::D);
     bind(Action::WalkFaster, Key::E);
     bind(Action::WalkSlower, Key::Q);
+    bind(Action::Jump, Key::Space);
     bind(Action::ModShift, Key::LeftShift, Key::RightShift);
     bind(Action::ModCtrl, Key::LeftCtrl, Key::RightCtrl);
     bind(Action::ToggleMouseLook, Key::Tab);
     bind(Action::FreeView, Key::V);
     bind(Action::ClearReach, Key::R);
-    bind(Action::Pick, Key::Space);
+    bind(Action::Pick, Key::P);
     bind(Action::PickStep, Key::LeftAlt, Key::RightAlt);
     bind(Action::ThrowBall, Key::T);
     bind(Action::GiveBall, Key::C);

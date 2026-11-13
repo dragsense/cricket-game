@@ -13,6 +13,7 @@
 #include "ik/limb_ik.h"
 #include "math/math.h"
 #include "motion/foot_stepper.h"
+#include "motion/jump_planner.h"
 #include "motion/step_planner.h"
 #include "motion/target_set.h"
 #include "motion/body_decider.h"
@@ -195,6 +196,11 @@ public:
     // zero for none): each step swings one foot (locomotion.json "step") and
     // the body follows from the stance solve. Held, the steps go on.
     void setStepInput(math::Vec2 dir) { stepInput_ = dir; }
+    // The jump key (Space), held: the body crouches; let go: it jumps
+    // straight up (the physics body, standing; locomotion.json "jump").
+    void setJumpInput(bool held);
+    bool jumping() const { return jumpPlanner_.running(); }
+    motion::JumpPlanner::Phase jumpPhase() const { return jumpPlanner_.phase(); }
     // Walking pace: +1 faster, -1 slower (locomotion.json "step.speedStep");
     // the next step takes it.
     void changeWalkSpeed(int direction);
@@ -579,6 +585,13 @@ private:
     // decider does the body.
     motion::StepPlanner stepPlanner_;
     motion::StepPlannerSettings stepPlan_;
+    // A standing jump with the physics body (JumpPlanner); the decider's
+    // bounds while it runs.
+    motion::JumpPlanner jumpPlanner_;
+    motion::JumpPlannerSettings jumpPlan_;
+    motion::BodyDeciderSettings jumpDeciderSettings_;
+    bool jumpHeld_ = false;
+    bool holdOff_ = false;  // the hold's joint off for the jump's push and flight
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1
     float headYaw_ = 0.0f;   // smoothed head turn ahead of the body, radians

@@ -61,6 +61,7 @@ cricket_warnings(cricket_ik)
 add_library(cricket_motion STATIC
     src/motion/body_decider.cpp
     src/motion/foot_stepper.cpp
+    src/motion/jump_planner.cpp
     src/motion/reach.cpp
     src/motion/step_planner.cpp
     src/motion/throw_arc.cpp

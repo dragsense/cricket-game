@@ -10,8 +10,6 @@ namespace motion {
 namespace {
 constexpr float kReaim = 0.95f;  // swing share after which the spot stays
 constexpr float kMinDuration = 0.05f;
-
-float minimumJerk(float u) { return u * u * u * (10.0f + u * (6.0f * u - 15.0f)); }  // Flash & Hogan 1985
 } // namespace
 
 void StepPlanner::start(int foot, math::Vec3 from, math::Vec3 spot, math::Vec3 normal) {
@@ -27,7 +25,7 @@ void StepPlanner::start(int foot, math::Vec3 from, math::Vec3 spot, math::Vec3 n
 float StepPlanner::along(float time, const StepPlannerSettings& s) const {
     const float duration = std::max(s.duration, kMinDuration);
     const float lift = std::clamp(s.liftAt, 0.0f, 0.9f);
-    return minimumJerk(std::clamp((time / duration - lift) / (1.0f - lift), 0.0f, 1.0f));
+    return math::minimumJerk(std::clamp((time / duration - lift) / (1.0f - lift), 0.0f, 1.0f));
 }
 
 void StepPlanner::retarget(math::Vec3 spot) {
@@ -82,7 +80,7 @@ bool StepPlanner::tick(float dt, const StepPlannerSettings& s, TargetSet& t) {
     time_ = std::min(duration, time_ + dt);
     share_ = time_ / duration;
     const float u = std::clamp((share_ - lift) / (1.0f - lift), 0.0f, 1.0f);
-    lastAlong_ = minimumJerk(u);
+    lastAlong_ = math::minimumJerk(u);
     phase_ = share_ < lift ? Phase::Start : Phase::Up;
     math::Vec3 goal = math::lerp(from_, aim_, lastAlong_);
     goal += normal_ * (s.height * swingArc(u, s.peakAt));

@@ -63,5 +63,23 @@
     "speedStep": 1.2,
     "speedMin": 0.5,
     "speedMax": 2.5          // top pace ~1.67 m/s: 0.63 m steps in 0.38 s
+  },
+  // The standing jump (Space held: crouch; let go: jump; motion::JumpPlanner,
+  // BIOMECHANICS 6): only the hips target is active (the user's design), the
+  // rest follows by its passive share. Down, then pushed up past standing
+  // (the capsule's hold carries the hips with it), free in the air, then
+  // a sink on landing.
+  "jump": {
+    "crouchDrop": 0.3,     // m, the hips below standing at the bottom (COM drop 0.36 m, McHugh 2024; the decider's 90 deg knee bound limits it)
+    "crouchTime": 0.7,     // s, standing to the bottom (countermovement 0.70 s, McHugh 2024)
+    "pushTime": 0.3,       // s, the bottom to take-off (propulsion 0.30 s, McHugh 2024)
+    "pushLift": 0.1,       // m, the hips above standing at take-off (heels high: ankle 137 deg, McErlain-Naylor 2014) [E]
+    "landDrop": 0.15,      // m, the hips sink as the landing absorbs (peak knee 58-102 deg, Heebner 2017) [E]
+    "landTime": 0.22,      // s, touchdown to the lowest (time to peak knee flexion 0.18-0.26 s, Heebner 2017)
+    "recoverTime": 0.5,    // s, back up to standing [E]
+    "maxFlight": 1.2,      // s, at most in the air before the landing starts anyway
+    // The plan's hips bounds while jumping (take-off ~2.7 m/s; the walk keeps decider.hipsMax*).
+    "hipsMaxSpeed": 3.2,
+    "hipsMaxAccel": 15.0
   }
 }

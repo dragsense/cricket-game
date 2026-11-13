@@ -237,6 +237,19 @@ void Human::loadLocomotion(const core::Config& c) {
     speedStep_ = c.getFloat("step.speedStep", speedStep_);
     speedMin_ = c.getFloat("step.speedMin", speedMin_);
     speedMax_ = c.getFloat("step.speedMax", speedMax_);
+    {
+        motion::JumpPlannerSettings& j = jumpPlan_;
+        j.crouchDrop = c.getFloat("jump.crouchDrop", j.crouchDrop);
+        j.crouchTime = c.getFloat("jump.crouchTime", j.crouchTime);
+        j.pushTime = c.getFloat("jump.pushTime", j.pushTime);
+        j.pushLift = c.getFloat("jump.pushLift", j.pushLift);
+        j.landDrop = c.getFloat("jump.landDrop", j.landDrop);
+        j.landTime = c.getFloat("jump.landTime", j.landTime);
+        j.recoverTime = c.getFloat("jump.recoverTime", j.recoverTime);
+        j.maxFlight = c.getFloat("jump.maxFlight", j.maxFlight);
+        j.hipsMaxSpeed = c.getFloat("jump.hipsMaxSpeed", j.hipsMaxSpeed);
+        j.hipsMaxAccel = c.getFloat("jump.hipsMaxAccel", j.hipsMaxAccel);
+    }
     baseStep_ = stepSettings_;
     speedScale_ = 1.0f;
 }
@@ -533,6 +546,7 @@ void Human::walk(float dt) {
             // where it lands, re-aimed every tick as the input turns); the
             // step planner places the foot's target over time (limbTestPlan).
             const bool input = math::length2(stepInput_) > 1e-6f;
+            if (jumpPlanner_.running()) return;  // no steps while jumping
             if (!stepPlanner_.running()) {
                 // The pace (E / Q) applies from a step's start.
                 const float k = std::sqrt(speedScale_);
@@ -1000,6 +1014,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
     physicsModels_.resize(static_cast<size_t>(rig_.numJoints()));
     physicsPose_ = rig_.restPose();
     stepPlanner_ = motion::StepPlanner{};
+    jumpPlanner_ = motion::JumpPlanner{};
     strength_ = appliedStrength_ = 1.0f;
     pelvisError_ = PelvisError::Small;
     pelvisErrorNow_ = pelvisErrorTime_ = 0.0f;
@@ -1057,6 +1072,17 @@ bool Human::capsuleDebug(math::Vec3& feet, float& height, float& radius, math::V
     return true;
 }
 
+void Human::setJumpInput(bool held) {
+    // Held: the crouch starts (standing, the physics body, no step under
+    // way); let go: the push.
+    if (held && !jumpHeld_ && !jumpPlanner_.running() && !stepPlanner_.running() && physics_ && humanBody_.ready() &&
+        (phase_ == Phase::Idle || phase_ == Phase::Pose)) {
+        jumpPlanner_.start(restPelvisHeight_);
+    }
+    if (!held && jumpHeld_) jumpPlanner_.release();
+    jumpHeld_ = held;
+}
+
 const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     // The physics body now (character space): only where a hand's or foot's
     // path starts; the decider never reads it (its plan carries on).
@@ -1098,6 +1124,30 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
                                reachLeft_ ? joints_.armL.end : joints_.armR.end);
     } else {
         handPath_.on = false;
+    }
+    if (jumpPlanner_.running()) {
+        // The jump: the planner gives the hips only (the active target);
+        // the feet stay pinned as always, the rest follows by its passive
+        // share. In the air it waits for the real feet to reach the ground;
+        // they are pinned where they came down.
+        if (jumpPlanner_.airborne() && jumpPlanner_.phaseTime() > 0.1f) {
+            const float ground = liftedAnkleMin_ - toeClearance_;
+            const math::Vec3 l(physicsModels_[static_cast<size_t>(joints_.legL.end)][3]);
+            const math::Vec3 r(physicsModels_[static_cast<size_t>(joints_.legR.end)][3]);
+            if (std::min(l.y, r.y) <= ground + 0.02f) {
+                const math::Vec3 spots[2] = {math::Vec3(l.x, ground, l.z), math::Vec3(r.x, ground, r.z)};
+                jumpPlanner_.touchdown();
+                stepper_.place(motion::Foot::Left, spots[0]);
+                stepper_.place(motion::Foot::Right, spots[1]);
+            }
+        }
+        jumpPlanner_.tick(dt, jumpPlan_, t);
+        handPath_.on = footPath_.on = false;
+        jumpDeciderSettings_ = deciderSettings_;  // the walk's, with the jump's hips bounds
+        jumpDeciderSettings_.hipsMaxSpeed = jumpPlan_.hipsMaxSpeed;
+        jumpDeciderSettings_.hipsMaxAccel = jumpPlan_.hipsMaxAccel;
+        decider_.decide(t, jumpDeciderSettings_, queue_);
+        return queue_.plan;
     }
     if (stepPlanner_.running()) {
         // The step: the planner places the stepping foot (Start, Up, Land);
@@ -1160,7 +1210,10 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
         // never taller than the player): pulled higher, the hold would lift
         // the feet off the ground.
         math::Transform planned = humanBody_.partPose(0, target);
-        planned.position.y -= std::max(0.0f, pelvisY - restPelvisHeight_);
+        // The jump's push: the hold carries the hips with the plan's, past standing too.
+        const bool pushing = jumpPlanner_.phase() == motion::JumpPlanner::Phase::Push;
+        if (pushing) planned.position.y += bodyTargets_.hips.position.y - pelvisY;  // the jump's own hips target
+        else planned.position.y -= std::max(0.0f, pelvisY - restPelvisHeight_);
         const math::Transform pelvis = root_ * planned;  // world
         const math::Quat turn = root_.rotation;
         world.moveKinematic(anchor_, math::Transform{pelvis.position, turn}, dt);
@@ -1170,7 +1223,15 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
         // body is ballistic then).
         if (supportShare_ < 1.0f) supportShare_ = std::min(1.0f, supportShare_ + dt / std::max(c.recoverTime, 1e-3f));
         const float onFeet = std::min(1.0f, queue_.supportWeight[0] + queue_.supportWeight[1]);
-        const float k = supportShare_ * strength_ * onFeet;
+        // The jump's flight: the hold's joint is off (its down limit too),
+        // the body flies on the speed the push gave it; the hold eases back
+        // in from the landing.
+        if (jumpPlanner_.airborne() != holdOff_) {
+            holdOff_ = jumpPlanner_.airborne();
+            world.setJointEnabled(support_, !holdOff_);
+            if (!holdOff_) supportShare_ = 0.0f;
+        }
+        const float k = supportShare_ * strength_ * (pushing ? 1.0f : onFeet);
         world.setSupportLimits(support_, c.supportMaxForce * k, c.supportMaxTorque * k);
         // The real pelvis off the hold's target (level): small is nothing;
         // past medium for a while the planner is asked for a recovery step
@@ -1233,9 +1294,11 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     rig_.modelToLocal(physicsModels_, physicsPose_);
     decider_.seed(physicsPose_);
     stepPlanner_ = motion::StepPlanner{};
+    jumpPlanner_ = motion::JumpPlanner{};
     supportShare_ = 0.0f;
     world.setSupportLimits(support_, 0.0f, 0.0f);
     world.setJointEnabled(support_, true);
+    holdOff_ = false;
     supportOn_ = true;
     armed_ = false;
     restTime_ = 0.0f;
@@ -1727,6 +1790,7 @@ void Human::resetPhysicsBody() {
     humanBody_.reset(*physics_, models_, root_);
     physics_->resetBody(anchor_, math::Transform{(root_ * humanBody_.partPose(0, models_)).position, root_.rotation});
     physics_->setJointEnabled(support_, true);
+    holdOff_ = false;
     supportOn_ = armed_ = true;
     supportShare_ = 1.0f;
     restTime_ = 0.0f;
@@ -1734,6 +1798,7 @@ void Human::resetPhysicsBody() {
     pelvisError_ = PelvisError::Small;
     pelvisErrorNow_ = pelvisErrorTime_ = 0.0f;
     stepPlanner_ = motion::StepPlanner{};
+    jumpPlanner_ = motion::JumpPlanner{};
     decider_.seed(current_);  // the plan starts over from the standing pose
     const physics::CharacterSettings& c = physics_->settings().character;
     physics_->setSupportLimits(support_, c.supportMaxForce, c.supportMaxTorque);
