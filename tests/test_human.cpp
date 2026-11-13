@@ -535,12 +535,12 @@ TEST_CASE("TEMP jump" * doctest::skip()) {
     std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
     REQUIRE(h.physicalModels(world, 1.0f, real));
     const float standY = h.root().transformPoint(math::Vec3(real[0][3])).y;
-    float lowY = 9, highY = -9, ankleHigh = -9, vUp = 0, lastY = standY, chestMax = 0, kneeMax = 0;
+    float lowY = 9, highY = -9, ankleHigh = -9, vUp = 0, lastY = standY, chestMax = 0, kneeMax = 0, landKnee = 0;
     math::Vec3 hist[7];
     float accel = 0, accelPhase[5] = {0, 0, 0, 0, 0};
     int n = 0;
     for (int i = 0; i < 360; ++i) {
-        h.setJumpInput(i < 120);
+        h.setJumpInput(i < (std::getenv("CRICKET_PRESS") ? std::atoi(std::getenv("CRICKET_PRESS")) : 120));
         h.tick(kDt);
         world.step(kDt);
         if (!h.physicalModels(world, 1.0f, real)) continue;
@@ -552,6 +552,7 @@ TEST_CASE("TEMP jump" * doctest::skip()) {
         vUp = std::max(vUp, (y - lastY) / kDt);
         lastY = y;
         kneeMax = std::max(kneeMax, flexionDeg(real, h, "thigh_l", "shin_l", "foot_l"));
+        if (static_cast<int>(h.jumpPhase()) == 4) landKnee = std::max(landKnee, flexionDeg(real, h, "thigh_l", "shin_l", "foot_l"));
         const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(h.rig().findJoint("chest"))][1]));
         chestMax = std::max(chestMax, math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f))));
         for (int k = 6; k > 0; --k) hist[k] = hist[k - 1];
@@ -569,6 +570,7 @@ TEST_CASE("TEMP jump" * doctest::skip()) {
                             flexionDeg(*h.bodyQueue().plan, h, "thigh_l", "shin_l", "foot_l"), h.supported() ? 1 : 0);
         }
     }
+    std::printf("TEMP landing knee max %.0f deg\n", landKnee);
     std::printf("TEMP jump: crouch %.1f cm (knee max %.0f deg), peak %+.1f cm above standing, feet up %.3f m, up speed %.2f m/s, "
                 "chest lean max %.0f deg | pelvis accel max (not flight) %.1f m/s^2; by phase none %.1f crouch %.1f push %.1f "
                 "flight %.1f land %.1f\n",

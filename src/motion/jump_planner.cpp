@@ -56,7 +56,10 @@ bool JumpPlanner::tick(float dt, const JumpPlannerSettings& s, TargetSet& t) {
     case Phase::Land: {
         const float down = math::minimumJerk(share(time_, s.landTime));
         const float up = math::minimumJerk(share(time_ - s.landTime, s.recoverTime));
-        y = standing_ - s.landDrop * down * (1.0f - up);
+        // As deep as the jump was big: a small hop lands with a small give
+        // (the crouch's share of its full depth).
+        const float size = std::clamp(bottom_ / std::max(s.crouchDrop, 0.01f), 0.0f, 1.0f);
+        y = standing_ - s.landDrop * size * down * (1.0f - up);
         if (time_ >= s.landTime + s.recoverTime) phase_ = Phase::None;
         break;
     }
