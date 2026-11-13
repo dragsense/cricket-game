@@ -689,6 +689,20 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
       before, each could give the full strength. Cases unchanged; a weak (8 N m) shoulder
       flexor now lets the straight arm sink 35.5 cm, as it should.
     - **Next:** the jump plan (BIOMECHANICS 6), the whole chain first.
+  - [~] **K. Standing jump on the physics body** (2026-11-14, the user's design; DECISIONS
+    2026-11-14; the user's game check pending): Space held crouches, let go jumps
+    (Pick moved to P). `motion::JumpPlanner` drives only the hips target (down 0.3 m in
+    0.7 s, pushed up 0.1 m past standing in 0.3 s, faster and faster); the rest follows
+    by its passive share; the feet stay pinned. In the push the capsule's hold carries
+    the hips with the jump's target (past standing too); in the air its joint is off and
+    the body flies; landing (the real ankles back on the ground) pins the feet where they
+    came down and the hips sink 0.15 m and rise. The decider's hips bounds while jumping:
+    3.2 m/s, 15 m/s^2 (`locomotion.json` "jump").
+    - Measured: pelvis 29 cm above standing, feet ~29 cm off the ground, chest lean at
+      most 16 deg, no fall, standing again by 3 s. Walking unchanged; all tests pass.
+    - **Open:** the body drifts forward in the air, the feet land ~26 cm behind the hips
+      and a small recovery step follows; legs alone (hold off in the push) only reached
+      1.0 m/s (the stance legs' muscles carry only the hanging parts' weight).
 
 ## Previous milestone: M5 Bowling — Arm Action — in progress (branch milestone-5)
 

@@ -661,3 +661,16 @@ Dated log. Format: decision, reason, alternatives rejected.
   twice it. Measured: stepping, reach and limb cases unchanged (they never come near a
   limit). Arm held straight ahead: 0.1 cm below the plan; with an 8 N m shoulder flexor
   35.5 cm (the old hold's own 120 N m limit carried it).
+
+## 2026-11-14: Standing jump: the hips target alone
+- **Decision (the user's design):** the jump is one active target, the hips: down, then
+  pushed up past standing; every other part follows by its passive share (no hand or
+  foot targets). In the push the capsule's hold carries the hips with the jump's hips
+  target (not the decider's plan, which stops at the legs' reach); in the air the
+  hold's joint is off (its down limit held the body up otherwise) and the body flies
+  on the speed it has; it eases back in from the landing.
+- **Why:** measured: with the hold off in the push (the legs alone) the body rose at
+  1.0 m/s and never left the ground: the stance legs' muscles are only as stiff and
+  hold only as much as the parts hanging below each joint, not the body above.
+- **Rejected:** hand and foot targets (arm swing, tuck, feet under the body in the air):
+  the user's call, simple first.
