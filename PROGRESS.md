@@ -64,7 +64,12 @@ hand through the reach stages (reverse IK). Old `startBowl` kept (unused).
   landing absorb and recovery. WASD on release jumps forward / left / back / right
   (camera-relative; none: straight up). Standing only; picking waits. Tunables:
   `locomotion.json` "jump". Next: jumps from walk, jog and run (one-foot take-off,
-  speed carried).
+  speed carried). (That controller was removed on 2026-11-09 with the physics body.)
+  **2026-11-13:** jump research refreshed for the physics body (BIOMECHANICS 6: standing
+  CMJ timings, poses, joint torques, arm swing; one-foot running take-off; landing; our
+  strength, decider bounds and capsule hold against them). Next: the user's decisions
+  (legs push vs. hold carries, per-direction strength), then one plan for the whole
+  chain, then code.
 
 - [ ] **6.3 Body from the feet** (2026-11-02, the user's call: fix the basics first;
   awaiting the user's visual check). Simplified to three formulas after several layered

@@ -516,67 +516,170 @@ A check against the literature found the approach right but several details off.
 
 ---
 
-## 6. Jumping
+## 6. Jumping (refreshed 2026-11-13)
 
-- **Phases (counter-movement jump, CMJ):**
-  1. Unweighting: triple flexion, where the body starts to drop.
+### 6.1 Standing jump (two feet, counter-movement jump, CMJ)
+- **Phases:**
+  1. Unweighting: hip, knee and ankle flex together; the body briefly falls on gravity.
+     The ground force drops to **43 ± 24 %** of body weight (shallow crouch 58 %).
   2. Braking: the downward motion is stopped at the bottom of the crouch.
-  3. Propulsion: triple extension.
+  3. Propulsion: triple extension, from the low point to take-off.
   4. Flight.
-  5. Landing.
+  5. Landing (section 6.3).
 
-  ([Sport SPA](https://sportspa.ftos.untz.ba/index.php/sportspa/article/download/195/182/181);
-  [PMC11208864](https://pmc.ncbi.nlm.nih.gov/articles/PMC11208864)) **[P]**
-- **Sequencing:** extension proceeds **proximal → distal** (the hip first, then the knee,
-  then the ankle). Better jumpers show cleaner sequencing
-  ([MDPI 2025](https://www.mdpi.com/2673-7078/5/4/95);
-  [Int J Sports Med 2019](https://thieme-connect.de/products/ejournals/html/10.1055/a-0970-9104)) **[P]**.
-  An arm swing slows hip extension, which strengthens the sequence and raises the jump
-  height ([Sci Rep 2024](https://doaj.org/article/c00920ab1ec848139765528f00b94ab4)) **[P]**.
-- **Crouch depth:** the self-selected crouch is typically about 70–90° of knee flexion
-  **[T]**. Simply instructing a *deeper* crouch did **not** raise jump height
+  ([McHugh et al. 2024, PMC11208864](https://pmc.ncbi.nlm.nih.gov/articles/PMC11208864);
+  [Sport SPA](https://sportspa.ftos.untz.ba/index.php/sportspa/article/download/195/182/181);
+  [McMahon 2018, NSCA SCJ](https://journals.lww.com/nsca-scj/fulltext/2018/08000/understanding_the_key_phases_of_the.10.aspx)) **[P]**
+- **Timing and depth** (McHugh 2024: 83.5 kg, 1.81 m men; shallow / self-selected / deep) **[P]**:
+
+  | | Shallow | Self-selected | Deep |
+  |---|---|---|---|
+  | COM drop (m) | 0.27 | **0.36** | 0.47 |
+  | Countermovement (s) | 0.77 | **0.70** | 0.95 |
+  | Propulsion (s) | 0.27 | **0.30** | 0.43 |
+  | Jump height (m) | 0.345 | **0.373** | 0.378 |
+  | Peak propulsive force (× BW) | 2.46 | **2.24** | 2.25 |
+
+  A deeper crouch does **not** raise the jump: it costs 36–42 % more time. A shallow one
+  loses a little height (less unweighting). This matches the earlier finding that
+  instructing a deeper crouch did not help
   ([UPO study](https://investiga.upo.es/documentos/5eb2893929995203e2410887?lang=en)) **[P]**.
-- **Heights:**
-  - The counter-movement adds about 24 % over a squat jump, from the stretch–shortening
-    effect ([Niš, FU Phys Ed](https://casopisi.junis.ni.ac.rs/index.php/FUPhysEdSport/article/view/1572)).
-  - Elite basketball players reach a CMJ of about 48 cm; a two-step approach jump
-    reaches about 53 cm, about 12 % higher
-    ([BISp](https://www.bisp-surf.de/Record/PU201304002431)) **[P]**.
-  - Fit non-specialists reach about 35–45 cm **[E]**.
-- **Flight time** from height h: t = 2√(2h/g). A 0.45 m jump gives about 0.61 s in the
-  air.
-- **Landing:**
-  - The toes touch first, then the heels.
-  - The hip, knee and ankle flex together to absorb the impact over about 0.1–0.3 s.
-  - Peak vertical force is about 2–5 × body weight for drops of 30–100 cm
-    ([PMC6364912](https://pmc.ncbi.nlm.nih.gov/articles/PMC6364912)) **[P]**.
-  - More hip and knee flexion means lower peak force
-    ([gymnastics landing study](https://lida.sport-iat.de/ta/Record/4035347?lng=en)) **[P]**.
-  - Peak knee flexion of about 90° is the conventional boundary between "stiff" (less)
-    and "soft" (more) landings (DeVita & Skelly 1992, cited by
-    [Konstanz ISBS](https://ojs.ub.uni-konstanz.de/cpa/article/view/1011/924)) **[P]**.
-- **Running jump:** the run-up adds horizontal speed, and on a one-leg take-off the
-  final (penultimate) step lowers the CoM. The plant leg then converts horizontal speed
-  into vertical speed **[T]**. Search results did not give numbers for the penultimate
-  lowering; to research in M3 if needed.
-- **Legs in the air:** the legs tuck (the hips and knees flex) near the apex, then
-  extend before touchdown to meet the ground **[T]**.
+- **Pose at the bottom** (included joint angles, 180° = straight; McErlain-Naylor, King
+  & Pain 2014) **[P]**: knee 81 ± 16° (about 100° flexion), hip 75 ± 15°, ankle
+  84 ± 9°, shoulder −67 ± 26° (arms back). The earlier self-selected range of 70–90°
+  knee flexion is **[T]**.
+- **Pose at take-off** (same study) **[P]**: knee 174°, hip 172°, ankle 137° (heels
+  high), shoulder flexion 103 ± 37° (arms up). Greater shoulder flexion and ankle
+  plantarflexion at take-off went with higher jumps.
+- **Sequencing:**
+  - Extension runs **proximal → distal** (hip, then knee, then ankle); better jumpers
+    show cleaner sequencing ([MDPI 2025](https://www.mdpi.com/2673-7078/5/4/95);
+    [Int J Sports Med 2019](https://thieme-connect.de/products/ejournals/html/10.1055/a-0970-9104)) **[P]**.
+  - Measured (McHugh 2024, self-selected) **[P]**: the hip and knee peak moments come
+    almost together (knee 27 ± 47 ms after the hip). The ankle peak moment comes
+    135 ± 55 ms after the knee. Peak knee power comes 239 ms after the low point and peak
+    ankle power 251 ms after it, just before take-off (propulsion 301 ms).
+- **Joint moments and powers needed** (peak, per leg, per kg of body mass) **[P]**:
 
-### Implementation notes (`config/jump.json`)
-- Phase durations:
-  - `crouch_s` about 0.25–0.35, `crouch_knee_deg` about 80;
-  - `push_s` about 0.20–0.25;
-  - `land_absorb_s` about 0.20, `land_knee_deg` about 60 (soft, but under 90);
-  - `recover_s` about 0.3.
-- `jump_height_m` 0.45 by default. The take-off velocity is v₀ = √(2gh); the airborne
-  pelvis follows the ballistic arc exactly, and the IK only *places* the limbs.
-- Push-off sequencing: stagger the hip, knee and ankle extension by `push_stagger_s`
-  (about 30–50 ms each).
-- Arm swing: down and back during the crouch, forcefully up during the push.
-- Tuck: `tuck_knee_deg` about 60 at the apex, reduced back toward straight about 0.1 s
-  before predicted touchdown.
-- Running jump: `approach_gain` about 1.12 × the standing height, and the penultimate
-  step lowers the pelvis by `penultimate_drop_m` (an estimated 0.05–0.08).
+  | Joint | Moment (N m/kg) | Power (W/kg) | Source |
+  |---|---|---|---|
+  | Hip | 3.80 ± 0.86 / 2.20 ± 0.44 | 11.2 / 9.8 | McHugh 2024 / McErlain-Naylor 2014 |
+  | Knee | 3.44 ± 0.44 / 3.31 ± 0.62 | 24.2 / 22.0 | same |
+  | Ankle | 2.39 ± 0.32 / 2.79 ± 0.40 | ~16–19 / 18.0 | same |
+
+  The share of the positive work differs between studies: knee 49 % (Hubley & Wells
+  1983), hip 51 % (Fukashiro & Komi 1987), hip 42 % and knee 30 % (Vanezis & Lees 2005),
+  as cited by McErlain-Naylor 2014. A one-leg CMJ also needs hip abduction torque
+  ([Biology Open, bio.062434](https://journals.biologists.com/bio/article/15/4/bio062434/371549)) **[P]**.
+- **Arm swing:**
+  - It raises the jump by **12–38 %** across studies (Feltner 1999, Hara 2008, Lees 2004,
+    Mosier 2017/2019, Vanrenterghem 2008; summary in
+    [PAAH, paah.263](https://paahjournal.com/articles/10.5334/paah.263)). In that study
+    it added 18.9 %: the peak force was the same, but the push lasted longer (more
+    impulse) **[P]**.
+  - Lees et al. 2004: +8.6 cm, of which 72 % comes from a higher take-off velocity and
+    28 % from a higher COM at take-off (arms up). Cheng 2008 (simulation): about 2/3
+    velocity and 1/3 height ([PubMed 18514208](https://pubmed.ncbi.nlm.nih.gov/18514208/)) **[P]**.
+  - The arms go down and back during the crouch and swing forward and up hard during the
+    push. Swinging the arms slows hip extension, which strengthens the sequence
+    ([Sci Rep 2024](https://doaj.org/article/c00920ab1ec848139765528f00b94ab4)) **[P]**.
+- **Heights:**
+  - The counter-movement adds about 24 % over a squat jump
+    ([Niš, FU Phys Ed](https://casopisi.junis.ni.ac.rs/index.php/FUPhysEdSport/article/view/1572)) **[P]**.
+  - Elite basketball players reach about 48 cm in a CMJ and about 53 cm (+12 %) with a
+    two-step approach ([BISp](https://www.bisp-surf.de/Record/PU201304002431)) **[P]**.
+  - Fit non-specialists reach about 35–45 cm **[E]**; McHugh's subjects reached 37 cm
+    **[P]**.
+- **Take-off velocity and flight:** v₀ = √(2gh). For 0.37 m that is about 2.7 m/s, and
+  the flight time t = 2v₀/g is about 0.55 s (0.45 m: 3.0 m/s, 0.61 s) **[E]**.
+- **Legs in the air:** the hips and knees flex (tuck) near the apex and extend again
+  before touchdown to meet the ground **[T]**.
+
+### 6.2 Running jump (one-foot take-off)
+- **Mechanism:** the take-off leg is planted well **ahead** of the body, with the body
+  leaning back. The leg acts like a pole that turns horizontal speed into vertical
+  speed. The COM is low at touchdown and high at take-off, which makes the push longer.
+  The penultimate step lowers the COM; the last step is shorter
+  ([Dapena, ISBS](https://ojs.ub.uni-konstanz.de/cpa/article/view/1421/1283)) **[P]**.
+- **Measured take-offs** **[P]**:
+
+  | | High jump, elite (Nicholson 2024) | Basketball, 6 m run-up (Sugiyama 2014) |
+  |---|---|---|
+  | Approach speed | ~7.1 m/s (Dapena) | 7.9 m/s |
+  | Foot contact | **0.17–0.18 s** | **0.23 s** (braking 0.054 + push 0.179) |
+  | Knee at touchdown | 163–167° | up to 175° |
+  | Knee, most bent | 136–140° (only **~40–45°** flexion) | 137–139° |
+  | Hip, most bent | – | 85–87° |
+  | Ankle, most bent | – | 94–97° |
+  | COM height | 0.90 m at touchdown → 1.35 m at take-off | – |
+  | Speed through the take-off | horizontal 7.1 → 3.8–4.3 m/s; vertical −0.3 → 4.4–4.6 m/s | – |
+  | Last two steps | 2.16 m, then 1.95 m | – |
+  | Result | – | 0.72 m |
+
+  Sources: [Nicholson et al. 2024, PMC10876886](https://pmc.ncbi.nlm.nih.gov/articles/PMC10876886);
+  [Sugiyama et al. 2014, PMC4234967](https://pmc.ncbi.nlm.nih.gov/articles/PMC4234967);
+  Dapena (above).
+- Compared with the standing jump, a one-foot running jump has a **shallower** hip, knee
+  and ankle bend and a much **shorter** contact. One leg may carry up to about 3 × body
+  weight
+  ([Sportsmith](https://www.sportsmith.co/articles/using-the-approach-vertical-jump-for-athlete-monitoring-and-training/)) **[T]**.
+- **Coaching guidance, not measured:** the penultimate step is the longest of the
+  approach; in it the shin is at about 45° and the knee at about 90° of flexion
+  (Sportsmith) **[T]**.
+- **Two-foot approach (step-close or hop):** after the approach steps both feet plant,
+  then a short crouch and the push
+  ([Coutts 1982, PubMed 7070259](https://pubmed.ncbi.nlm.nih.gov/7070259/)) **[P]**.
+  It gains about 12 % over a standing CMJ (BISp, above) **[P]**.
+
+### 6.3 Landing
+- The toes touch first, then the heels (section 12).
+- Measured (Heebner et al. 2017, [PMC5763249](https://pmc.ncbi.nlm.nih.gov/articles/PMC5763249)) **[P]**:
+
+  | Task | Knee at contact | Ankle PF at contact | Peak knee | Peak hip | Time to peak knee | Peak force (× BW) |
+  |---|---|---|---|---|---|---|
+  | Two-leg drop landing | 22° | 21° | 92° | 61° | 0.23 s | 3.6 |
+  | Two-leg stop jump | 32° | 8° | 102° | 78° | 0.24 s | 1.9 |
+  | Forward jump, one-leg landing | 15° | 23° | 58° | 45° | 0.18 s | 4.4 |
+  | One-leg drop landing | 15° | 28° | 69° | 43° | 0.23 s | 4.9 |
+
+- Peak vertical force is about 2–5 × body weight for drops of 30–100 cm
+  ([PMC6364912](https://pmc.ncbi.nlm.nih.gov/articles/PMC6364912)) **[P]**. More hip and knee
+  flexion means a lower peak force
+  ([gymnastics landing study](https://lida.sport-iat.de/ta/Record/4035347?lng=en)) **[P]**.
+- About 90° of peak knee flexion is the conventional line between "stiff" (less) and
+  "soft" (more) landings (DeVita & Skelly 1992, cited by
+  [Konstanz ISBS](https://ojs.ub.uni-konstanz.de/cpa/article/view/1011/924)) **[P]**.
+
+### 6.4 Our body against these numbers (checked 2026-11-13)
+- **Strength:** `human_joints.json` `maxTorque` is shin 160, thigh 197 and foot 125 N m,
+  one value for both directions. A jump needs, per leg × 73 kg: knee about 240–285, hip
+  160–277 and ankle 153–204 N m. The knee is at about 60 % of that, so a jump would come
+  out much lower. Knee extension alone is about 205 N m (section 14); separate caps per
+  direction would match the real values better.
+- **Decider bounds:** the plan's hips are bounded to 2 m/s and 8 m/s². A jump needs a
+  take-off of about 2.7 m/s and an upward acceleration of about (2.24 − 1) g ≈ 12 m/s²
+  **[E]**.
+- **Capsule hold** (`physics_world.json` character.support: 2000 N, 4 Hz) holds the pelvis
+  to the plan. If it holds in the air, the hold does the jump, not the legs. The foot
+  locks also hold the feet down. In the air the capsule already falls on world gravity
+  (`PhysicsWorld`, character update).
+
+### Implementation notes (planned; no code yet)
+The old kinematic `JumpController` and `config/jump.json` were removed on 2026-11-09.
+The numbers to build from, all from 6.1–6.3:
+- Standing: drop the COM about 0.36 m in about 0.70 s, push for about 0.30 s, hip first,
+  knee about 30 ms later, ankle last (its peak about 50 ms before take-off). Arms back
+  to about −67° at the bottom and up to about 100° at take-off.
+- Running, one foot: plant the take-off foot ahead of the hips, the knee nearly straight
+  (163–175°) at touchdown, bending only about 40° in a 0.17–0.23 s contact. Penultimate
+  step longer than the last.
+- Two feet from steps: step-close, then a short CMJ.
+- Air: tuck near the apex, extend before touchdown.
+- Landing: toes first, knee 15–32° at contact, bending to 60–100° over about 0.2 s.
+- Open: how far the COM drops in the penultimate step (no measured value found; the
+  earlier guess was 0.05–0.08 m **[E]**); no data for jumps at walking speed
+  (0.9–2.5 m/s). The planner, the hold release, strength and the decider bounds need a
+  design decision before coding.
 
 ---
 
