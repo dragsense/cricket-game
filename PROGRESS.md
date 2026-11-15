@@ -145,9 +145,8 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   W, jog, run, limb test arrows, hand far ahead: unchanged (W bob 3.1 cm, pelvis turn 15.8
   deg; jog 180/min, run 210/min). W's widest foot slide 5.5 cm at the stop (was 3.2):
   the stopping step now ends with the hips between the feet.
-  Open: fwd 0.10 and left 0.15 take no step: the centre of mass stays inside the whole
-  foot's outline (toes 16 cm ahead of the ankle): the user's call (the usable support
-  may be smaller than the foot, limits of stability).
+  fwd 0.10 and left 0.15 take no step: the centre of mass stays inside the whole foot's
+  outline (toes 16 cm ahead of the ankle); the user: that is right (kept).
 - [ ] **B2d Sync formula, part 2: an active foot moves the hips** on its path (shift, side
   drop, turn); 3: a hand's trunk within reach by research shares, derived hips step;
   4: the head's small share; 5: clavicle bodies and muscles; 6: free arms relaxed
