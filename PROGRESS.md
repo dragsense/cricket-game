@@ -237,6 +237,11 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
     thigh then tracks with 5x strength, but the knee still bends; strength x5 alone: the
     thigh motor saturates at 1x (177 N m) but the lag is the damper (its pull is toward no
     turn, not the pose's turn) and the knee.
+  - Also the user's report (not measured yet): from a crouch (knees bent) the leg
+    straightens with a sudden jerk and the head shakes (not in normal walking). Likely the
+    same root: the soft stance knee lets the real hips sink below the plan, then the
+    pelvis hold and the knee motor at its limit snap the leg straight. Measure first: plan
+    vs real knee, the pelvis height gap and the hold's force at the jerk.
   - Next (the user's OK pending): stance-leg muscle stiffness from the load it carries so
     the physics leg is the decider's legStiffness spring; then the user's "strength by
     speed" for all muscles and leg feedforward if still needed.
