@@ -175,7 +175,9 @@ struct BodyDeciderSettings {
     // by more than stepMargin: a step, its foot landing where the XCoM will
     // be when it lands, landingBehind short of it along the motion (so the
     // body carries on), under its own hip to the side; never crossing the
-    // other foot (minFootGap) nor further from it than maxStep.
+    // other foot (minFootGap) nor further from it than a step reaches: an
+    // ellipse, maxStepForward fore-aft, maxStepSide across (the hip flexes
+    // and extends much further than it abducts, BIOMECHANICS 2).
     bool balanceStepOn = true;
     float stepMargin = 0.02f;       // m
     float footHalfWidth = 0.045f;   // m, the foot's outline: half its width
@@ -183,7 +185,10 @@ struct BodyDeciderSettings {
     float footCentreAhead = 0.05f;  // m, the foot's centre ahead of the ankle
     float landingBehind = 0.05f;    // m
     float minFootGap = 0.1f;        // m
-    float maxStep = 0.6f;           // m
+    float maxStepForward = 0.6f, maxStepSide = 0.5f;  // m
+    // A foot left behind steps too: once, by the time a step could land, its
+    // leg at its reach would hold the hips more than this below standing (m).
+    float reachDrop = 0.04f;
     // The decider's own step: its shape (locomotion.json "step": height,
     // apex, toe-off, ball of the foot; duration and liftAt without a gait),
     // its timing from the body's speed by the gait (motion::gaitTiming,

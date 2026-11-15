@@ -553,7 +553,12 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
         std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
         int lastFoot = -1, steps = 0;
         float lastPhase = 0.0f, slideAt = 0.0f;
-        Range sway, pelvisYawPlan, pelvisYawReal, chestYawReal, armPlan, armReal;
+        Range sway, pelvisYawPlan, pelvisYawReal, chestYawReal, armPlan, armReal, bobPlan, bobReal, speedReal;
+        // Pelvis height in double support (a step's weight shift) and in single support (mid-swing).
+        double hDouble = 0.0, hSingle = 0.0;
+        int nDouble = 0, nSingle = 0;
+        math::Vec3 lastHips(0.0f);
+        bool haveHips = false;
         double sumPC = 0.0, sumPP = 0.0, sumCC = 0.0;
         // A bone's turn about the vertical (deg) from its lateral axis, against
         // the same axis standing (character space: the facing stays fixed).
@@ -646,6 +651,15 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
                 };
                 armPlan.add(swing(plan));
                 armReal.add(swing(real));
+                const math::Vec3 hipsNow = h.root().transformPoint(math::Vec3(real[0][3]));
+                bobPlan.add(plan[0][3].y);
+                bobReal.add(hipsNow.y);
+                if (haveHips) speedReal.add(math::dot(hipsNow - lastHips, dir) / kDt);
+                lastHips = hipsNow;
+                haveHips = true;
+                const float share = h.stepPhase();
+                if (h.stepFoot() >= 0 && share < 0.15f) { hDouble += plan[0][3].y; ++nDouble; }
+                if (h.stepFoot() >= 0 && share > 0.5f && share < 0.7f) { hSingle += plan[0][3].y; ++nSingle; }
                 sumPC += pr * cr;
                 sumPP += pr * pr;
                 sumCC += cr * cr;
@@ -679,6 +693,10 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
                     "%+.2f\n",
                     pelvisYawPlan.span(), pelvisYawReal.span(), chestYawReal.span(), corr);
         std::printf("  left shoulder swing (peak to peak): plan %.1f deg, real %.1f deg\n", armPlan.span(), armReal.span());
+        std::printf("  pelvis bob: plan %.1f cm, real %.1f cm | plan height double support %.1f cm vs single %.1f cm "
+                    "(mean) | real speed along the way %.2f .. %.2f m/s\n",
+                    100.0f * bobPlan.span(), 100.0f * bobReal.span(), nDouble ? 100.0 * hDouble / nDouble : 0.0,
+                    nSingle ? 100.0 * hSingle / nSingle : 0.0, speedReal.lo, speedReal.hi);
     }
 }
 
@@ -764,14 +782,13 @@ TEST_CASE("measure: chest lean, W then A, by cause" * doctest::skip()) {
     struct Variant {
         const char* name;
         float hands;      // passive hands share (now 0)
-        float sideSpeed;  // walk.sideSpeed (now 0.45)
-        float maxStep = 0.9f;  // decider.balanceStep.maxStep (now 0.6)
+        float sideSpeed;  // walk.sideSpeed (now 0.35)
+        float maxStep = 0.5f;  // decider.balanceStep.maxStepSide (now 0.5)
     };
     const std::string dir = (std::filesystem::temp_directory_path() / "cricket_lean").string();
     std::filesystem::create_directories(dir);
-    for (const Variant& v : {Variant{"before (side 0.55, maxStep 0.9)", 0.0f, 0.55f}, Variant{"hands 0.5", 0.5f, 0.55f},
-                             Variant{"side 0.4", 0.0f, 0.4f},
-                             Variant{"now (maxStep 0.6, side 0.45)", 0.0f, 0.45f, 0.6f}}) {
+    for (const Variant& v : {Variant{"before (side step 0.6, side 0.45)", 0.0f, 0.45f, 0.6f},
+                             Variant{"now (side step 0.5, side 0.35)", 0.0f, 0.35f, 0.5f}}) {
         std::string joints = readText(CRICKET_CONFIG_DIR "/human_joints.json");
         std::string loco = readText(CRICKET_CONFIG_DIR "/locomotion.json");
         char buf[64];
@@ -779,9 +796,9 @@ TEST_CASE("measure: chest lean, W then A, by cause" * doctest::skip()) {
         REQUIRE(replaceOnce(joints, "\"passiveInfluence\": { \"hands\": 0.0,", std::string("\"passiveInfluence\": { ") + buf));
         REQUIRE(replaceOnce(loco, "\"passive\": { \"hands\": 0.0,", std::string("\"passive\": { ") + buf));
         std::snprintf(buf, sizeof buf, "\"sideSpeed\": %.2f,", v.sideSpeed);
-        REQUIRE(replaceOnce(loco, "\"sideSpeed\": 0.45,", buf));
-        std::snprintf(buf, sizeof buf, "\"maxStep\": %.2f", v.maxStep);
-        REQUIRE(replaceOnce(joints, "\"maxStep\": 0.6", buf));
+        REQUIRE(replaceOnce(loco, "\"sideSpeed\": 0.35,", buf));
+        std::snprintf(buf, sizeof buf, "\"maxStepSide\": %.2f", v.maxStep);
+        REQUIRE(replaceOnce(joints, "\"maxStepSide\": 0.5", buf));
         std::ofstream(dir + "/human_joints.json") << joints;
         std::ofstream(dir + "/locomotion.json") << loco;
 
@@ -803,6 +820,7 @@ TEST_CASE("measure: chest lean, W then A, by cause" * doctest::skip()) {
         std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
         const int chestJ = h.rig().findJoint("chest");
         float lean[2] = {0.0f, 0.0f}, leanSide[2] = {0.0f, 0.0f}, leanFwd[2] = {0.0f, 0.0f}, pelvisLean[2] = {0.0f, 0.0f};
+        Range heightA, leadA;
         float leanAt[2] = {0.0f, 0.0f}, planPelvisLean[2] = {0.0f, 0.0f}, widest[2] = {0.0f, 0.0f}, shortMax[2] = {0.0f, 0.0f};
         for (int i = 0; i < 480; ++i) {
             const float time = i * kDt;
@@ -824,6 +842,13 @@ TEST_CASE("measure: chest lean, W then A, by cause" * doctest::skip()) {
             if (h.bodyQueue().plan) {
                 const math::Vec3 qu = math::normalize(math::Vec3((*h.bodyQueue().plan)[0][1]));
                 planPelvisLean[phase] = std::max(planPelvisLean[phase], math::degrees(std::acos(std::clamp(qu.y, -1.0f, 1.0f))));
+                if (time > 2.5f) {  // A, past its start: the plan's hips height and how far they lead the feet
+                    heightA.add((*h.bodyQueue().plan)[0][3].y);
+                    const std::vector<math::Mat4>& pl = *h.bodyQueue().plan;
+                    const math::Vec3 mid = 0.5f * (h.ankle(true, pl, h.root()) + h.ankle(false, pl, h.root()));
+                    const math::Vec3 hp = h.root().transformPoint(math::Vec3(pl[0][3]));
+                    leadA.add(math::dot(hp - mid, h.root().transformDirection(math::Vec3(1, 0, 0))));
+                }
                 // The widest stance (ankles apart, plan) and a step's foot short of its target (out of reach).
                 const float apart = math::distance(h.ankle(true, *h.bodyQueue().plan, h.root()), h.ankle(false, *h.bodyQueue().plan, h.root()));
                 widest[phase] = std::max(widest[phase], apart);
@@ -838,5 +863,9 @@ TEST_CASE("measure: chest lean, W then A, by cause" * doctest::skip()) {
                     "target max W %4.1f A %4.1f cm\n",
                     "", planPelvisLean[0], planPelvisLean[1], 100.0f * widest[0], 100.0f * widest[1], 100.0f * shortMax[0],
                     100.0f * shortMax[1]);
+        std::printf("%-26s A after 0.5 s: plan hips height %.1f .. %.1f cm (bob %.1f) | hips ahead of the feet's centre "
+                    "%.1f .. %.1f cm\n",
+                    "", 100.0f * heightA.lo, 100.0f * heightA.hi, 100.0f * heightA.span(), 100.0f * leadA.lo,
+                    100.0f * leadA.hi);
     }
 }

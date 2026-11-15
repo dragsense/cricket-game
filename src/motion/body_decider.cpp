@@ -962,14 +962,16 @@ math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, co
     math::Vec3 spot = ideal;
     const int o = 1 - i;
     if (grounded_[o] && joints_.legs[o].end >= 0) {
-        // Never across the other foot, never further from it than a step.
+        // Never across the other foot, never further from it than a step
+        // reaches (an ellipse: further fore-aft than across).
         const math::Vec3 other = anchor_[o];
         const float side = hipOffset_[i].x >= hipOffset_[o].x ? 1.0f : -1.0f;
         if ((spot.x - other.x) * side < s.minFootGap) spot.x = other.x + side * s.minFootGap;
         math::Vec3 d(spot.x - other.x, 0.0f, spot.z - other.z);
-        const float len = math::length(d);
-        if (len > s.maxStep && len > 1e-6f) {
-            d *= s.maxStep / len;
+        const float ex = d.x / std::max(s.maxStepSide, 1e-3f), ez = d.z / std::max(s.maxStepForward, 1e-3f);
+        const float over = std::sqrt(ex * ex + ez * ez);
+        if (over > 1.0f) {
+            d /= over;
             spot.x = other.x + d.x;
             spot.z = other.z + d.z;
         }
@@ -1047,7 +1049,37 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     // the support by the time a step could land (standing still: once it is
     // out), so a moving body steps on without a pause.
     const math::Vec3 at = future(lead + swingTime);
-    if (outsideFeet(at, standing, n, s) <= s.stepMargin) return;
+    // A foot left behind: by the time a step could land the hips will be so
+    // far from it that its leg, at its reach, would hold them more than
+    // reachDrop below standing; it steps (a leg's reach ends its stance:
+    // the trailing leg's toe-off), under where the capture point will be.
+    // General: whatever moves the hips away from a foot.
+    int behind = -1;
+    if (n == 2 && s.reachDrop > 0.0f) {
+        const math::Transform pelvisNow = pelvisOf(output_);
+        const math::Vec3 hipsThen = pelvisNow.position + lag + vGoal * (lead + swingTime);
+        float worst = 0.0f;
+        for (int i = 0; i < 2; ++i) {
+            const math::Vec3 hip = hipsThen + pelvisNow.rotation * hipOffset_[i];
+            const math::Vec3 restHip = restPelvis_.position + restPelvis_.rotation * hipOffset_[i];
+            const float up = restHip.y - restFootY_[i] - s.reachDrop;  // the leg's height allowed
+            const float reach = limbReach(2 + i, s);
+            const float flatMax = up < reach ? std::sqrt(reach * reach - up * up) : 0.0f;
+            const float dx = hip.x - anchor_[i].x, dz = hip.z - anchor_[i].z;
+            const float over = std::sqrt(dx * dx + dz * dz) - flatMax;
+            if (over > worst) {
+                worst = over;
+                behind = i;
+            }
+        }
+    }
+    if (outsideFeet(at, standing, n, s) <= s.stepMargin) {
+        if (behind < 0) return;
+        out.step.wanted = true;
+        out.step.foot = behind;
+        out.step.spot = stepSpot(behind, at, vGoal, s, miss);
+        return;
+    }
     // The foot whose step leaves the capture point (where it will be by the
     // landing) best inside the new support (not crossing, within a step); a
     // tie, or neither reaching it (each step makes room for the next): the

@@ -63,6 +63,14 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   `decider.balanceStep.maxStep` 0.9 -> 0.6 m, `walk.sideSpeed` 0.55 -> 0.45 (the shuffle's
   limit with it). Now: A chest 2.6 deg, pelvis 1.0; the stepping test chest 2.6 deg and
   foot slide 7.0 cm (was 14.6); W foot slide 4.0 cm (was 18), first step 59 cm (was 76).
+- [x] **B1c-5 Side shuffle's hips sinking fixed**: a step's reach is an ellipse
+  (`maxStepForward` 0.6, `maxStepSide` 0.5; the hip flexes far more than it abducts),
+  `walk.sideSpeed` 0.35 (the shuffle's limit with it); 0.5 every way had capped walking's
+  steps (bob 3 -> 11 cm). A from standing: hips bob 17.7 -> 9.4 cm, foot slide 1.2 cm,
+  chest lean 1.9 deg; after W: bob 4.1 cm. W unchanged (bob 3.1 cm, foot slide 4.0 cm).
+  Added the "foot left behind steps" rule (`reachDrop` 0.04 m: a leg at its reach would
+  hold the hips lower than that); it does not fire in steady walking (the steps chain),
+  kept for reaches and pushes.
 - [ ] **B1c Shares from the targets** (the rest): passive config shares to 0;
   a stepping foot turns the pelvis (not pushing it on: the hips target already does), the
   pelvis's turn turns the chest back, the arms cancel; posture (chest upright, head level)

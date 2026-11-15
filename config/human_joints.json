@@ -175,11 +175,16 @@
     // along the motion so the body carries on (in walking the heel lands a
     // little behind the XCoM fore-aft, Hof 2005: at 1.2 m/s v / w0 ~ 0.38 m,
     // the heel ~0.33 m ahead of the CoM), under its own hip to the side. Feet never cross (`minFootGap`)
-    // and land at most `maxStep` from the other foot. More motion: bigger and
+    // and land within a step's reach of the other foot (an ellipse:
+    // `maxStepForward` fore-aft, `maxStepSide` across; the hip flexes and
+    // extends much further than it abducts). More motion: bigger and
     // more steps. Foot outline from the skeleton's foot (~0.25 x 0.09 m).
-    // maxStep 0.6 (was 0.9, 2026-11-15): in the side shuffle the feet opened
-    // 90 cm and the real pelvis rolled ~10 deg on them.
-    // [E] margin, landingBehind, minFootGap, maxStep: starting values to tune
+    // maxStepSide 0.5 (was 0.9 every way, 2026-11-15): in the side shuffle the
+    // feet opened 90 cm and the real pelvis rolled ~10 deg on them; 0.5 every
+    // way capped walking's steps (hips bob 3 -> 11 cm); fore-aft 0.6 keeps the
+    // first step and the swing foot's lag small (0.9: first step 76 cm, foot
+    // slide 18 cm).
+    // [E] margin, landingBehind, minFootGap, maxStep*: starting values to tune
     // in the game.
     "balanceStep": {
       "on": true,
@@ -189,7 +194,12 @@
       "footCentreAhead": 0.05,
       "landingBehind": 0.05,
       "minFootGap": 0.1,
-      "maxStep": 0.6
+      "maxStepForward": 0.6,
+      "maxStepSide": 0.5,
+      // A foot left behind steps too (a leg's reach ends its stance): once, by
+      // the time a step could land, its leg at its reach would hold the hips
+      // more than this (m) below standing. [E] walking's hips bob ~4-5 cm.
+      "reachDrop": 0.04
     }
   },
 
