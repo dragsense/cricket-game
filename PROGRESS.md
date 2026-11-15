@@ -55,9 +55,14 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   left shoulder 36 deg peak to peak walking at 0.9 m/s (was 18; real 30-40). Limb test:
   feet unchanged, hands within ~1 cm of before. `walk.sideSpeed` 0.8 -> 0.55 (the side
   shuffle's limit): over 4.5 s of A the hips 39 cm ahead (was 52), chest lean 8 deg (was
-  19). Still open: the stepping test's chest lean 10.4 deg (was 2.9) in its W-then-A run;
-  the lean comes in the side shuffle; not yet split between the shuffle's lag and the
-  bigger arm swing.
+  19).
+- [x] **B1c-4 Side shuffle's lean fixed** (measure: `measure: chest lean, W then A, by
+  cause`, config variants in a temp copy): the stepping test's chest lean (10.4 deg) was
+  not the arms (hands 0.5: 10.0) nor the plan (its pelvis level, no foot out of reach):
+  the feet opened 90 cm in the shuffle and the real pelvis rolled ~10 deg on them.
+  `decider.balanceStep.maxStep` 0.9 -> 0.6 m, `walk.sideSpeed` 0.55 -> 0.45 (the shuffle's
+  limit with it). Now: A chest 2.6 deg, pelvis 1.0; the stepping test chest 2.6 deg and
+  foot slide 7.0 cm (was 14.6); W foot slide 4.0 cm (was 18), first step 59 cm (was 76).
 - [ ] **B1c Shares from the targets** (the rest): passive config shares to 0;
   a stepping foot turns the pelvis (not pushing it on: the hips target already does), the
   pelvis's turn turns the chest back, the arms cancel; posture (chest upright, head level)

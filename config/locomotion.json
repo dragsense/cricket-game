@@ -4,7 +4,7 @@
   "walk": {
     "speed": 0.9,           // m/s at full input (calm walk: ~0.45 m steps at ~120 steps/min)
     "backSpeed": 0.9,       // m/s walking backward (S)
-    "sideSpeed": 0.55,      // m/s sidestepping (A/D); the side shuffle keeps up to about (maxStep - minFootGap) / (2 x step time) ~0.62 m/s (was 0.8: the hips ran ahead)
+    "sideSpeed": 0.45,      // m/s sidestepping (A/D); the side shuffle keeps up to about (maxStep - minFootGap) / (2 x step time) ~0.45 m/s (was 0.8: the hips ran ahead, the feet 90 cm apart, the real pelvis rolled 10 deg)
     "acceleration": 5.0,    // m/s^2; full speed within the first step (full-size steps at once)
     "deceleration": 5.0,    // m/s^2; stops within about one step
     "turnRateDeg": 180,     // per second

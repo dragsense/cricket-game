@@ -177,6 +177,8 @@
     // the heel ~0.33 m ahead of the CoM), under its own hip to the side. Feet never cross (`minFootGap`)
     // and land at most `maxStep` from the other foot. More motion: bigger and
     // more steps. Foot outline from the skeleton's foot (~0.25 x 0.09 m).
+    // maxStep 0.6 (was 0.9, 2026-11-15): in the side shuffle the feet opened
+    // 90 cm and the real pelvis rolled ~10 deg on them.
     // [E] margin, landingBehind, minFootGap, maxStep: starting values to tune
     // in the game.
     "balanceStep": {
@@ -187,7 +189,7 @@
       "footCentreAhead": 0.05,
       "landingBehind": 0.05,
       "minFootGap": 0.1,
-      "maxStep": 0.9
+      "maxStep": 0.6
     }
   },
 

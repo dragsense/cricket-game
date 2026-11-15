@@ -738,3 +738,105 @@ TEST_CASE("TEMP jump" * doctest::skip()) {
                 100 * (standY - lowY), kneeMax, 100 * (highY - standY), ankleHigh, vUp, chestMax, accel, accelPhase[0],
                 accelPhase[1], accelPhase[2], accelPhase[3], accelPhase[4]);
 }
+
+// Measurement (on demand): where the chest's lean comes from in a W-then-A
+// run. Each variant changes config text in a temporary copy (the game's files
+// stay as they are).
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+namespace {
+std::string readText(const std::string& path) {
+    std::ifstream f(path);
+    std::stringstream s;
+    s << f.rdbuf();
+    return s.str();
+}
+bool replaceOnce(std::string& text, const std::string& from, const std::string& to) {
+    const size_t at = text.find(from);
+    if (at == std::string::npos) return false;
+    text.replace(at, from.size(), to);
+    return true;
+}
+} // namespace
+
+TEST_CASE("measure: chest lean, W then A, by cause" * doctest::skip()) {
+    struct Variant {
+        const char* name;
+        float hands;      // passive hands share (now 0)
+        float sideSpeed;  // walk.sideSpeed (now 0.45)
+        float maxStep = 0.9f;  // decider.balanceStep.maxStep (now 0.6)
+    };
+    const std::string dir = (std::filesystem::temp_directory_path() / "cricket_lean").string();
+    std::filesystem::create_directories(dir);
+    for (const Variant& v : {Variant{"before (side 0.55, maxStep 0.9)", 0.0f, 0.55f}, Variant{"hands 0.5", 0.5f, 0.55f},
+                             Variant{"side 0.4", 0.0f, 0.4f},
+                             Variant{"now (maxStep 0.6, side 0.45)", 0.0f, 0.45f, 0.6f}}) {
+        std::string joints = readText(CRICKET_CONFIG_DIR "/human_joints.json");
+        std::string loco = readText(CRICKET_CONFIG_DIR "/locomotion.json");
+        char buf[64];
+        std::snprintf(buf, sizeof buf, "\"hands\": %.2f,", v.hands);
+        REQUIRE(replaceOnce(joints, "\"passiveInfluence\": { \"hands\": 0.0,", std::string("\"passiveInfluence\": { ") + buf));
+        REQUIRE(replaceOnce(loco, "\"passive\": { \"hands\": 0.0,", std::string("\"passive\": { ") + buf));
+        std::snprintf(buf, sizeof buf, "\"sideSpeed\": %.2f,", v.sideSpeed);
+        REQUIRE(replaceOnce(loco, "\"sideSpeed\": 0.45,", buf));
+        std::snprintf(buf, sizeof buf, "\"maxStep\": %.2f", v.maxStep);
+        REQUIRE(replaceOnce(joints, "\"maxStep\": 0.6", buf));
+        std::ofstream(dir + "/human_joints.json") << joints;
+        std::ofstream(dir + "/locomotion.json") << loco;
+
+        static core::Config skeleton, jc, lc;  // alive: Human keeps the joints config
+        REQUIRE(skeleton.load(CRICKET_CONFIG_DIR "/human_skeleton.json"));
+        REQUIRE(jc.load(dir + "/human_joints.json"));
+        REQUIRE(lc.load(dir + "/locomotion.json"));
+        rig::SkeletonDef def;
+        REQUIRE(rig::loadSkeletonDef(skeleton, def));
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(h.init(def, def.height, jc, lc));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+        const int chestJ = h.rig().findJoint("chest");
+        float lean[2] = {0.0f, 0.0f}, leanSide[2] = {0.0f, 0.0f}, leanFwd[2] = {0.0f, 0.0f}, pelvisLean[2] = {0.0f, 0.0f};
+        float leanAt[2] = {0.0f, 0.0f}, planPelvisLean[2] = {0.0f, 0.0f}, widest[2] = {0.0f, 0.0f}, shortMax[2] = {0.0f, 0.0f};
+        for (int i = 0; i < 480; ++i) {
+            const float time = i * kDt;
+            const int phase = time < 2.0f ? 0 : 1;
+            h.setStepInput(phase == 0 ? math::Vec2(0.0f, 1.0f) : math::Vec2(1.0f, 0.0f));
+            h.tick(kDt);
+            world.step(kDt);
+            if (!h.physicalModels(world, 1.0f, real)) continue;
+            const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(chestJ)][1]));
+            const float a = math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f)));
+            if (a > lean[phase]) {
+                lean[phase] = a;
+                leanAt[phase] = time;
+                leanSide[phase] = math::degrees(std::atan2(up.x, up.y));
+                leanFwd[phase] = math::degrees(std::atan2(up.z, up.y));
+            }
+            const math::Vec3 pu = math::normalize(math::Vec3(real[0][1]));
+            pelvisLean[phase] = std::max(pelvisLean[phase], math::degrees(std::acos(std::clamp(pu.y, -1.0f, 1.0f))));
+            if (h.bodyQueue().plan) {
+                const math::Vec3 qu = math::normalize(math::Vec3((*h.bodyQueue().plan)[0][1]));
+                planPelvisLean[phase] = std::max(planPelvisLean[phase], math::degrees(std::acos(std::clamp(qu.y, -1.0f, 1.0f))));
+                // The widest stance (ankles apart, plan) and a step's foot short of its target (out of reach).
+                const float apart = math::distance(h.ankle(true, *h.bodyQueue().plan, h.root()), h.ankle(false, *h.bodyQueue().plan, h.root()));
+                widest[phase] = std::max(widest[phase], apart);
+                for (int e = 2; e < 4; ++e) shortMax[phase] = std::max(shortMax[phase], h.bodyQueue().reach[e].shortfall);
+            }
+        }
+        std::printf("%-26s W: chest lean %4.1f deg at %.2f s (fwd %5.1f, left %5.1f), pelvis %4.1f | A: chest %4.1f deg at "
+                    "%.2f s (fwd %5.1f, left %5.1f), pelvis %4.1f\n",
+                    v.name, lean[0], leanAt[0], leanFwd[0], leanSide[0], pelvisLean[0], lean[1], leanAt[1], leanFwd[1],
+                    leanSide[1], pelvisLean[1]);
+        std::printf("%-26s plan pelvis lean W %4.1f A %4.1f deg | feet apart max W %4.1f A %4.1f cm | a foot short of its "
+                    "target max W %4.1f A %4.1f cm\n",
+                    "", planPelvisLean[0], planPelvisLean[1], 100.0f * widest[0], 100.0f * widest[1], 100.0f * shortMax[0],
+                    100.0f * shortMax[1]);
+    }
+}

@@ -183,7 +183,7 @@ struct BodyDeciderSettings {
     float footCentreAhead = 0.05f;  // m, the foot's centre ahead of the ankle
     float landingBehind = 0.05f;    // m
     float minFootGap = 0.1f;        // m
-    float maxStep = 0.9f;           // m
+    float maxStep = 0.6f;           // m
     // The decider's own step: its shape (locomotion.json "step": height,
     // apex, toe-off, ball of the foot; duration and liftAt without a gait),
     // its timing from the body's speed by the gait (motion::gaitTiming,
