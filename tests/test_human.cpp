@@ -877,11 +877,11 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
         const int ankleL = h.rig().findJoint("foot_l"), ankleR = h.rig().findJoint("foot_r");
         const float standAnkle = std::min((*h.bodyQueue().plan)[static_cast<size_t>(ankleL)][3].y,
                                           (*h.bodyQueue().plan)[static_cast<size_t>(ankleR)][3].y);
-        int steps = 0, lastFoot = -1, flight = 0, ticks = 0;
-        float lastPhase = 0.0f, stepLen = 0.0f;
-        Range bob, lead, speed;
-        math::Vec3 lastHips(0.0f);
-        bool have = false, dropped = false;
+        int steps = 0, lastFoot = -1, flight = 0, ticks = 0, contacts = 0;
+        float lastPhase = 0.0f, stepLen = 0.0f, contactTime = 0.0f, landedAt[2] = {-1.0f, -1.0f};
+        Range bob, lead, speed, runShare;
+        math::Vec3 lastHips(0.0f), lastLanding(0.0f);
+        bool have = false, dropped = false, landedOnce = false;
         for (int i = 0; i < 540; ++i) {
             const float time = i * kDt;
             h.setStepInput(math::Vec2(0.0f, 1.0f));
@@ -891,17 +891,53 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
             if (!h.supported()) dropped = true;
             if (!h.bodyQueue().plan || !h.physicalModels(world, 1.0f, real)) continue;
             const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+            const bool steady = time > 2.5f;
+            // Landings: the step length between one landing and the next (along
+            // the way), their count the cadence; a foot's contact from its
+            // landing to its next step's start.
             const int foot = h.stepFoot();
             const bool restarted = foot >= 0 && foot == lastFoot && h.stepPhase() < lastPhase;
             lastPhase = h.stepPhase();
-            const bool steady = time > 2.5f;
-            if (lastFoot >= 0 && (foot != lastFoot || restarted) && steady) {
-                ++steps;
-                const math::Vec3 a = h.ankle(lastFoot == 0, plan, h.root()), o = h.ankle(lastFoot != 0, plan, h.root());
-                stepLen += math::dot(a - o, fwd);
+            if (foot >= 0 && (foot != lastFoot || restarted) && landedAt[foot] >= 0.0f && steady) {
+                contactTime += time - landedAt[foot];
+                ++contacts;
             }
             lastFoot = foot;
+            for (int f = 0; f < 2; ++f) {
+                if (!h.bodyQueue().landed[f]) continue;
+                const math::Vec3 spot = h.root().transformPoint(h.bodyQueue().landedSpot[f]);
+                if (steady && landedOnce) {
+                    ++steps;
+                    stepLen += math::dot(spot - lastLanding, fwd);
+                }
+                lastLanding = spot;
+                landedOnce = true;
+                landedAt[f] = time;
+            }
+            const char* traceFrom = std::getenv("CRICKET_FROM");
+            const float from = traceFrom ? static_cast<float>(std::atof(traceFrom)) : 3.0f;
+            if (std::getenv("CRICKET_TRACE") && pace == std::atoi(std::getenv("CRICKET_TRACE")) && time > from &&
+                time < from + 0.7f) {  // on demand: one cycle, plan (CRICKET_TRACE=<pace> CRICKET_FROM=<s>)
+                auto at = [&](const char* j) { return math::Vec3(plan[static_cast<size_t>(h.rig().findJoint(j))][3]); };
+                const float lenL = math::distance(at("thigh_l"), at("foot_l")), lenR = math::distance(at("thigh_r"), at("foot_r"));
+                std::printf("  t %.3f pelvis %.3f | ankle L %.3f R %.3f | leg L %.3f R %.3f | ankle z L %+.2f R %+.2f hips z "
+                            "%+.2f | step foot %d %.2f | landed %d%d | run %.2f\n",
+                            time, plan[0][3].y, at("foot_l").y, at("foot_r").y, lenL, lenR, at("foot_l").z, at("foot_r").z,
+                            plan[0][3].z, h.stepFoot(), h.stepPhase(), h.bodyQueue().landed[0] ? 1 : 0,
+                            h.bodyQueue().landed[1] ? 1 : 0, h.runShare());
+                const math::Vec3 hp(plan[0][3]);
+                for (int f = 0; f < 2; ++f) {
+                    const motion::StepPlanner& sp = h.decider().step(f);
+                    if (!sp.running()) continue;
+                    std::printf("      %s phase %d share %.2f along %.2f replanned %.0f left %.3f | target y %.3f z %+.2f | aim z "
+                                "%+.2f (from hips)\n",
+                                f == 0 ? "L" : "R", static_cast<int>(sp.phase()), sp.share(), sp.along(), sp.replanned() ? 1.0f : 0.0f,
+                                sp.timeLeft(h.decider().stepTiming(f)), sp.target().y, sp.target().z - hp.z,
+                                sp.landing().z - hp.z);
+                }
+            }
             if (!steady) continue;
+            runShare.add(h.runShare());
             ++ticks;
             const float ground = std::min(plan[static_cast<size_t>(ankleL)][3].y, plan[static_cast<size_t>(ankleR)][3].y);
             if (ground > standAnkle + 0.03f) ++flight;  // both ankles off the ground (3 cm above standing)
@@ -914,9 +950,11 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
             have = true;
         }
         const float seconds = ticks * kDt;
-        std::printf("pace %d: %d steps in %.1f s = %.0f steps/min, step %.2f m | flight %.0f %% | plan hips bob %.1f cm | "
-                    "hips ahead of the feet %.0f .. %.0f cm | real speed %.2f .. %.2f m/s | dropped %s\n",
-                    pace, steps, seconds, seconds > 0 ? 60.0f * steps / seconds : 0.0f, steps ? stepLen / steps : 0.0f,
+        std::printf("pace %d (run share %.2f..%.2f): %d steps in %.1f s = %.0f steps/min, step %.2f m | contact %.3f s | "
+                    "flight %.0f %% | plan hips bob %.1f cm | hips ahead of the feet %.0f .. %.0f cm | real speed %.2f .. "
+                    "%.2f m/s | dropped %s\n",
+                    pace, runShare.lo, runShare.hi, steps, seconds, seconds > 0 ? 60.0f * steps / seconds : 0.0f,
+                    steps ? stepLen / steps : 0.0f, contacts ? contactTime / contacts : 0.0f,
                     ticks ? 100.0f * flight / ticks : 0.0f, 100.0f * bob.span(), 100.0f * lead.lo, 100.0f * lead.hi, speed.lo,
                     speed.hi, dropped ? "yes" : "no");
     }

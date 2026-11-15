@@ -153,12 +153,43 @@
     // walking peaks 2-4, a push-off ~8), their turn rate, the trunk joints'
     // and head's rates (rad/s; trunk flexion in reaching 1-3, the head's
     // fast turns ~5-6), and a limb joint's (shoulder/hip ~8-12 in fast reaches).
-    "hipsMaxSpeed": 2.0,
+    // hipsMaxSpeed 9 (was 2.0, 2026-11-15: it capped jogging and running):
+    // a fielder's sprint ceiling, 8-9.5 m/s (BIOMECHANICS 5). legMaxRate: a
+    // lifted leg's joints; the running swing's knee turns ~15-20 rad/s [E].
+    "hipsMaxSpeed": 9.0,
     "hipsMaxAccel": 8.0,
     "hipsMaxTurnRate": 4.0,
     "trunkMaxRate": 4.0,
     "headMaxRate": 6.0,
     "limbMaxRate": 12.0,
+    "legMaxRate": 20.0,
+    // Running (the user's design, 2026-11-15: walking, running and the air
+    // from the hips' speed, not separate modes). The run's share: 0 below,
+    // 1 above the walk-run transition, Froude v^2 / (g L) = 0.5 (BIOMECHANICS
+    // 5: ~2.16 m/s), blended over +- walkRunBand m/s. Running, the hips ride
+    // the grounded leg as a spring (leg stiffness ~11.2 kN/m below 5 m/s,
+    // BIOMECHANICS 13; rest length the leg's reach) and fly on gravity
+    // between; a leg back at its length behind the hips takes off; a foot
+    // lands ahead of its hip by half the way the hips go in a stance (the
+    // neutral point, Raibert 1986: the stance even about the foot, timed by
+    // the last stance) when the flying hips come down to it. A fixed 68 deg
+    // attack angle (Seyfarth 2002) left the stance uneven with these legs
+    // (the spring's stance ~0.25 s whatever the speed): the hips never rose
+    // back, flights were cut short (measured 2026-11-15); the neutral point
+    // gives ~64 deg at 3 m/s, ~60 at 5. Take-off's push sets the
+    // flight: flightTimeJog at the jog speed, flightTimeRun at the run speed
+    // ([E] ~0.1 s at 3 m/s, more when faster). A running foot is in the air
+    // for a flight, the other foot's stance and a flight (~0.4-0.45 s, similar
+    // at all speeds as Weyand 2000 found); a fixed 0.45 s swing brought the
+    // foot down too early when a flight ran long (it hovered and landed behind
+    // the hips, measured 2026-11-15).
+    "run": {
+      "walkRunFroude": 0.5,
+      "walkRunBand": 0.3,
+      "legStiffness": 11200,
+      "flightTimeJog": 0.10,
+      "flightTimeRun": 0.14
+    },
     // The lowest hips: no grounded knee bends past this (deg). Two feet: the
     // semi-squat ~90 (Straker 2003; measured self-chosen ground lifts 48-71,
     // BIOMECHANICS 9.1, 9.4). One foot: 67, the largest mean stance knee of a

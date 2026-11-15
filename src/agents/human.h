@@ -100,6 +100,7 @@ public:
     // The step under way: its foot (-1: none) and its clock share [0, 1].
     int stepFoot() const { return decider_.stepFoot(); }
     float stepPhase() const { return decider_.stepShare(); }
+    float runShare() const { return decider_.runShare(); }  // 0 walking .. 1 running
     // The whole body's strength (0..1): scales every muscle and the capsule's
     // hold (a hit, a fall, a get-up).
     float strength() const { return strength_; }
@@ -130,6 +131,7 @@ public:
     const IkTargets& targets() const { return targets_; }
     // The body decider's last answer (its plan: valid until the next tick).
     const motion::BodyQueue& bodyQueue() const { return queue_; }
+    const motion::BodyDecider& decider() const { return decider_; }
     // Turning: with `face`, turns toward world heading `faceYaw` (radians
     // about +Y). Moving is by steps only (setStepInput).
     void setFacing(bool face, float faceYaw) {

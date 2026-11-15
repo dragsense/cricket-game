@@ -710,6 +710,12 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.trunkMaxRate = dv("decider.trunkMaxRate", deciderSettings_.trunkMaxRate);
         deciderSettings_.headMaxRate = dv("decider.headMaxRate", deciderSettings_.headMaxRate);
         deciderSettings_.limbMaxRate = dv("decider.limbMaxRate", deciderSettings_.limbMaxRate);
+        deciderSettings_.legMaxRate = dv("decider.legMaxRate", deciderSettings_.legMaxRate);
+        deciderSettings_.walkRunFroude = dv("decider.run.walkRunFroude", deciderSettings_.walkRunFroude);
+        deciderSettings_.walkRunBand = dv("decider.run.walkRunBand", deciderSettings_.walkRunBand);
+        deciderSettings_.legStiffness = dv("decider.run.legStiffness", deciderSettings_.legStiffness);
+        deciderSettings_.flightTimeJog = dv("decider.run.flightTimeJog", deciderSettings_.flightTimeJog);
+        deciderSettings_.flightTimeRun = dv("decider.run.flightTimeRun", deciderSettings_.flightTimeRun);
         deciderSettings_.twoLegKneeMax =
             math::radians(dv("decider.twoLegKneeMaxDeg", math::degrees(deciderSettings_.twoLegKneeMax)));
         deciderSettings_.oneLegKneeMax =
@@ -930,9 +936,10 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     // that landed: the foot stays on its spot from now on.
     t.balanceSteps = !(posedFoot_ >= 0 && !poseHandLast_);
     decider_.decide(t, deciderSettings_, queue_);
-    if (queue_.landedFoot >= 0) {
-        const motion::Foot f = static_cast<motion::Foot>(queue_.landedFoot);
-        stepper_.place(f, queue_.landedSpot);
+    for (int i = 0; i < 2; ++i) {
+        if (!queue_.landed[i]) continue;
+        const motion::Foot f = static_cast<motion::Foot>(i);
+        stepper_.place(f, queue_.landedSpot[i]);
         stepper_.setLastStepped(f);
     }
     return queue_.plan;

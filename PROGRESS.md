@@ -88,7 +88,42 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   - the first step from standing is long (76 cm): the walker reaches full speed in
     0.18 s (`walk.acceleration` 5);
   - turning on the spot takes no steps yet (feet stay); no hips sway with the hips driven.
-- [ ] **B2 Leg push moves the pelvis** (the stance leg's share), then running from it.
+- [ ] **B2 Running from the speed (spring legs)** — built, NOT working yet (WIP commit
+  2026-11-15; the user: "speed par bahut bura chalta"). In the decider:
+  - Two steps at once (`steps_[2]`, one StepPlanner per foot); `BodyQueue::landed[2]`.
+  - Run share 0..1 from the plan hips' level speed (Froude 0.5 = 2.16 m/s, +-0.3 band);
+    walking (share 0) measured unchanged (W: slide 4.0 cm, pelvis turn 15.8 deg, bob 3.1).
+  - Running height: spring-mass (`runSpring`, leg 11.2 kN/m, rest = leg reach) in
+    stance, gravity in flight, inside the legs' bounds (knee bound, planted reach).
+  - Take-off (`runTakeoff`): a grounded leg back at its reach behind the hips lifts
+    (its step starts while the other foot may be in the air); the push sets the flight
+    so the hips come down to the next foot's touchdown height (vy = dh / T + g T / 2).
+  - Landing spot: the neutral point, half the stance's hips travel ahead of the hip
+    (Raibert 1986, timed by the last stance); touchdown when the hips come down to the
+    leg at rest length (`touchdownHeight`, `touchdownTime`).
+  - Swing timing each tick (`runSwingTiming`): stance rest + flight, or the touchdown
+    time; never faster than the leg turns (`swingTimeAtLeast`, legMaxRate x leg).
+  - StepPlanner `setTimeLeft` re-plans the rest of the swing from the target's place and
+    speed (a quintic, at rest on the spot; height from the step's own arc by the swing's
+    progress, so re-plans never add up). Walking keeps the old path.
+  - `hipsMaxSpeed` 9, `legMaxRate` 20, config `decider.run`.
+  - Measures: `measure: jog and run` (landings, contact, flight, bob; trace one cycle
+    with env CRICKET_TRACE=<pace> CRICKET_FROM=<s>). Python sims in the session showed
+    the rules (push to touchdown height + neutral point by the last stance, level speed
+    fixed) stable: 3 m/s 171/min, 1.05 m, contact 0.25 s, bob 7.6 cm; 5 m/s 184/min,
+    1.63 m, bob 7.9 cm.
+  Now in the game (last measure): jog bob 46 cm, run bob 53 cm, real speed swings 0-9 m/s
+  (big hops, feet dragged behind in the user's screenshot). Known causes found so far:
+  1. With per-tick swing timing the push / touchdown / neutral point feed each other
+     (not traced yet).
+  2. Walk -> run start: while still walking (share 0) the first walk step is too long
+     for the hips' acceleration; the trailing leg runs out of reach and the plan pelvis
+     falls 0.93 -> 0.51 m before the run starts.
+  Earlier states this session: without per-tick swing timing, 5 m/s matched (180/min,
+  1.58 m, bob 7.7) but 3 m/s had bob 21 cm (the swing foot reached the ground early and
+  waited, then landed behind the hips).
+  Next: model the whole loop (swing timing, walk -> run start) in a sim first, then one
+  edit; then leg push for B3.
 - [ ] **B3 Reach**: how far the ball is decides step, hop / jump or dive (one push).
 
 - [x] **6.1 Action point and release** (the user: "feels better"; commit dbcbde0 has the

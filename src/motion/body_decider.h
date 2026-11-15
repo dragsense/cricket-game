@@ -102,10 +102,10 @@ struct BodyQueue {
     bool heightClamped = false;             // a grounded leg holds the hips lower than wanted
     ReachReport reach[4];                   // hand L, hand R, foot L, foot R
     StepAdvice step;                        // the balance step (none: wanted false)
-    // A step landed this tick: its foot (-1: none) and where (ankle,
+    // A step landed this tick, per foot (left, right), and where (ankle,
     // character space); the planner keeps the foot there from now on.
-    int landedFoot = -1;
-    math::Vec3 landedSpot{0.0f};
+    bool landed[2] = {false, false};
+    math::Vec3 landedSpot[2]{};
 };
 
 struct BodyDeciderJoints {
@@ -161,6 +161,9 @@ struct BodyDeciderSettings {
     // rates (rad/s).
     float hipsMaxSpeed = 2.0f, hipsMaxAccel = 8.0f, hipsMaxTurnRate = 4.0f;
     float trunkMaxRate = 4.0f, headMaxRate = 6.0f, limbMaxRate = 12.0f;
+    // A lifted leg's joint rate (rad/s): the running swing's knee is far
+    // faster than a reach's joints.
+    float legMaxRate = 20.0f;
     // The lowest hips: no grounded knee bends past this (rad) on two feet
     // (the semi-squat, BIOMECHANICS 9.4) or on one (the largest mean stance
     // knee of a maximal one-leg foot reach, 9.7).
@@ -197,6 +200,25 @@ struct BodyDeciderSettings {
     StepPlannerSettings stepShape;
     const MoveSettings* gait = nullptr;
     PassiveShares stepPassive;
+    // Running (human_joints.json "decider.run"; BIOMECHANICS 5, 13). The
+    // run's share from the hips' speed: 0 below the walk-run transition's
+    // band, 1 above (Froude v^2 / (g L) = walkRunFroude, L the leg; +-
+    // walkRunBand m/s). Running, the hips ride a grounded leg as a spring
+    // (legStiffness N/m, its rest length the leg's reach; Farley 1993,
+    // Geyer 2005) and fly on gravity between. A grounded leg back at its
+    // rest length behind the hips takes off (its step starts, the other foot
+    // may still be in the air); its push sets the flight (flightTimeJog at
+    // the gait's jog speed .. flightTimeRun at its run speed). A swinging
+    // foot lands ahead of its hip by half the way the hips go in a stance
+    // (the neutral point: the stance even about the foot, so the hips rise
+    // back to where it began; Raibert 1986, timed by the last stance), when
+    // the flying hips come down to that leg at its rest length; a running
+    // foot is in the air for a flight, the other's stance and a flight
+    // (~0.4-0.45 s, similar at all speeds as Weyand 2000 found). Walking
+    // (share 0) is unchanged.
+    float walkRunFroude = 0.5f, walkRunBand = 0.3f;
+    float legStiffness = 11200.0f;  // N/m
+    float flightTimeJog = 0.10f, flightTimeRun = 0.14f;  // s
 };
 
 class BodyDecider {
@@ -222,9 +244,14 @@ public:
     // allocations.
     void decide(const TargetSet& targets, const BodyDeciderSettings& s, BodyQueue& out);
 
-    // The decider's step under way: its foot (-1: none) and its clock share.
-    int stepFoot() const { return step_.running() ? step_.foot() : -1; }
-    float stepShare() const { return step_.share(); }
+    // The decider's step under way (the latest started; running, both feet
+    // may be on one): its foot (-1: none) and its clock share.
+    int stepFoot() const;
+    float stepShare() const;
+    float runShare() const { return runShare_; }  // 0 walking .. 1 running
+    // Foot i's step (tests, debugging) and its timing.
+    const StepPlanner& step(int i) const { return steps_[i]; }
+    const StepPlannerSettings& stepTiming(int i) const { return stepNow_[i]; }
 
     // The output pose (character space), valid after decide().
     const rig::Pose& outputPose() const { return output_.pose; }
@@ -253,8 +280,28 @@ private:
     void report(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     // The balance step on the output pose (StepAdvice).
     void balanceStep(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
-    // The next step's timing (stepNow_) for the body's level velocity.
+    // The next step's timing (nextStep_) for the body's level velocity.
     void timeStep(math::Vec3 velocity, const BodyDeciderSettings& s);
+    // Running: the run's share and the body's level velocity (the plan's
+    // hips); the spring-mass hips one tick on within the legs' bounds
+    // (`pelvis`: the output pelvis this tick);
+    // a grounded leg's take-off; where foot i lands `time` from now; how
+    // long the flying hips take to come down to foot i's landing leg.
+    void runPace(const TargetSet& t, const BodyDeciderSettings& s);
+    void runSpring(const math::Transform& pelvis, float dt, const BodyDeciderSettings& s);
+    void runTakeoff(const TargetSet& t, const BodyDeciderSettings& s);
+    // Running: the swinging foot's rest of swing from the body each tick;
+    // no less than the leg needs to bring foot f to `spot`.
+    void runSwingTiming(const TargetSet& t, const BodyDeciderSettings& s);
+    float swingTimeAtLeast(int f, math::Vec3 spot, float left, const BodyDeciderSettings& s) const;
+    math::Vec3 runSpot(int i, float time, const BodyDeciderSettings& s) const;
+    float touchdownTime(int i, const BodyDeciderSettings& s) const;
+    float touchdownHeight(int i, const BodyDeciderSettings& s) const;  // the pelvis as foot i lands
+    // Running: how far ahead of its hip foot i lands (the neutral point), a
+    // stance's time, a flight's time for the speed.
+    float runAhead(int i, const BodyDeciderSettings& s) const;
+    float contactTime(const BodyDeciderSettings& s) const;
+    float flightTime(const BodyDeciderSettings& s) const;
     // How far a ground point (character space) is out of the outline of
     // feet with their ankles at `ankles` (n of them; 0: inside).
     static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
@@ -368,11 +415,23 @@ private:
     // foot was on a timed swing last decide.
     int lastStepped_ = -1;
     bool wasSwinging_[2] = {false, false};
-    // The decider's own step (the balance step's foot over time), its
-    // timing now, and this tick's targets with the stepping foot's in place.
-    StepPlanner step_;
-    StepPlannerSettings stepNow_;
+    // The decider's own steps, one per foot (walking one at a time; running
+    // the next lifts while the other is in the air), each one's timing, the
+    // next step's, the foot that started last, and this tick's targets with
+    // the stepping feet's in place.
+    StepPlanner steps_[2];
+    StepPlannerSettings stepNow_[2], nextStep_;
+    int lastStarted_ = -1;
     TargetSet work_;
+    // Running: its share (0 walking .. 1), the body's level velocity,
+    // and the spring-mass hips' height and vertical speed (character space).
+    float runShare_ = 0.0f;
+    math::Vec3 runVelocity_{0.0f};
+    float runY_ = 0.0f, runVy_ = 0.0f;
+    // The decider's clock (s), when each foot last landed (-1: not since
+    // the start) and the last stance's time from landing to take-off (0:
+    // none yet).
+    float clock_ = 0.0f, landedAt_[2] = {-1.0f, -1.0f}, lastContact_ = 0.0f;
     // The trunk's spring-damper: the pelvis's turn and its rate last tick,
     // the chest's turn against the pelvis and its rate (rad, rad/s).
     float lastPelvisYaw_ = 0.0f, lastPelvisRate_ = 0.0f;

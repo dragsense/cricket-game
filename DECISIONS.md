@@ -716,3 +716,16 @@ Dated log. Format: decision, reason, alternatives rejected.
   drive jump and dive: a small push steps, a large one, or the hips turning the legs off
   the ground, dives.
 - **Rejected:** separate walk / run controllers or modes.
+
+## 2026-11-15: Running as spring legs in the decider (work in progress)
+- **Decision:** running is the spring-mass model in the decider, not a gait mode: the
+  hips ride the grounded leg as a spring (11.2 kN/m, rest = leg reach) and fly on
+  gravity; the run share (0..1) comes from the body's own speed by Froude 0.5. A leg
+  back at its length behind the hips takes off; the foot lands at the neutral point
+  (Raibert 1986) when the hips come down to it. Each foot has its own StepPlanner, so
+  the next foot can lift while the other is in the air.
+- **Rejected:** a fixed 68 deg attack angle (with these legs the stance was uneven, the
+  hips never rose back, flights were cut short); a fixed 0.45 s running swing (the foot
+  waited on the ground and landed behind the hips); the push as g T / 2 alone (the cycle
+  sank into a crouch at 5 m/s).
+- **Status:** not working in the game yet (PROGRESS B2).
