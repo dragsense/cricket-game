@@ -856,3 +856,68 @@ TEST_CASE("measure: chest lean, W then A, by cause" * doctest::skip()) {
                     100.0f * leadA.hi);
     }
 }
+
+// Measurement (on demand): jogging and running forward (pace 1 / 2), 4.5 s;
+// the steady part (last 2 s): steps per minute, step length, the time with
+// both feet off the ground (plan), the hips' bob and where it is lowest, how
+// far the hips lead the feet, the real speed, and whether the body fell.
+TEST_CASE("measure: jog and run" * doctest::skip()) {
+    for (int pace = 1; pace <= 2; ++pace) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+        std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+        const int ankleL = h.rig().findJoint("foot_l"), ankleR = h.rig().findJoint("foot_r");
+        const float standAnkle = std::min((*h.bodyQueue().plan)[static_cast<size_t>(ankleL)][3].y,
+                                          (*h.bodyQueue().plan)[static_cast<size_t>(ankleR)][3].y);
+        int steps = 0, lastFoot = -1, flight = 0, ticks = 0;
+        float lastPhase = 0.0f, stepLen = 0.0f;
+        Range bob, lead, speed;
+        math::Vec3 lastHips(0.0f);
+        bool have = false, dropped = false;
+        for (int i = 0; i < 540; ++i) {
+            const float time = i * kDt;
+            h.setStepInput(math::Vec2(0.0f, 1.0f));
+            h.setPace(pace);
+            h.tick(kDt);
+            world.step(kDt);
+            if (!h.supported()) dropped = true;
+            if (!h.bodyQueue().plan || !h.physicalModels(world, 1.0f, real)) continue;
+            const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+            const int foot = h.stepFoot();
+            const bool restarted = foot >= 0 && foot == lastFoot && h.stepPhase() < lastPhase;
+            lastPhase = h.stepPhase();
+            const bool steady = time > 2.5f;
+            if (lastFoot >= 0 && (foot != lastFoot || restarted) && steady) {
+                ++steps;
+                const math::Vec3 a = h.ankle(lastFoot == 0, plan, h.root()), o = h.ankle(lastFoot != 0, plan, h.root());
+                stepLen += math::dot(a - o, fwd);
+            }
+            lastFoot = foot;
+            if (!steady) continue;
+            ++ticks;
+            const float ground = std::min(plan[static_cast<size_t>(ankleL)][3].y, plan[static_cast<size_t>(ankleR)][3].y);
+            if (ground > standAnkle + 0.03f) ++flight;  // both ankles off the ground (3 cm above standing)
+            bob.add(plan[0][3].y);
+            const math::Vec3 hips = h.root().transformPoint(math::Vec3(real[0][3]));
+            const math::Vec3 mid = 0.5f * (h.ankle(true, real, h.root()) + h.ankle(false, real, h.root()));
+            lead.add(math::dot(hips - mid, fwd));
+            if (have) speed.add(math::dot(hips - lastHips, fwd) / kDt);
+            lastHips = hips;
+            have = true;
+        }
+        const float seconds = ticks * kDt;
+        std::printf("pace %d: %d steps in %.1f s = %.0f steps/min, step %.2f m | flight %.0f %% | plan hips bob %.1f cm | "
+                    "hips ahead of the feet %.0f .. %.0f cm | real speed %.2f .. %.2f m/s | dropped %s\n",
+                    pace, steps, seconds, seconds > 0 ? 60.0f * steps / seconds : 0.0f, steps ? stepLen / steps : 0.0f,
+                    ticks ? 100.0f * flight / ticks : 0.0f, 100.0f * bob.span(), 100.0f * lead.lo, 100.0f * lead.hi, speed.lo,
+                    speed.hi, dropped ? "yes" : "no");
+    }
+}

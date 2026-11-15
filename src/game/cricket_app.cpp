@@ -224,6 +224,7 @@ bool CricketApp::pumpEvents() {
     // not used (reach and dive will come from the same push).
     fielder.setFacing(true, heading_);
     fielder.setStepInput(move);
+    fielder.setPace(actions_.down(input_, core::Action::ModShift) ? 2 : actions_.down(input_, core::Action::Jog) ? 1 : 0);
     if (actions_.pressed(input_, core::Action::WalkFaster)) fielder.changeWalkSpeed(1);
     if (actions_.pressed(input_, core::Action::WalkSlower)) fielder.changeWalkSpeed(-1);
 

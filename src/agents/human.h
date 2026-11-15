@@ -140,6 +140,8 @@ public:
     // each step swings one foot (locomotion.json "step"), the body follows
     // the feet; held, the steps go on (walking).
     void setStepInput(math::Vec2 dir) { stepInput_ = dir; }
+    // The pace forward: 0 walk, 1 jog, 2 run (locomotion.json "move").
+    void setPace(int pace) { pace_ = std::clamp(pace, 0, 2); }
     // The jump key (Space), held: the body crouches; let go: it jumps
     // straight up (the physics body, standing; locomotion.json "jump").
     void setJumpInput(bool held);
@@ -244,6 +246,7 @@ private:
     };
     GoalPath handPath_, footPath_;
     math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
+    int pace_ = 0;                  // 0 walk, 1 jog, 2 run (forward speed)
     bool stepWalk_ = false;         // single steps in use (standing)
     motion::StepSettings stepSettings_;
     motion::StepSettings baseStep_;  // as loaded: the pace scale's 1

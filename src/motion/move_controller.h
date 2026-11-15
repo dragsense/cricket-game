@@ -20,6 +20,7 @@ struct MoveSettings {
     float speed = 1.35f;         // m/s at full forward input
     float backSpeed = 0.9f;      // m/s walking backward
     float sideSpeed = 0.8f;      // m/s sidestepping
+    float jogSpeed = 3.0f, runSpeed = 5.0f;  // m/s forward, jogging (Ctrl) and running (Shift)
     float acceleration = 5.0f;   // m/s^2
     float deceleration = 5.0f;   // m/s^2
     float turnRate = 3.14f;      // rad/s

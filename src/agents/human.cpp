@@ -151,6 +151,8 @@ void Human::loadLocomotion(const core::Config& c) {
         w.speed = get("speed", w.speed);
         w.backSpeed = get("backSpeed", w.backSpeed);
         w.sideSpeed = get("sideSpeed", w.sideSpeed);
+        w.jogSpeed = get("jogSpeed", w.jogSpeed);
+        w.runSpeed = get("runSpeed", w.runSpeed);
         w.acceleration = get("acceleration", w.acceleration);
         w.deceleration = get("deceleration", w.deceleration);
         w.turnRate = deg("turnRateDeg", w.turnRate);
@@ -380,6 +382,7 @@ void Human::walk(float dt) {
     paced.speed *= speedScale_;
     paced.backSpeed *= speedScale_;
     paced.sideSpeed *= speedScale_;
+    if (pace_ > 0) paced.speed = pace_ == 2 ? moveSettings_.runSpeed : moveSettings_.jogSpeed;  // forward only
     mover_.tick(dt, body && !posing ? stepInput_ : math::Vec2(0.0f), face_ && !posing, faceYaw_, paced);
     const motion::MoveSettings& w = moveSettings_;
     const math::Transform from = root_;
