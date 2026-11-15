@@ -195,6 +195,8 @@ void BodyDecider::seed(const rig::Pose& pose) {
     lastStepped_ = -1;
     wasSwinging_[0] = wasSwinging_[1] = false;
     step_ = StepPlanner{};
+    lastPelvisYaw_ = lastPelvisRate_ = trunkTwist_ = trunkTwistRate_ = 0.0f;
+    trunkTicks_ = 0;
     seeded_ = true;
 }
 
@@ -539,8 +541,8 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             markPlanned(j, out);
         }
     refresh(d);
-    placePelvis(d, math::Transform{out.hipsReference,
-                                   math::fromAxisAngle(math::kUp, pelvisTurn(t, s)) * restPelvis_.rotation});
+    const float pelvisYaw = pelvisTurn(t, s);
+    placePelvis(d, math::Transform{out.hipsReference, math::fromAxisAngle(math::kUp, pelvisYaw) * restPelvis_.rotation});
 
     // Reach: a hand or lifted foot out of its limb's reach brings the trunk
     // in (its queue and plan), then the standing balance and the grounded
@@ -624,9 +626,35 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             }
         if (turned && joints_.spine[0] >= 0) refresh(d, joints_.spine[0]);
     }
+    // The chest's turn through the trunk's spring-damper (Prins 2019), shared
+    // evenly by the three spine joints; a hand or chest target driving the
+    // trunk serves its goal instead (the spring keeps running).
+    trunkSpring(pelvisYaw, t.dt, s);
+    if (act_[HandLW] <= 0.0f && act_[HandRW] <= 0.0f && act_[ChestW] <= 0.0f && std::abs(trunkTwist_) > 1e-5f) {
+        const math::Quat part = math::fromAxisAngle(math::kUp, trunkTwist_ / 3.0f);
+        for (int j : joints_.spine)
+            if (j >= 0) turnPlanned(d, j, part);
+    }
     freeArms(t, s, out);
     levelHead(t, s, out);
     solveArms(d, t, s, out);
+}
+
+void BodyDecider::trunkSpring(float pelvisYaw, float dt, const BodyDeciderSettings& s) {
+    // The chest (its turn in the world c) on a rotational spring-damper to the
+    // pelvis (p); its turn against the pelvis, q = c - p, is moved by the
+    // pelvis's turning: q'' = -w^2 q - 2 z w q' - p''.
+    if (dt <= 0.0f) return;
+    const float rate = trunkTicks_ > 0 ? (pelvisYaw - lastPelvisYaw_) / dt : 0.0f;
+    const float accel = trunkTicks_ > 1 ? (rate - lastPelvisRate_) / dt : 0.0f;
+    lastPelvisYaw_ = pelvisYaw;
+    lastPelvisRate_ = rate;
+    trunkTicks_ = std::min(trunkTicks_ + 1, 2);
+    const float w = std::max(s.trunkTurnFrequency, 0.0f);
+    trunkTwistRate_ += dt * (-w * w * trunkTwist_ - 2.0f * s.trunkTurnDamping * w * trunkTwistRate_ - accel);
+    trunkTwist_ += dt * trunkTwistRate_;
+    constexpr float kMaxTwist = 0.5236f;  // 30 deg, the thoracic turn's range each way (BIOMECHANICS 2)
+    trunkTwist_ = std::clamp(trunkTwist_, -kMaxTwist, kMaxTwist);
 }
 
 float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const {

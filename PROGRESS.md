@@ -40,6 +40,15 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   Measured too: the chest turns with the pelvis exactly (15.2 deg, correlation +1.00):
   the physics trunk does not counter-turn on its own (real ~8 deg and opposite), so B1c-2
   needs the trunk's spring-damper in the plan (Prins 2019).
+- [x] **B1c-2 Chest turns through the trunk's spring-damper** (Prins 2019): the chest's
+  turn against the pelvis is a rotational spring-damper driven by the pelvis's turn
+  (`decider.trunkTurn` frequency 2.5 rad/s, damping 0.5; [E] fitted roughly, the user's
+  rule: a close number is enough), shared evenly by the three spine joints; a hand or
+  chest target driving the trunk takes over. Walking 0.9 m/s, steady (last 2 of 4.5 s):
+  pelvis 15.1 deg, chest 13.0 deg, about a quarter cycle behind (correlation -0.06; was
+  +1.00 locked to the pelvis). Real: chest 12 deg slow to 6 fast, timing -20 to -150 deg.
+  Also seen over 4.5 s: A/D at 0.8 m/s the hips run 52 cm ahead, chest lean 19 deg (the
+  side shuffle's limit, see B1).
 - [ ] **B1c Shares from the targets** (the rest): passive config shares to 0;
   a stepping foot turns the pelvis (not pushing it on: the hips target already does), the
   pelvis's turn turns the chest back, the arms cancel; posture (chest upright, head level)

@@ -111,6 +111,14 @@
     // peak at 0.40 m/s, 19 at 1.47 m/s (Yang 2013, BIOMECHANICS 4.3). [E] the
     // share is fitted so walking at 0.9 m/s gives about 15 deg.
     "pelvisTurnShare": 0.11,
+    // The chest's turn follows the pelvis's through the trunk's axial
+    // spring-damper (Prins et al. 2019): natural frequency (rad/s) and damping
+    // ratio. Quick steps drive it faster than its frequency: the chest lags,
+    // turns less and against the pelvis; slow steps: with it (real: thorax 12
+    // deg at 0.40 m/s, 6 at 1.47 m/s, Yang 2013; relative phase -20 deg slow,
+    // -150 fast). [E] fitted roughly: walking 0.9 m/s about half the pelvis's
+    // turn, lagging.
+    "trunkTurn": { "frequency": 2.5, "damping": 0.5 },
     // Free arms (no goal) cancel this share of the rest of the body's turning
     // about the vertical: arm swing cuts the vertical ground reaction moment
     // by ~63 % in walking (Collins, Adamczyk & Kuo 2009).

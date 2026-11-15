@@ -144,6 +144,11 @@ struct BodyDeciderSettings {
     // longer steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at
     // 0.40 m/s, 19 at 1.47 m/s, Yang 2013; larger with big steps, Liang 2014).
     float pelvisTurnShare = 0.11f;
+    // The trunk's axial spring-damper (Prins et al. 2019): the chest's turn
+    // follows the pelvis's through it (natural frequency rad/s, damping
+    // ratio). Driven faster than its frequency (quicker steps) it lags and
+    // turns less, opposite to the pelvis; slowly, with it (BIOMECHANICS 4.3).
+    float trunkTurnFrequency = 2.5f, trunkTurnDamping = 0.5f;
     // A limb reaches at most its span with the knee or elbow bent this much
     // (rad): quiet standing knee 0-5 deg (BIOMECHANICS 2); the two-bone
     // solve's soften keeps it from snapping.
@@ -279,6 +284,9 @@ private:
     void balanceStanding(const TargetSet& t, const BodyDeciderSettings& s);
     // The pelvis's turn about the vertical from the feet (rad, + to the left).
     float pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const;
+    // The trunk's spring-damper one tick on: the chest's turn against the
+    // pelvis (trunkTwist_) from the pelvis's turn.
+    void trunkSpring(float pelvisYaw, float dt, const BodyDeciderSettings& s);
     // Free arms (no goal) swing to cancel the plan's turning and settle to
     // their rest in the chest's frame.
     void freeArms(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
@@ -360,6 +368,11 @@ private:
     StepPlanner step_;
     StepPlannerSettings stepNow_;
     TargetSet work_;
+    // The trunk's spring-damper: the pelvis's turn and its rate last tick,
+    // the chest's turn against the pelvis and its rate (rad, rad/s).
+    float lastPelvisYaw_ = 0.0f, lastPelvisRate_ = 0.0f;
+    float trunkTwist_ = 0.0f, trunkTwistRate_ = 0.0f;
+    int trunkTicks_ = 0;  // ticks since the plan started (no rates before 2)
 };
 
 } // namespace motion

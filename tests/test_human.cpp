@@ -577,14 +577,14 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
         math::Vec3 lastPlan[2];
         bool have = false;
         const int chestJ = h.rig().findJoint("chest");
-        for (int i = 0; i < 480; ++i) {
+        for (int i = 0; i < 720; ++i) {
             const float time = i * kDt;
-            h.setStepInput(time < 2.5f ? c.input : math::Vec2(0.0f));
+            h.setStepInput(time < 4.5f ? c.input : math::Vec2(0.0f));
             h.tick(kDt);
             world.step(kDt);
             if (!h.bodyQueue().plan || !h.physicalModels(world, 1.0f, real)) continue;
             const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
-            if (c.name[0] == 'W' && time > 2.4f && time < 3.6f && i % 6 == 0) {
+            if (false && time > 2.4f && time < 3.6f && i % 6 == 0) {
                 const motion::StepAdvice& a = h.bodyQueue().step;
                 const math::Vec3 xc = h.root().transformPoint(a.capturePoint);
                 const math::Vec3 pl = h.root().transformPoint(math::Vec3(plan[0][3]));
@@ -617,11 +617,11 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
             const math::Vec3 dir = math::length2(c.input) > 0.0f
                                        ? math::normalize(fwd * c.input.y + left * c.input.x)
                                        : fwd;
-            if (time > 0.5f && time < 2.5f) {
+            if (time > 0.5f && time < 4.5f) {
                 const float ahead = math::dot(hips - centre, dir);
                 hipsAheadMax = std::max(hipsAheadMax, ahead);
                 hipsAheadMin = std::min(hipsAheadMin, ahead);
-                if (time > 1.0f) {  // across the way it moves: the side sway (real hips, world)
+                if (time > 2.5f) {  // across the way it moves: the side sway (real hips, world)
                     const math::Vec3 across = math::cross(math::kUp, dir);
                     sway.add(math::dot(hips, across));
                 }
@@ -631,7 +631,7 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
                 chestRef = flatX(real[static_cast<size_t>(chestJ)]);
                 refs = true;
             }
-            if (time > 1.0f && time < 2.5f) {
+            if (time > 2.5f && time < 4.5f) {
                 const float pp = yawOf(plan[0], pelvisRef), pr = yawOf(real[0], pelvisRef);
                 const float cr = yawOf(real[static_cast<size_t>(chestJ)], chestRef);
                 pelvisYawPlan.add(pp);
