@@ -17,6 +17,25 @@ decider's reach math moved into `body_decider.cpp`; the pelvis limits are now
 `decider.pelvisMinDeg/MaxDeg`, the limb test's Fitts timing `muscles.fitts*`. The items
 6.1 and 6.1d below describe code that is gone (history only).
 
+**2026-11-15: branch `body-mechanism` (from milestone-6, the user's call): one body
+mechanism instead of separate walk / jump.** The hips move, the body follows by real
+balance: the decider's balance step (DECISIONS 2026-11-15).
+- [x] **B1 Balance step** (built; awaiting the user's check in the game): WASD moves the
+  hips target; the decider steps by the capture point (any direction, bigger push = bigger
+  or more steps); `human_joints.json` "decider.balanceStep". Measure:
+  `agents_tests --no-skip -tc="measure: balance steps*"`. Space no longer jumps.
+  Known, not fixed yet:
+  - the real (physics) swing foot lags the plan at landing by 18-49 cm in forward walking
+    at 0.9 m/s (0.45 m steps: the swing foot travels ~0.9 m in 0.4 s); the stepping
+    test's foot slide is 26 cm (was 1.4-2 cm with 0.3 m steps): the muscles, next;
+  - the side shuffle can keep up only to about (maxStep - minFootGap) / (2 x step time)
+    ~0.62 m/s; `walk.sideSpeed` is 0.8, so the hips run ahead (lead step 0.9 m);
+  - the first step from standing is long (76 cm): the walker reaches full speed in
+    0.18 s (`walk.acceleration` 5);
+  - turning on the spot takes no steps yet (feet stay); no hips sway with the hips driven.
+- [ ] **B2 Leg push moves the pelvis** (the stance leg's share), then running from it.
+- [ ] **B3 Reach**: how far the ball is decides step, hop / jump or dive (one push).
+
 - [x] **6.1 Action point and release** (the user: "feels better"; commit dbcbde0 has the
   full version with trunk coil and lean, back-foot step, stride, hips-then-shoulders and
   front arm).

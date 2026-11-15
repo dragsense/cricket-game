@@ -153,7 +153,30 @@
     // maximal one-leg foot reach (star excursion test, PMC6347240, 9.7).
     // The pelvis tilt keeps to pelvisMinDeg / pelvisMaxDeg above.
     "twoLegKneeMaxDeg": 90,
-    "oneLegKneeMaxDeg": 67
+    "oneLegKneeMaxDeg": 67,
+    // The balance step (the user's design, 2026-11-15): whatever moves the
+    // body (the hips target, a push), a foot steps where its motion takes the
+    // centre of mass. The extrapolated centre of mass XCoM = CoM + v / w0,
+    // w0 = sqrt(g / l) (Hof, Gazendam & Sinke 2005); out of the feet's outline
+    // by more than `margin` (m): a step, the foot landing where the XCoM will
+    // be by then (the heel, the ankle over it), `landingBehind` short of it
+    // along the motion so the body carries on (in walking the heel lands a
+    // little behind the XCoM fore-aft, Hof 2005: at 1.2 m/s v / w0 ~ 0.38 m,
+    // the heel ~0.33 m ahead of the CoM), under its own hip to the side. Feet never cross (`minFootGap`)
+    // and land at most `maxStep` from the other foot. More motion: bigger and
+    // more steps. Foot outline from the skeleton's foot (~0.25 x 0.09 m).
+    // [E] margin, landingBehind, minFootGap, maxStep: starting values to tune
+    // in the game.
+    "balanceStep": {
+      "on": true,
+      "margin": 0.02,
+      "footHalfWidth": 0.045,
+      "footHalfLength": 0.11,
+      "footCentreAhead": 0.05,
+      "landingBehind": 0.05,
+      "minFootGap": 0.1,
+      "maxStep": 0.9
+    }
   },
 
   // Muscles (BIOMECHANICS 14): each joint's motor drives it toward the planned

@@ -235,13 +235,14 @@ void sweep(bool hand, bool left, math::Vec3 dir, const char* name) {
     const math::Vec3 step = h.root().transformDirection(dir) * (0.5f * kDt);
     math::Vec3 lastPlan = goal, lastReal = goal;
     float worstPlan = 0.0f, worstReal = 0.0f;
-    int againstPlan = 0, againstReal = 0, ticks = 0;
+    int againstPlan = 0, againstReal = 0, ticks = 0, stepTicks = 0;
     for (int i = 0; i < 180; ++i) {  // 1.5 s: 0.75 m of goal travel
         goal += step;
         if (hand) h.setPoseHand(left, goal);
         else h.setPoseFoot(left ? motion::Foot::Left : motion::Foot::Right, goal);
         h.tick(kDt);
         world.step(kDt);
+        if (h.stepFoot() >= 0) ++stepTicks;  // a balance step under way
         const math::Vec3 p = end(*h.bodyQueue().plan);
         const float vp = math::dot(p - lastPlan, math::normalize(step)) / kDt;
         lastPlan = p;
@@ -255,8 +256,8 @@ void sweep(bool hand, bool left, math::Vec3 dir, const char* name) {
         ++ticks;
     }
     std::printf("%-22s against goal: plan %3d ticks (worst %5.2f m/s), real %3d ticks (worst %5.2f m/s), "
-                "final miss plan %4.1f cm\n",
-                name, againstPlan, worstPlan, againstReal, worstReal, 100.0f * math::distance(lastPlan, goal));
+                "final miss plan %4.1f cm, stepping %d ticks\n",
+                name, againstPlan, worstPlan, againstReal, worstReal, 100.0f * math::distance(lastPlan, goal), stepTicks);
 }
 } // namespace
 
@@ -519,6 +520,115 @@ TEST_CASE("measure: capsule and hips through W steps" * doctest::skip()) {
                 100.0f * frontLagMax, 100.0f * (sideMax - sideMin), sideAccel, h.supported() ? "no" : "yes");
     std::printf("pelvis turn (yaw) range: plan %.1f deg, real %.1f deg | pelvis drop (roll) range: plan %.1f deg, real %.1f deg\n",
                 yawP[1] - yawP[0], yawR[1] - yawR[0], rollP[1] - rollP[0], rollR[1] - rollR[0]);
+}
+
+// Measurement (run on demand): the balance step under the hips target. For
+// each input (held 2.5 s, then let go for 1.5 s) every step's foot, length
+// (from the other foot, forward / left in the starting frame) and time, the
+// hips against the feet's centre, a real foot's slide while its plan stands.
+TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
+    struct Case {
+        const char* name;
+        math::Vec2 input;
+    };
+    for (const Case& c : {Case{"W", {0.0f, 1.0f}}, Case{"S", {0.0f, -1.0f}}, Case{"A", {1.0f, 0.0f}}, Case{"D", {-1.0f, 0.0f}}}) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        std::printf("--- %s\n", c.name);
+        for (int i = 0; i < 60; ++i) {
+            h.tick(kDt);
+            world.step(kDt);
+            const motion::StepAdvice& a = h.bodyQueue().step;
+            if (a.wanted && h.stepFoot() >= 0 && h.stepPhase() < 0.02f)
+                std::printf("    settle tick %d: step %d, capture outside %.1f cm, velocity %.2f %.2f m/s\n", i, a.foot,
+                            100.0f * a.outside, a.velocity.x, a.velocity.z);
+        }
+        const math::Vec3 fwd = h.root().transformDirection(math::kForward), left = h.root().transformDirection(math::Vec3(1, 0, 0));
+        std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+        int lastFoot = -1, steps = 0;
+        float lastPhase = 0.0f, slideAt = 0.0f;
+        int slideFoot = -1;
+        float stepStart = 0.0f, hipsAheadMax = -9.0f, hipsAheadMin = 9.0f, slide = 0.0f, chest = 0.0f;
+        math::Vec3 still[2];
+        bool holding[2] = {false, false};
+        math::Vec3 lastPlan[2];
+        bool have = false;
+        const int chestJ = h.rig().findJoint("chest");
+        for (int i = 0; i < 480; ++i) {
+            const float time = i * kDt;
+            h.setStepInput(time < 2.5f ? c.input : math::Vec2(0.0f));
+            h.tick(kDt);
+            world.step(kDt);
+            if (!h.bodyQueue().plan || !h.physicalModels(world, 1.0f, real)) continue;
+            const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+            if (c.name[0] == 'W' && time > 2.4f && time < 3.6f && i % 6 == 0) {
+                const motion::StepAdvice& a = h.bodyQueue().step;
+                const math::Vec3 xc = h.root().transformPoint(a.capturePoint);
+                const math::Vec3 pl = h.root().transformPoint(math::Vec3(plan[0][3]));
+                const math::Vec3 tg = h.root().transformPoint(h.bodyTargets().hips.position);
+                auto fl = [&](math::Vec3 p) { return 100.0f * math::dot(p, left); };
+                auto ff = [&](math::Vec3 p) { return 100.0f * math::dot(p, fwd); };
+                std::printf("    t %.2f: xcom fwd %5.1f left %5.1f | outside %4.1f cm | wanted %d foot %d | plan hips "
+                            "%5.1f/%5.1f target %5.1f/%5.1f | feet L %5.1f/%5.1f R %5.1f/%5.1f\n",
+                            time, ff(xc), fl(xc), 100.0f * a.outside, a.wanted, a.foot, ff(pl), fl(pl), ff(tg), fl(tg),
+                            ff(h.ankle(true, plan, h.root())), fl(h.ankle(true, plan, h.root())),
+                            ff(h.ankle(false, plan, h.root())), fl(h.ankle(false, plan, h.root())));
+            }
+            const int foot = h.stepFoot();
+            // A step ended: the foot changed, or the same foot began again.
+            const bool restarted = foot >= 0 && foot == lastFoot && h.stepPhase() < lastPhase;
+            lastPhase = h.stepPhase();
+            if (lastFoot >= 0 && (foot != lastFoot || restarted)) {
+                const math::Vec3 a = h.ankle(lastFoot == 0, plan, h.root()), o = h.ankle(lastFoot != 0, plan, h.root());
+                const math::Vec3 r = h.ankle(lastFoot == 0, real, h.root());
+                std::printf("  step %d %s at %.2f-%.2f s: from other foot fwd %5.1f cm, left %5.1f cm | real ankle off "
+                            "plan at landing %4.1f cm (height %4.1f cm)\n",
+                            ++steps, lastFoot == 0 ? "L" : "R", stepStart, time, 100.0f * math::dot(a - o, fwd),
+                            100.0f * math::dot(a - o, left), 100.0f * math::length(math::Vec3(r.x - a.x, 0.0f, r.z - a.z)),
+                            100.0f * (r.y - a.y));
+            }
+            if (foot >= 0 && (foot != lastFoot || restarted)) stepStart = time;
+            lastFoot = foot;
+            const math::Vec3 hips = h.root().transformPoint(math::Vec3(real[0][3]));
+            const math::Vec3 centre = 0.5f * (h.ankle(true, real, h.root()) + h.ankle(false, real, h.root()));
+            const math::Vec3 dir = math::length2(c.input) > 0.0f
+                                       ? math::normalize(fwd * c.input.y + left * c.input.x)
+                                       : fwd;
+            if (time > 0.5f && time < 2.5f) {
+                const float ahead = math::dot(hips - centre, dir);
+                hipsAheadMax = std::max(hipsAheadMax, ahead);
+                hipsAheadMin = std::min(hipsAheadMin, ahead);
+            }
+            const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(chestJ)][1]));
+            chest = std::max(chest, math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f))));
+            for (int f = 0; f < 2; ++f) {
+                const math::Vec3 p = h.ankle(f == 0, plan, h.root()), a = h.ankle(f == 0, real, h.root());
+                const bool stands = have && math::length(p - lastPlan[f]) / kDt < 0.05f;
+                if (stands && !holding[f]) still[f] = a;
+                holding[f] = stands;
+                if (stands) {
+                    const float d = math::length(math::Vec3(a.x - still[f].x, 0.0f, a.z - still[f].z));
+                    if (d > slide) {
+                        slide = d;
+                        slideAt = time;
+                        slideFoot = f;
+                    }
+                }
+                lastPlan[f] = p;
+            }
+            have = true;
+        }
+        std::printf("  %d steps | hips ahead of the feet's centre (moving) %.1f .. %.1f cm | foot slide %.1f cm | chest "
+                    "lean %.1f deg | dropped %s | slide foot %d at %.2f s\n",
+                    steps, 100.0f * hipsAheadMin, 100.0f * hipsAheadMax, 100.0f * slide, chest, h.supported() ? "no" : "yes",
+                    slideFoot, slideAt);
+    }
 }
 
 // TEMP (remove before commit): a standing jump, measured.

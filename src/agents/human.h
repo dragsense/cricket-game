@@ -204,6 +204,9 @@ private:
     void solveIk();
     math::Vec3 modelCentreOfMass();  // uses models_, which must be current
     motion::GaitStyle gaitStyle() const;
+    // The next step's timing (stepPlan_ and the decider's) for the body's
+    // level velocity (character space).
+    void timeStep(math::Vec3 velocity);
 
     struct Joints {
         int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1, clavicleL = -1, clavicleR = -1;
@@ -305,6 +308,9 @@ private:
     // Each action's passive shares (locomotion.json "step.passive", "jump.passive").
     motion::PassiveShares stepPassive_, jumpPassive_;
     bool jumpHeld_ = false;
+    // WASD's hips target (world): it moves at the walker's velocity.
+    math::Vec3 hipsGoal_{0.0f};
+    bool hipsDriven_ = false;
     bool holdOff_ = false;  // the hold's joint off for the jump's push and flight
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward
     float armAmount_ = 0.0f; // smoothed arm swing scale 0..1

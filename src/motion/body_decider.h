@@ -71,6 +71,20 @@ struct ReachReport {
     math::Vec3 direction{0.0f};  // unit, from the end toward its target (character space)
 };
 
+// The balance step (the capture point): where the body's motion takes its
+// centre of mass, a foot steps there. Whatever moved the body (a hips
+// target, a push, a reach) the same rule: more motion, a bigger step or
+// more steps, any direction. The planner makes the step (a foot moves only
+// by a step, never slides).
+struct StepAdvice {
+    bool wanted = false;             // a step is needed (a step under way: its spot now)
+    int foot = -1;                   // 0 left, 1 right
+    math::Vec3 spot{0.0f};           // where its ankle should land (character space)
+    math::Vec3 capturePoint{0.0f};   // the extrapolated centre of mass now, on the ground
+    math::Vec3 velocity{0.0f};       // m/s, the body's level motion it comes from
+    float outside = 0.0f;            // m the capture point is out of the support (0: inside)
+};
+
 struct BodyQueue {
     static constexpr int kCapacity = 48;
     static constexpr int kMaxJoints = 128;
@@ -85,6 +99,7 @@ struct BodyQueue {
     math::Vec3 hipsReference{0.0f};         // where support puts the hips (character space)
     bool heightClamped = false;             // a grounded leg holds the hips lower than wanted
     ReachReport reach[4];                   // hand L, hand R, foot L, foot R
+    StepAdvice step;                        // the balance step (none: wanted false)
 };
 
 struct BodyDeciderJoints {
@@ -138,6 +153,24 @@ struct BodyDeciderSettings {
     // space): forward tilt (hip flexion, +X), turn (Y), side tilt (Z);
     // decider.pelvisMinDeg / pelvisMaxDeg (BIOMECHANICS 9.3).
     math::Vec3 pelvisMin{-0.1745f, -0.5236f, -0.3491f}, pelvisMax{1.3963f, 0.5236f, 0.3491f};
+    // The balance step (human_joints.json "decider.balanceStep"): the
+    // extrapolated centre of mass XCoM = CoM + v / w0, w0 = sqrt(g / l)
+    // (Hof, Gazendam & Sinke 2005). Out of the support (the feet's outline)
+    // by more than stepMargin: a step, its foot landing where the XCoM will
+    // be when it lands, landingBehind short of it along the motion (so the
+    // body carries on), under its own hip to the side; never crossing the
+    // other foot (minFootGap) nor further from it than maxStep.
+    bool balanceStepOn = true;
+    float stepMargin = 0.02f;       // m
+    float footHalfWidth = 0.045f;   // m, the foot's outline: half its width
+    float footHalfLength = 0.11f;   // m, half its length
+    float footCentreAhead = 0.05f;  // m, the foot's centre ahead of the ankle
+    float landingBehind = 0.05f;    // m
+    float minFootGap = 0.1f;        // m
+    float maxStep = 0.9f;           // m
+    // The planner's step timing (locomotion.json "step"): the XCoM is
+    // carried on by the motion until the foot lands.
+    float stepDuration = 0.6f, stepLiftAt = 0.25f;
 };
 
 class BodyDecider {
@@ -188,6 +221,15 @@ private:
     void solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void report(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
+    // The balance step on the output pose (StepAdvice).
+    void balanceStep(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
+    // How far a ground point (character space) is out of the outline of
+    // feet with their ankles at `ankles` (n of them; 0: inside).
+    static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
+    // Where foot i lands for capture point `xcom` moving with `velocity`;
+    // `miss`: how far it stays from the ideal spot (crossing, reach).
+    math::Vec3 stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, const BodyDeciderSettings& s, float& miss) const;
+    math::Vec3 centreOfMass(const Plan& p) const;
 
     // A hand's trunk: out of reach, the queue (by where the target is) and
     // its plan on the desired pose.
@@ -285,6 +327,10 @@ private:
     std::vector<math::Vec3> lastCentre_;
     bool lastValid_ = false;
     float armAngle_[2] = {0.0f, 0.0f};
+    // The balance step: the foot that stepped last (-1: none yet) and which
+    // foot was on a timed swing last decide.
+    int lastStepped_ = -1;
+    bool wasSwinging_[2] = {false, false};
 };
 
 } // namespace motion

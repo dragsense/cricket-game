@@ -674,3 +674,25 @@ Dated log. Format: decision, reason, alternatives rejected.
   hold only as much as the parts hanging below each joint, not the body above.
 - **Rejected:** hand and foot targets (arm swing, tuck, feet under the body in the air):
   the user's call, simple first.
+
+## 2026-11-15: The balance step: the hips move, the feet follow (capture point)
+- **Decision (the user's design):** the body's decider steps on its own whenever the body's
+  motion would take it out of its support, whatever moved it. WASD moves only the hips target
+  (the walker's eased velocity); the decider computes the extrapolated centre of mass
+  (XCoM = CoM + v / w0, w0 = sqrt(g / l), Hof, Gazendam & Sinke 2005) and, once it will be
+  out of the feet's outline by the time a step could land, asks for a step
+  (`BodyQueue::step`): the foot whose step leaves it best inside the new support (feet
+  never cross, at most `maxStep` from the other), the two taking turns on a tie; the heel
+  lands `landingBehind` short of where the XCoM will be, under its own hip. The step
+  planner makes the step; a foot moves only by a step, never slides. The step's time is
+  the gait's for the body's speed (`motion::gaitTiming`), so its length is the speed times
+  its time. Stopped, the hips target holds until the last step has landed.
+- **Measured (W, 0.9 m/s):** steady steps 45.9 cm in 0.52 s (gaitTiming: 0.45 m, 0.5 s);
+  stopping: a 3.4 cm closing step; S the same backward; A/D a side shuffle (lead foot out,
+  the other closes to `minFootGap`); limb test unchanged (no steps).
+- **Rejected:** the walk's fixed WASD step spots (`FootStepper::stepSpot`, kept unused);
+  predicting from the plan's hips speed (it overshoots when the target stops and stepped
+  on the seed's settling); free hips' support reference moving with the swing foot (the
+  spot would chase itself).
+- **Not used now (files kept, the user's call):** `motion::JumpPlanner` (Space no longer
+  jumps); reach and dive will come from the same push on the hips.

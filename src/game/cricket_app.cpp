@@ -219,11 +219,11 @@ bool CricketApp::pumpEvents() {
     agents::Human& fielder = sim_.fielder();
     if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
     if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
-    // One way to move (the user's call, 2026-11-09): WASD takes steps (held:
-    // walking); the body follows the feet. The heading only turns the player.
+    // WASD moves the hips (the user's design, 2026-11-15); the body's
+    // balance steps follow. The heading only turns the player. The jump is
+    // not used (reach and dive will come from the same push).
     fielder.setFacing(true, heading_);
     fielder.setStepInput(move);
-    fielder.setJumpInput(actions_.down(input_, core::Action::Jump));
     if (actions_.pressed(input_, core::Action::WalkFaster)) fielder.changeWalkSpeed(1);
     if (actions_.pressed(input_, core::Action::WalkSlower)) fielder.changeWalkSpeed(-1);
 

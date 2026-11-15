@@ -191,6 +191,8 @@ void BodyDecider::seed(const rig::Pose& pose) {
     for (int e = 0; e < kEnds; ++e) trunkFirst_[e] = trunkEnd_[e] = -1;
     lastValid_ = false;
     armAngle_[0] = armAngle_[1] = 0.0f;
+    lastStepped_ = -1;
+    wasSwinging_[0] = wasSwinging_[1] = false;
     seeded_ = true;
 }
 
@@ -275,8 +277,9 @@ void BodyDecider::limitJoint(int j, float rate, float dt) {
     o = limitTurn(o, desired_.pose.locals[static_cast<size_t>(j)].rotation, rate, dt);
 }
 
-math::Vec3 BodyDecider::planCentreOfMass() const {
-    const Plan& p = desired_;
+math::Vec3 BodyDecider::planCentreOfMass() const { return centreOfMass(desired_); }
+
+math::Vec3 BodyDecider::centreOfMass(const Plan& p) const {
     math::Vec3 sum(0.0f);
     for (size_t j = 0; j < mass_.size() && j < p.models.size() && j < centre_.size(); ++j)
         if (mass_[j] > 0.0f) sum += mass_[j] * math::Vec3(p.models[j] * math::Vec4(centre_[j], 1.0f));
@@ -349,6 +352,7 @@ void BodyDecider::decide(const TargetSet& t, const BodyDeciderSettings& s, BodyQ
     desiredPose(t, s, out);
     limitOutput(t, s, out);
     report(t, s, out);
+    balanceStep(t, s, out);
 }
 
 void BodyDecider::blendWeights(const TargetSet& t, const BodyDeciderSettings& s) {
@@ -833,6 +837,149 @@ void BodyDecider::report(const TargetSet& t, const BodyDeciderSettings& s, BodyQ
         r.reached = r.shortfall <= 1e-3f;
         r.direction = math::safeNormalize(target - planPos(output_, end));
     }
+}
+
+// ---- the balance step (the capture point) ----------------------------------------------
+
+float BodyDecider::outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s) {
+    // The support's outline: each foot a rectangle (character axes) round
+    // its centre, the two joined (their hull: the segment between the
+    // centres swept by the rectangle). The distance out of it, on the ground.
+    if (n <= 0) return 0.0f;
+    math::Vec3 centre[2];
+    for (int i = 0; i < n && i < 2; ++i) centre[i] = ankles[i] + math::Vec3(0.0f, 0.0f, s.footCentreAhead);
+    auto boxOut = [&](math::Vec3 c) {
+        const float dx = std::max(0.0f, std::abs(p.x - c.x) - s.footHalfWidth);
+        const float dz = std::max(0.0f, std::abs(p.z - c.z) - s.footHalfLength);
+        return std::sqrt(dx * dx + dz * dz);
+    };
+    if (n == 1) return boxOut(centre[0]);
+    constexpr int kSamples = 16;
+    float best = boxOut(centre[0]);
+    for (int k = 1; k <= kSamples; ++k)
+        best = std::min(best, boxOut(math::lerp(centre[0], centre[1], static_cast<float>(k) / kSamples)));
+    return best;
+}
+
+math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, const BodyDeciderSettings& s,
+                                 float& miss) const {
+    // The heel (the ankle over it: the foot lands heel first, its pressure
+    // there) where the capture point will be, landingBehind short of it along
+    // the motion, under its own hip to the side.
+    const math::Vec3 dir = math::safeNormalize(math::Vec3(velocity.x, 0.0f, velocity.z));
+    math::Vec3 ideal = xcom - dir * s.landingBehind + math::Vec3(hipOffset_[i].x, 0.0f, 0.0f);
+    ideal.y = anchor_[i].y;
+    math::Vec3 spot = ideal;
+    const int o = 1 - i;
+    if (grounded_[o] && joints_.legs[o].end >= 0) {
+        // Never across the other foot, never further from it than a step.
+        const math::Vec3 other = anchor_[o];
+        const float side = hipOffset_[i].x >= hipOffset_[o].x ? 1.0f : -1.0f;
+        if ((spot.x - other.x) * side < s.minFootGap) spot.x = other.x + side * s.minFootGap;
+        math::Vec3 d(spot.x - other.x, 0.0f, spot.z - other.z);
+        const float len = math::length(d);
+        if (len > s.maxStep && len > 1e-6f) {
+            d *= s.maxStep / len;
+            spot.x = other.x + d.x;
+            spot.z = other.z + d.z;
+        }
+    }
+    miss = std::sqrt((spot.x - ideal.x) * (spot.x - ideal.x) + (spot.z - ideal.z) * (spot.z - ideal.z));
+    return spot;
+}
+
+void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {
+    // The extrapolated centre of mass (Hof, Gazendam & Sinke 2005): where
+    // the body's motion takes it, XCoM = CoM + v / w0, w0 = sqrt(g / l) (the
+    // inverted pendulum of the leg). Out of the support: a step, the foot
+    // landing where the XCoM will be by then (the motion carries it on over
+    // the step's time). General: whatever moves the body asks for it.
+    out.step = StepAdvice{};
+    // The foot that stepped last: a timed swing that has landed.
+    for (int i = 0; i < 2; ++i) {
+        const bool swinging = t.foot[i].mode == TargetMode::Driven && t.foot[i].swing >= 0.0f;
+        if (wasSwinging_[i] && t.foot[i].mode == TargetMode::Pinned) lastStepped_ = i;
+        wasSwinging_[i] = swinging;
+    }
+    if (!s.balanceStepOn || s.gravity <= 0.0f || totalMass_ <= 0.0f) return;
+    int swing = -1;
+    for (int i = 0; i < 2; ++i) {
+        const Target& f = t.foot[i];
+        if (f.mode != TargetMode::Driven) continue;
+        if (f.swing < 0.0f) return;  // a foot held up (no step): no balance step
+        swing = i;
+    }
+    math::Vec3 standing[2];
+    float groundY = 0.0f;
+    int n = 0;
+    for (int i = 0; i < 2; ++i)
+        if (i != swing && grounded_[i] && joints_.legs[i].end >= 0) {
+            standing[n++] = anchor_[i];
+            groundY += anchor_[i].y;
+        }
+    if (n == 0) return;  // no support (flight)
+    groundY /= static_cast<float>(n);
+    const math::Vec3 com = centreOfMass(output_);
+    const float height = std::max(com.y - groundY, 0.3f);
+    const float w0 = std::sqrt(s.gravity / height);
+    const math::Vec3 v(hipsVel_.x, 0.0f, hipsVel_.z);  // the plan's hips carry the body
+    const math::Vec3 xcom = math::Vec3(com.x, groundY, com.z) + v / w0;
+    // Where it will be in `time`: a driven hips target is where the hips go
+    // (the plan lags it only within the muscles' bounds), so by its share
+    // the body goes to the target and on at the target's own speed. Free
+    // hips settle over the support (between the feet: no motion of their
+    // own), so only the drive carries the body on, never the plan's speed
+    // now (that stops at its reference).
+    const Target& hipsGoal = given(t, HipsW);
+    const float kh = act_[HipsW] * std::clamp(hipsGoal.weightPosition, 0.0f, 1.0f) *
+                     std::clamp(t.hipsWeightHorizontal, 0.0f, 1.0f);
+    math::Vec3 lag = (hipsGoal.position - pelvisOf(output_).position) * kh;
+    lag.y = 0.0f;
+    const math::Vec3 vGoal = math::Vec3(hipsGoal.velocity.x, 0.0f, hipsGoal.velocity.z) * kh;
+    auto future = [&](float time) { return math::Vec3(com.x, groundY, com.z) + lag + vGoal * time + vGoal / w0; };
+    out.step.capturePoint = xcom;
+    out.step.velocity = vGoal;
+    out.step.outside = outsideFeet(xcom, standing, n, s);
+    const float lift = std::clamp(s.stepLiftAt, 0.0f, 0.9f);
+    const float lead = s.stepDuration * lift, swingTime = s.stepDuration * (1.0f - lift);
+    float miss = 0.0f;
+    if (swing >= 0) {
+        // A step under way: its spot follows the capture point to the landing.
+        const float u = std::clamp(t.foot[swing].swing, 0.0f, 1.0f);
+        const float left = swingTime * (1.0f - u) + (u <= 0.0f ? lead : 0.0f);
+        out.step.wanted = true;
+        out.step.foot = swing;
+        out.step.spot = stepSpot(swing, future(left), vGoal, s, miss);
+        return;
+    }
+    // A step takes its time: it starts once the capture point will be out of
+    // the support by the time a step could land (standing still: once it is
+    // out), so a moving body steps on without a pause.
+    const math::Vec3 at = future(lead + swingTime);
+    if (outsideFeet(at, standing, n, s) <= s.stepMargin) return;
+    // The foot whose step leaves the capture point (where it will be by the
+    // landing) best inside the new support (not crossing, within a step); a
+    // tie, or neither reaching it (each step makes room for the next): the
+    // feet take turns (gait alternates), the first step the one with further
+    // to go.
+    math::Vec3 spot[2];
+    float after[2], travel[2];
+    for (int i = 0; i < 2; ++i) {
+        spot[i] = stepSpot(i, at, vGoal, s, miss);
+        const math::Vec3 feet[2] = {spot[i], anchor_[1 - i]};
+        after[i] = outsideFeet(at, feet, 2, s);
+        const math::Vec3 d = spot[i] - anchor_[i];
+        travel[i] = std::sqrt(d.x * d.x + d.z * d.z);
+    }
+    constexpr float kTie = 0.01f;  // m
+    int foot;
+    const bool neither = after[0] > s.stepMargin && after[1] > s.stepMargin;
+    if (std::abs(after[0] - after[1]) > kTie && !(neither && lastStepped_ >= 0)) foot = after[0] < after[1] ? 0 : 1;
+    else if (lastStepped_ >= 0) foot = 1 - lastStepped_;
+    else foot = travel[0] >= travel[1] ? 0 : 1;
+    out.step.wanted = true;
+    out.step.foot = foot;
+    out.step.spot = spot[foot];
 }
 
 // ---- reach queues (the desired pose) ----------------------------------------------------

@@ -373,11 +373,18 @@ void Human::walk(float dt) {
     // Move and turn the root; planted feet stay where they are in the world.
     // While posing (limb test) the fielder stands and does not turn.
     const bool posing = phase_ == Phase::Pose;
-    walker_.tick(dt, math::Vec2(0.0f),  // turning only: moving is by steps
-                 face_ && !posing, faceYaw_, walkSettings_);
+    // With the physics body WASD moves the hips (the walker's eased velocity,
+    // at the pace E / Q set); the decider's balance step takes the steps.
+    // The root does not move with it: it follows the real hips (the capsule).
+    const bool body = physics_ && humanBody_.ready();
+    motion::WalkSettings paced = walkSettings_;
+    paced.speed *= speedScale_;
+    paced.backSpeed *= speedScale_;
+    paced.sideSpeed *= speedScale_;
+    walker_.tick(dt, body && !posing ? stepInput_ : math::Vec2(0.0f), face_ && !posing, faceYaw_, paced);
     const motion::WalkSettings& w = walkSettings_;
     const math::Transform from = root_;
-    root_.position += walker_.velocity() * dt;
+    if (!body) root_.position += walker_.velocity() * dt;
     root_.rotation = math::fromAxisAngle(math::kUp, walker_.yaw());
     stepper_.rebase(from, root_);
     {
@@ -397,37 +404,13 @@ void Human::walk(float dt) {
     // alternating) and swings it to its spot; the body follows from the
     // body reposition. The root (and the camera with it) stays between the
     // feet every tick, so it glides along with the swinging foot.
+    if (body) {
+        // Standing between steps: the next step's timing (a step under way
+        // keeps its own) for the decider's prediction.
+        if (!stepPlanner_.running()) timeStep(queue_.step.velocity);
+        return;
+    }
     if (stepWalk_) {
-        if (physics_ && humanBody_.ready()) {
-            // The physics body: the stepper decides the step (which foot,
-            // where it lands, re-aimed every tick as the input turns); the
-            // step planner places the foot's target over time (limbTestPlan).
-            const bool input = math::length2(stepInput_) > 1e-6f;
-            if (jumpPlanner_.running()) return;  // no steps while jumping
-            if (!stepPlanner_.running()) {
-                // The pace (E / Q) applies from a step's start.
-                const float k = std::sqrt(speedScale_);
-                stepSettings_.stepLength = baseStep_.stepLength * k;
-                stepSettings_.backStepLength = baseStep_.backStepLength * k;
-                stepSettings_.sideStepLength = baseStep_.sideStepLength * k;
-                stepSettings_.stepDuration = baseStep_.stepDuration / k;
-                const int foot = stepper_.pickFoot(stepInput_, stepSettings_);
-                if (foot >= 0) {
-                    const motion::Foot f = static_cast<motion::Foot>(foot);
-                    stepPlan_.duration = stepSettings_.stepDuration;
-                    stepPlan_.liftAt = stepSettings_.liftAt;
-                    stepPlan_.height = stepSettings_.stepHeight;
-                    stepPlan_.peakAt = stepSettings_.peakAt;
-                    stepPlan_.toeOffPitch = walkSettings_.toeOffPitch;
-                    stepPlan_.ballReach = ballReach_;
-                    stepPlanner_.start(foot, stepper_.foot(f), stepper_.stepSpot(f, stepInput_, stepSettings_));
-                }
-            } else if (input) {
-                stepPlanner_.retarget(
-                    stepper_.stepSpot(static_cast<motion::Foot>(stepPlanner_.foot()), stepInput_, stepSettings_));
-            }
-            return;
-        }
         stepper_.tick(dt, stepInput_, stepSettings_);
         const math::Transform before = root_;
         const math::Vec3 mid = root_.transformPoint(0.5f * (stepper_.foot(motion::Foot::Left) + stepper_.foot(motion::Foot::Right)));
@@ -443,6 +426,24 @@ void Human::walk(float dt) {
     }
     stepper_.tickGait(dt, velocity, motion::gaitTiming(timingSpeed, rig_.height(), w), w.stepHeight,
                       w.settleDistance, gaitStyle());
+}
+
+void Human::timeStep(math::Vec3 velocity) {
+    // The step's timing from the body's speed: the gait's step time and
+    // double support for that speed (motion::gaitTiming, BIOMECHANICS 4:
+    // step = k H (v / v_ref)^0.42; slow or standing, the longest swing). So
+    // the step's length is the speed times its time. The decider predicts
+    // the landing with the same timing.
+    const motion::GaitTiming g =
+        motion::gaitTiming(std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z), rig_.height(), walkSettings_);
+    stepPlan_.duration = g.period;
+    stepPlan_.liftAt = g.period > 1e-3f ? std::clamp(1.0f - g.swing / g.period, 0.0f, 0.9f) : stepSettings_.liftAt;
+    stepPlan_.height = stepSettings_.stepHeight;
+    stepPlan_.peakAt = stepSettings_.peakAt;
+    stepPlan_.toeOffPitch = walkSettings_.toeOffPitch;
+    stepPlan_.ballReach = ballReach_;
+    deciderSettings_.stepDuration = stepPlan_.duration;
+    deciderSettings_.stepLiftAt = stepPlan_.liftAt;
 }
 
 motion::GaitStyle Human::gaitStyle() const {
@@ -724,6 +725,14 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             math::radians(jointsConfig_->getVec3("decider.pelvisMinDeg", math::degrees(deciderSettings_.pelvisMin)));
         deciderSettings_.pelvisMax =
             math::radians(jointsConfig_->getVec3("decider.pelvisMaxDeg", math::degrees(deciderSettings_.pelvisMax)));
+        deciderSettings_.balanceStepOn = jointsConfig_->getBool("decider.balanceStep.on", deciderSettings_.balanceStepOn);
+        deciderSettings_.stepMargin = dv("decider.balanceStep.margin", deciderSettings_.stepMargin);
+        deciderSettings_.footHalfWidth = dv("decider.balanceStep.footHalfWidth", deciderSettings_.footHalfWidth);
+        deciderSettings_.footHalfLength = dv("decider.balanceStep.footHalfLength", deciderSettings_.footHalfLength);
+        deciderSettings_.footCentreAhead = dv("decider.balanceStep.footCentreAhead", deciderSettings_.footCentreAhead);
+        deciderSettings_.landingBehind = dv("decider.balanceStep.landingBehind", deciderSettings_.landingBehind);
+        deciderSettings_.minFootGap = dv("decider.balanceStep.minFootGap", deciderSettings_.minFootGap);
+        deciderSettings_.maxStep = dv("decider.balanceStep.maxStep", deciderSettings_.maxStep);
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
@@ -850,6 +859,32 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     } else {
         handPath_.on = false;
     }
+    // WASD: the hips target moves at the walker's velocity (world), from
+    // where the plan's hips are when it starts; the height stays the
+    // support's. Stopped, it holds there until the last balance step has
+    // landed and the body is over its feet, then lets go (the hips settle
+    // between the feet); let go at once, the hips would swing back and step.
+    const math::Vec3 hipsVelocity = walker_.velocity();
+    const bool moving = math::length2(hipsVelocity) > 1e-6f;
+    const bool settling = hipsDriven_ && (stepPlanner_.running() || queue_.step.wanted);
+    if ((moving || settling) && phase_ != Phase::Pose && joints_.pelvis >= 0) {
+        if (!hipsDriven_) {
+            const std::vector<math::Mat4>& plan = decider_.outputModels();
+            const size_t pelvis = static_cast<size_t>(joints_.pelvis);
+            hipsGoal_ = root_.transformPoint(pelvis < plan.size() ? math::Vec3(plan[pelvis][3])
+                                                                  : math::Vec3(physicsModels_[pelvis][3]));
+            hipsDriven_ = true;
+        }
+        hipsGoal_ += hipsVelocity * dt;
+        t.hips.mode = motion::TargetMode::Driven;
+        t.hips.position = math::inverse(root_).transformPoint(hipsGoal_);
+        t.hips.velocity = math::inverse(root_).transformDirection(hipsVelocity);
+        t.hips.weightRotation = 0.0f;
+        t.hipsWeightHorizontal = 1.0f;
+        t.hipsWeightVertical = 0.0f;
+    } else {
+        hipsDriven_ = false;
+    }
     if (jumpPlanner_.running()) {
         // The jump: the planner gives the hips only (the active target);
         // the feet stay pinned as always, the rest follows by its passive
@@ -903,6 +938,17 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     }
     // The decider decides the whole body and gives the muscles its plan.
     decider_.decide(t, deciderSettings_, queue_);
+    // Its balance step: a foot moves only by a step (never slides). Not in
+    // the limb test's foot case (that foot is placed by hand).
+    const motion::StepAdvice& advice = queue_.step;
+    if (advice.wanted && advice.foot >= 0 && !(posedFoot_ >= 0 && !poseHandLast_)) {
+        if (!stepPlanner_.running()) {
+            timeStep(advice.velocity);
+            stepPlanner_.start(advice.foot, stepper_.foot(static_cast<motion::Foot>(advice.foot)), advice.spot);
+        } else if (advice.foot == stepPlanner_.foot()) {
+            stepPlanner_.retarget(advice.spot);
+        }
+    }
     return queue_.plan;
 }
 
