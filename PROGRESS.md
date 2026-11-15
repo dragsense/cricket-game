@@ -221,6 +221,25 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   1.18 m ahead at shoulder height: one step, reached (was 10 cm short); 0.8 m: no step,
   hips 0 (was 19 cm back); down then 58 cm ahead: hips 7 cm back (was 23), reached.
   Walking, the foot and hips cases unchanged (S's widest foot slide 7.9 cm, was 5.5).
+- [ ] **B2f Feet slide at fast walk, jog, run** (2026-11-15, measured, NOT fixed; next
+  session starts here). `measure: gaits by speed`: foot slide walk 1 cm, 1.56 m/s 20 cm,
+  jog 45 cm, run 46 cm. Chain found (`measure: swing foot*`, `measure: hip through a
+  swing` with CRICKET_PACE / CRICKET_STRENGTH / CRICKET_KNEE):
+  - the plan is right (sync formula, timing); the real pelvis follows it within 1-2 cm;
+  - the real swing foot lands 50 cm behind and 11 cm high, then is dragged to the plan's
+    pinned spot = the slide;
+  - cause: the real KNEE stays bent the whole cycle (jog: lift-off 46-50 deg vs plan 5,
+    landing 67-72 vs 5, stance 70-80 vs 35-50). The knee muscle's stiffness and weight
+    hold are built from the parts beyond it (shank + foot): right for a swing, far too
+    soft for a stance carrying the body; the decider's running leg is a 11.2 kN/m spring,
+    the physics leg is much softer (real bob 12 cm vs plan 5);
+  - tried, not kept: muscle feedforward (lead 2 x damping x activationTime = 0.06 s): the
+    thigh then tracks with 5x strength, but the knee still bends; strength x5 alone: the
+    thigh motor saturates at 1x (177 N m) but the lag is the damper (its pull is toward no
+    turn, not the pose's turn) and the knee.
+  - Next (the user's OK pending): stance-leg muscle stiffness from the load it carries so
+    the physics leg is the decider's legStiffness spring; then the user's "strength by
+    speed" for all muscles and leg feedforward if still needed.
 - [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
   derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
   arms relaxed (physics). Plan agreed with the user 2026-11-15.

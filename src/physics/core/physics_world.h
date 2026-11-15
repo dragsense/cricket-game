@@ -321,8 +321,9 @@ public:
     // gives it at the body's strength within the joint's muscles and the
     // motor gets what is left of them. No allocations.
     void setRagdollHold(RagdollId id, const math::Vec3* torques, int count);
-    // Every motor's torque limit at `scale` (0..1) of its MotorDesc's: the
-    // body's strength (hits, falls, get-up). No allocations.
+    // Every motor's torque limit at `scale` of its MotorDesc's: the body's
+    // strength (below 1: hits, falls, get-up; above 1, up to 10: more of the
+    // muscles recruited for a faster pace). No allocations.
     void setRagdollStrength(RagdollId id, float scale);
     // A ragdoll joint's last step, for measuring (the joint moving part
     // `part`, as built): its motor's torque (N m, about the joint's twist X,

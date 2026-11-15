@@ -1611,6 +1611,8 @@ TEST_CASE("measure: gaits by speed" * doctest::skip()) {
         for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
         for (int i = 0; i < c.presses; ++i) h.changeWalkSpeed(1);
         h.setPace(c.pace);
+        if (std::getenv("CRICKET_STRENGTH"))  // measuring: every muscle this many times its strength
+            world.setRagdollStrength(h.humanBody().ragdoll(), static_cast<float>(std::atof(std::getenv("CRICKET_STRENGTH"))));
         const math::Vec3 fwd = h.root().transformDirection(math::kForward);
         std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
         const int chestJ = h.rig().findJoint("chest");
@@ -1710,6 +1712,8 @@ TEST_CASE("measure: swing foot, plan against real" * doctest::skip()) {
     for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
     for (int i = 0; i < presses; ++i) h.changeWalkSpeed(1);
     h.setPace(pace);
+    if (std::getenv("CRICKET_STRENGTH"))  // measuring: every muscle this many times its strength
+        world.setRagdollStrength(h.humanBody().ragdoll(), static_cast<float>(std::atof(std::getenv("CRICKET_STRENGTH"))));
     const math::Vec3 fwd = h.root().transformDirection(math::kForward);
     std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
     const int thigh = h.rig().findJoint("thigh_l"), shin = h.rig().findJoint("shin_l"), ankle = h.rig().findJoint("foot_l");
@@ -1721,7 +1725,10 @@ TEST_CASE("measure: swing foot, plan against real" * doctest::skip()) {
     auto lag = [&](const char* when) {
         const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
         const math::Vec3 a = h.ankle(true, p, h.root()), r = h.ankle(true, real, h.root());
-        std::printf("    %-9s real behind plan %5.1f cm, below %5.1f cm\n", when, 100.0f * math::dot(a - r, fwd), 100.0f * (a.y - r.y));
+        const math::Vec3 pp = h.root().transformPoint(math::Vec3(p[0][3])), pr = h.root().transformPoint(math::Vec3(real[0][3]));
+        std::printf("    %-9s real behind plan %5.1f cm, below %5.1f cm | pelvis: real behind plan %5.1f cm, below %5.1f cm\n",
+                    when, 100.0f * math::dot(a - r, fwd), 100.0f * (a.y - r.y), 100.0f * math::dot(pp - pr, fwd),
+                    100.0f * (pp.y - pr.y));
     };
     auto angle = [&](const std::vector<math::Mat4>& m, int a, int b, int c) {
         const math::Vec3 pa(m[static_cast<size_t>(a)][3]), pb(m[static_cast<size_t>(b)][3]), pc(m[static_cast<size_t>(c)][3]);
@@ -1796,6 +1803,8 @@ TEST_CASE("measure: hip through a swing" * doctest::skip()) {
     for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
     for (int i = 0; i < presses; ++i) h.changeWalkSpeed(1);
     h.setPace(pace);
+    if (std::getenv("CRICKET_STRENGTH"))  // measuring: every muscle this many times its strength
+        world.setRagdollStrength(h.humanBody().ragdoll(), static_cast<float>(std::atof(std::getenv("CRICKET_STRENGTH"))));
     const math::Vec3 fwdW = h.root().transformDirection(math::kForward);
     std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
     const int thigh = h.rig().findJoint("thigh_l"), shin = h.rig().findJoint("shin_l");
@@ -1818,8 +1827,21 @@ TEST_CASE("measure: hip through a swing" * doctest::skip()) {
         if (time > 2.5f && swinging && !was) ++swings;
         was = swinging;
         if (time < 2.5f || swings != 2 || i % 2 != 0 || !h.physicalModels(world, 1.0f, real)) continue;
-        physics::PhysicsWorld::RagdollJointState st;
+        physics::PhysicsWorld::RagdollJointState st, knee;
         if (!world.ragdollJointState(h.humanBody().ragdoll(), part, kDt, st)) continue;
+        if (std::getenv("CRICKET_KNEE") && world.ragdollJointState(h.humanBody().ragdoll(), h.humanBody().partOf(shin), kDt, knee)) {
+            const int ankleJ = h.rig().findJoint("foot_l");
+            auto kneeAngle = [&](const std::vector<math::Mat4>& m) {
+                const math::Vec3 a(m[static_cast<size_t>(thigh)][3]), b(m[static_cast<size_t>(shin)][3]), c(m[static_cast<size_t>(ankleJ)][3]);
+                return math::degrees(std::acos(std::clamp(math::dot(math::normalize(b - a), math::normalize(c - b)), -1.0f, 1.0f)));
+            };
+            std::printf("  %.3f s %s along %.2f | thigh plan %6.1f real %6.1f | knee plan %6.1f real %6.1f deg | knee motor x %6.1f y "
+                        "%6.1f z %6.1f (limit twist %5.1f swing %5.1f)\n",
+                        time, swinging ? "swing " : "stance", sp.along(), pitch(*h.bodyQueue().plan), pitch(real),
+                        kneeAngle(*h.bodyQueue().plan), kneeAngle(real), knee.motor.x, knee.motor.y, knee.motor.z, knee.twistLimit,
+                        knee.swingLimit);
+            continue;
+        }
         std::printf("  %.3f s %s along %.2f | thigh pitch plan %6.1f real %6.1f deg | motor x %6.1f y %6.1f z %6.1f N m (limit "
                     "twist %5.1f swing %5.1f) | range x %6.1f y %6.1f z %6.1f\n",
                     time, swinging ? "swing " : "stance", sp.along(), pitch(*h.bodyQueue().plan), pitch(real), st.motor.x,

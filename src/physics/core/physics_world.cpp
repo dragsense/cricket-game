@@ -1109,7 +1109,8 @@ bool PhysicsWorld::ragdollJointState(RagdollId id, int part, float dt, RagdollJo
 void PhysicsWorld::setRagdollStrength(RagdollId id, float scale) {
     if (!impl_ || id >= impl_->ragdolls.size()) return;
     Impl::RagdollSlot& r = impl_->ragdolls[id];
-    const float k = std::clamp(scale, 0.0f, 1.0f);
+    constexpr float kMostScale = 10.0f;  // above 1: more of the muscles recruited (a faster pace)
+    const float k = std::clamp(scale, 0.0f, kMostScale);
     r.scale = k;
     const size_t n = std::min({static_cast<size_t>(r.ragdoll->GetConstraintCount()), r.baseTorque.size(), r.directional.size()});
     for (size_t i = 0; i < n; ++i) {
