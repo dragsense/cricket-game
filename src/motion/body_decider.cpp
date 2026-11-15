@@ -202,6 +202,9 @@ void BodyDecider::seed(const rig::Pose& pose) {
     runVy_ = 0.0f;
     clock_ = lastContact_ = 0.0f;
     landedAt_[0] = landedAt_[1] = -1.0f;
+    springLeg_[0] = springLeg_[1] = false;
+    footEvent_ = false;
+    lastGoalVelocity_ = math::Vec3(0.0f);
     lastPelvisYaw_ = lastPelvisRate_ = trunkTwist_ = trunkTwistRate_ = 0.0f;
     trunkTicks_ = 0;
     seeded_ = true;
@@ -225,6 +228,7 @@ void BodyDecider::rebase(const math::Transform& toNew) {
     for (math::Vec3& p : lastCentre_) p = toNew.transformPoint(p);
     for (StepPlanner& p : steps_) p.rebase(toNew);
     runVelocity_ = toNew.rotation * runVelocity_;
+    lastGoalVelocity_ = toNew.rotation * lastGoalVelocity_;
     runY_ = toNew.transformPoint(math::Vec3(0.0f, runY_, 0.0f)).y;
     if (!seeded_) return;
     placePelvis(output_, toNew * pelvisOf(output_));
@@ -368,7 +372,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
     // unless the action gives its own.
     work_ = given;  // no allocation (a plain struct)
     const TargetSet& t = work_;
-    bool stepping = false;
+    bool stepping = false, landedNow[2] = {false, false};
     clock_ += std::max(t.dt, 0.0f);
     for (int i = 0; i < 2; ++i) {
         StepPlanner& p = steps_[i];
@@ -379,6 +383,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
             out.landed[i] = true;
             out.landedSpot[i] = p.landing();
             landedAt_[i] = clock_;
+            landedNow[i] = footEvent_ = true;
         }
     }
     if (stepping) {
@@ -388,12 +393,17 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
 
     blendWeights(t, s);
     runPace(t, s);
+    // A stance is a spring from its own touchdown: a foot that lands running
+    // (past the walk-run transition) rides on it; one that landed walking
+    // holds the hips at the walking height until it lifts.
+    for (int i = 0; i < 2; ++i)
+        if (landedNow[i]) springLeg_[i] = runShare_ >= 0.5f;
     pinFeet(t);
     supportAndHips(t, s, out);
     desiredPose(t, s, out);
     limitOutput(t, s, out);
     report(t, s, out);
-    runSwingTiming(t, s);
+    timeSwings(t, s);
     balanceStep(t, s, out);
 
     // The balance step's advice: a step starts (from the foot's pinned spot;
@@ -406,6 +416,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
             stepNow_[a.foot] = nextStep_;
             steps_[a.foot].start(a.foot, anchor_[a.foot], a.spot, anchorNormal_[a.foot]);
             lastStarted_ = a.foot;
+            footEvent_ = true;
         } else if (steps_[a.foot].running()) {
             steps_[a.foot].retarget(a.spot);
         }
@@ -467,11 +478,24 @@ void BodyDecider::runSpring(const math::Transform& pelvis, float dt, const BodyD
     // grounded leg a spring from its foot to its hip, rest length its reach;
     // its force along the leg, the vertical part lifting the body's mass
     // against gravity; no grounded leg: gravity alone (flight). The level
-    // motion is the hips target's.
+    // motion is the hips target's. A leg that landed walking holds the hips
+    // at the walking height (`pelvis`) until it lifts: its stance is no
+    // spring's.
+    bool spring = false, walking = false;
+    for (int i = 0; i < 2; ++i) {
+        if (joints_.legs[i].start < 0 || !grounded_[i]) continue;
+        if (springLeg_[i]) spring = true;
+        else walking = true;
+    }
+    if (walking && !spring) {
+        runY_ = pelvis.position.y;
+        runVy_ = hipsVel_.y;
+        return;
+    }
     float accel = -s.gravity;
     const float mass = std::max(totalMass_, 1.0f);
     for (int i = 0; i < 2; ++i) {
-        if (joints_.legs[i].start < 0 || !grounded_[i]) continue;
+        if (joints_.legs[i].start < 0 || !grounded_[i] || !springLeg_[i]) continue;
         const math::Vec3 hip = math::Vec3(pelvis.position.x, runY_, pelvis.position.z) + pelvis.rotation * hipOffset_[i];
         const math::Vec3 d = hip - anchor_[i];
         const float len = math::length(d), rest = limbReach(2 + i, s);
@@ -546,12 +570,13 @@ float BodyDecider::touchdownHeight(int i, const BodyDeciderSettings& s) const {
 
 float BodyDecider::touchdownTime(int i, const BodyDeciderSettings& s) const {
     // Flying, the hips fall on gravity (y0 + vy t - g t^2 / 2); foot i lands
-    // when they are down to its touchdown height. Never that low: at the top.
+    // when they are down to its touchdown height (0: they are, it lands
+    // now). Never that low: at the top.
     const float want = touchdownHeight(i, s);
     const float g = std::max(s.gravity, 1e-3f);
     const float disc = runVy_ * runVy_ + 2.0f * g * (runY_ - want);
     const float time = disc >= 0.0f ? (runVy_ + std::sqrt(disc)) / g : std::max(runVy_, 0.0f) / g;
-    return std::max(time, 0.02f);
+    return std::max(time, 0.0f);
 }
 
 float BodyDecider::swingTimeAtLeast(int f, math::Vec3 spot, float left, const BodyDeciderSettings& s) const {
@@ -562,39 +587,76 @@ float BodyDecider::swingTimeAtLeast(int f, math::Vec3 spot, float left, const Bo
     return std::max(left, 1.875f * math::distance(steps_[f].target(), spot) / most);
 }
 
-void BodyDecider::runSwingTiming(const TargetSet& t, const BodyDeciderSettings& s) {
-    // Running, the swinging foot lands with the body, not on a clock set
-    // when it lifted: each tick the rest of its swing (re-planned from where
-    // it is, StepPlanner::setTimeLeft) is how long the body takes to get
-    // there. On the other foot's stance: the rest of that stance (the hips
-    // on to the neutral point past the foot, where the leg takes off) and a
-    // flight; in the flight: until the hips come down to it. It re-aims for
-    // then (on a stance the balance step re-aims it too, the same spot).
-    if (runShare_ < 0.5f || s.gravity <= 0.0f) return;
-    const float speed = math::length(runVelocity_);
-    if (speed < 1e-3f) return;
-    const math::Vec3 dir = runVelocity_ / speed;
-    int f = -1;
-    float left = 0.0f;
-    if (steps_[0].running() && steps_[1].running()) {
-        f = lastStarted_ >= 0 ? 1 - lastStarted_ : 0;  // the one that lifted first lands first
-        left = touchdownTime(f, s);
-    } else {
-        for (int i = 0; i < 2 && f < 0; ++i) {
-            const int o = 1 - i;
-            if (!steps_[i].running() || !grounded_[o] || t.foot[o].mode != TargetMode::Pinned) continue;
-            const math::Transform pelvis = pelvisOf(output_);
-            const math::Vec3 d = pelvis.position + pelvis.rotation * hipOffset_[o] - anchor_[o];
-            const float past = d.x * dir.x + d.z * dir.z;  // the hip past the standing foot
-            f = i;
-            left = std::max(0.0f, runAhead(o, s) - past) / speed + flightTime(s);
+void BodyDecider::timeSwings(const TargetSet& t, const BodyDeciderSettings& s) {
+    // Each swing lands with the body, planned (never chased each tick: a
+    // guess re-made every tick fed on itself): on a foot's event or a change
+    // of the hips target's motion, the rest of each swing from the body's
+    // prediction of its hips. The other foot standing: no flight (walking),
+    // the swing lands by the end of that stance at the latest (its gait's
+    // time if sooner); a flight (running), the end of that stance and a
+    // flight. Both in the air: the one that lifted first lands when the hips
+    // come down to it (now if they are). A swing keeps its progress.
+    const math::Vec3 goal = given(t, HipsW).velocity;
+    const bool changed = math::length(goal - lastGoalVelocity_) > 1e-4f;
+    lastGoalVelocity_ = goal;
+    if (!footEvent_ && !changed) return;
+    footEvent_ = false;
+    const bool running = runShare_ >= 0.5f && s.gravity > 0.0f;
+    for (int f = 0; f < 2; ++f) {
+        const int o = 1 - f;
+        if (!steps_[f].running()) continue;
+        float left;
+        if (steps_[o].running()) {
+            if (!running || f != (lastStarted_ >= 0 ? 1 - lastStarted_ : 0)) continue;
+            left = touchdownTime(f, s);
+        } else if (grounded_[o] && t.foot[o].mode == TargetMode::Pinned) {
+            left = running ? stanceLeft(o, s) + flightTime(s)
+                           : std::min(steps_[f].timeLeft(stepNow_[f]), stanceLeft(o, s));
+        } else {
+            continue;
         }
+        steps_[f].setTimeLeft(left, stepNow_[f]);
     }
-    if (f < 0) return;
-    const math::Vec3 spot = runSpot(f, left, s);
-    left = swingTimeAtLeast(f, spot, left, s);
-    steps_[f].setTimeLeft(left, stepNow_[f]);
-    steps_[f].retarget(runSpot(f, left, s));
+}
+
+float BodyDecider::stanceLeft(int o, const BodyDeciderSettings& s) const {
+    const float speed = math::length(runVelocity_);
+    if (speed < 1e-3f) return 0.0f;
+    const math::Vec3 dir = runVelocity_ / speed;
+    const math::Transform pelvis = pelvisOf(output_);
+    const math::Vec3 off = pelvis.rotation * hipOffset_[o];
+    const math::Vec3 d = math::Vec3(pelvis.position.x, runY_, pelvis.position.z) + off - anchor_[o];
+    const float along = d.x * dir.x + d.z * dir.z;
+    const float side = std::abs(d.x * dir.z - d.z * dir.x);
+    if (springLeg_[o]) return springStance(o, along, side, d.y, runVy_, speed, s);
+    // Walking: the leg at its reach holds the hips reachDrop below standing
+    // that far past it (as the balance step's foot left behind).
+    const math::Vec3 restHip = restPelvis_.position + restPelvis_.rotation * hipOffset_[o];
+    const float up = restHip.y - restFootY_[o] - s.reachDrop;
+    const float reach = limbReach(2 + o, s);
+    const float flat2 = up < reach ? reach * reach - up * up - side * side : 0.0f;
+    const float most = flat2 > 0.0f ? std::sqrt(flat2) : 0.0f;
+    return std::max(0.0f, (most - along) / speed);
+}
+
+float BodyDecider::springStance(int o, float along, float side, float up, float vy, float speed,
+                                const BodyDeciderSettings& s) const {
+    // The same spring as runSpring, stepped on at the decider's tick; a
+    // stance lasts at most kLongest (a leg that never gets back to its rest
+    // length: the hips stopped over it).
+    constexpr float kStep = 1.0f / 120.0f, kLongest = 0.6f;
+    const float rest = limbReach(2 + o, s), mass = std::max(totalMass_, 1.0f);
+    float time = 0.0f;
+    for (; time < kLongest; time += kStep) {
+        const float len = std::sqrt(along * along + side * side + up * up);
+        if (along > 0.0f && len >= rest) break;
+        float accel = -s.gravity;
+        if (len > 1e-3f && len < rest) accel += s.legStiffness * (rest - len) / mass * (up / len);
+        vy += accel * kStep;
+        up += vy * kStep;
+        along += speed * kStep;
+    }
+    return time;
 }
 
 void BodyDecider::runTakeoff(const TargetSet& t, const BodyDeciderSettings& s) {
@@ -623,13 +685,23 @@ void BodyDecider::runTakeoff(const TargetSet& t, const BodyDeciderSettings& s) {
             runVy_ = std::max(0.0f, down / flight + 0.5f * s.gravity * flight);
         }
         // This foot is in the air for this flight, the other foot's stance
-        // and the next flight (a stance like the last one).
+        // (predicted: its spring from the touchdown the push gives it, or the
+        // rest of the stance it is on) and the next flight.
         const float left = steps_[o].running() ? touchdownTime(o, s) : 0.0f;
+        float stance;
+        if (flying) {
+            const float leg = limbReach(2 + o, s), ahead = runAhead(o, s);
+            stance = springStance(o, -ahead, 0.0f, std::sqrt(std::max(leg * leg - ahead * ahead, 0.0f)),
+                                  runVy_ - s.gravity * left, speed, s);
+        } else {
+            stance = stanceLeft(o, s);
+        }
         timeStep(runVelocity_, s);
-        nextStep_.duration = (flying ? left : 0.0f) + contactTime(s) + flight;
+        nextStep_.duration = (flying ? left : 0.0f) + stance + flight;
         stepNow_[i] = nextStep_;
         steps_[i].start(i, anchor_[i], runSpot(i, nextStep_.duration, s), anchorNormal_[i]);
         lastStarted_ = i;
+        footEvent_ = true;
         if (steps_[o].running()) {
             const float time = swingTimeAtLeast(o, runSpot(o, left, s), left, s);
             steps_[o].setTimeLeft(time, stepNow_[o]);
@@ -1115,11 +1187,18 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
     const math::Transform want = pelvisOf(desired_);
     math::Transform have = pelvisOf(output_);
     if (dt > 0.0f) {
-        const math::Vec3 d = want.position - have.position;
+        // The height, by the run's share, is the spring's and gravity's (set
+        // below), not commanded: only the rest takes the muscles' bounds, so
+        // a fall or a push never uses up the level motion's acceleration.
+        const float commanded = 1.0f - runShare_;
+        math::Vec3 d = want.position - have.position;
+        d.y *= commanded;
         const float dist = math::length(d);
         const float speed = std::min(s.hipsMaxSpeed, std::sqrt(2.0f * std::max(s.hipsMaxAccel, 0.0f) * dist));
         const math::Vec3 vWant = dist > 1e-6f ? d * (speed / dist) : math::Vec3(0.0f);
-        hipsVel_ += clampLength(vWant - hipsVel_, std::max(s.hipsMaxAccel, 0.0f) * dt);
+        math::Vec3 dv = vWant - hipsVel_;
+        dv.y *= commanded;
+        hipsVel_ += clampLength(dv, std::max(s.hipsMaxAccel, 0.0f) * dt);
         have.position += hipsVel_ * dt;
         have.rotation = limitTurn(have.rotation, want.rotation, s.hipsMaxTurnRate, dt);
         // Running, the height by its share is the spring-mass hips' (a

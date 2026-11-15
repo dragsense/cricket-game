@@ -728,4 +728,20 @@ Dated log. Format: decision, reason, alternatives rejected.
   hips never rose back, flights were cut short); a fixed 0.45 s running swing (the foot
   waited on the ground and landed behind the hips); the push as g T / 2 alone (the cycle
   sank into a crouch at 5 m/s).
-- **Status:** not working in the game yet (PROGRESS B2).
+- **Status:** working (PROGRESS B2), see the next entry.
+
+## 2026-11-15: The decider plans each swing ahead (no per-tick timing)
+- **Decision (the user's design):** the decider plans a swing's landing time when a foot
+  lands or lifts, or the hips target's motion changes, from its own prediction of the hips
+  (a walking stance ends at its leg's reach, a spring stance when the spring is back at
+  rest length; a flight by gravity), and then lets it run. A re-time keeps the swing's
+  progress and changes only the rest of its clock. A stance is a spring from its own
+  touchdown, so a leg that landed walking holds the walking height (the walk -> run start's
+  first push comes from it). The height's run share is not commanded, so it is out of the
+  hips' acceleration budget. One mechanism for every step; nothing gait-specific.
+- **Why:** re-timing every tick from guesses fed on itself (a quintic restarted each tick
+  at zero acceleration dragged the feet; a 0.02 s floor and a stance-end guess made feet
+  hover; the hips fell, then the spring launched them). A Python sim of the whole loop
+  showed the planned version stable (3 m/s 171/min, bob 8 cm; 5 m/s 189/min).
+- **Rejected:** per-tick swing timing (`runSwingTiming`) and its quintic re-plan; time floors;
+  a run-only stride planner (the user: nothing specific in the decider).

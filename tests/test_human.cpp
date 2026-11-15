@@ -929,9 +929,9 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                 for (int f = 0; f < 2; ++f) {
                     const motion::StepPlanner& sp = h.decider().step(f);
                     if (!sp.running()) continue;
-                    std::printf("      %s phase %d share %.2f along %.2f replanned %.0f left %.3f | target y %.3f z %+.2f | aim z "
+                    std::printf("      %s phase %d share %.2f along %.2f left %.3f | target y %.3f z %+.2f | aim z "
                                 "%+.2f (from hips)\n",
-                                f == 0 ? "L" : "R", static_cast<int>(sp.phase()), sp.share(), sp.along(), sp.replanned() ? 1.0f : 0.0f,
+                                f == 0 ? "L" : "R", static_cast<int>(sp.phase()), sp.share(), sp.along(),
                                 sp.timeLeft(h.decider().stepTiming(f)), sp.target().y, sp.target().z - hp.z,
                                 sp.landing().z - hp.z);
                 }

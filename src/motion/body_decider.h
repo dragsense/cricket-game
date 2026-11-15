@@ -284,15 +284,30 @@ private:
     void timeStep(math::Vec3 velocity, const BodyDeciderSettings& s);
     // Running: the run's share and the body's level velocity (the plan's
     // hips); the spring-mass hips one tick on within the legs' bounds
-    // (`pelvis`: the output pelvis this tick);
-    // a grounded leg's take-off; where foot i lands `time` from now; how
-    // long the flying hips take to come down to foot i's landing leg.
+    // (`pelvis`: the output pelvis this tick; a leg that landed walking holds
+    // the hips at the walking height); a grounded leg's take-off; where foot
+    // i lands `time` from now; how long the flying hips take to come down to
+    // foot i's landing leg.
     void runPace(const TargetSet& t, const BodyDeciderSettings& s);
     void runSpring(const math::Transform& pelvis, float dt, const BodyDeciderSettings& s);
     void runTakeoff(const TargetSet& t, const BodyDeciderSettings& s);
-    // Running: the swinging foot's rest of swing from the body each tick;
-    // no less than the leg needs to bring foot f to `spot`.
-    void runSwingTiming(const TargetSet& t, const BodyDeciderSettings& s);
+    // Every swing's landing time, planned (not chased each tick): on a foot's
+    // event (a step starts or lands) or a change of the hips target's motion,
+    // from the body's own prediction of the hips (stanceLeft), keeping the
+    // swing's progress (StepPlanner::setTimeLeft).
+    void timeSwings(const TargetSet& t, const BodyDeciderSettings& s);
+    // The body's prediction of grounded leg o's stance: the time until it can
+    // no longer hold the hips. A leg that landed walking: until the hips are
+    // so far past it that its reach holds them reachDrop below standing (the
+    // balance step's bound). A spring leg: the spring from the hips now
+    // until it is back at its rest length behind them (its take-off).
+    float stanceLeft(int o, const BodyDeciderSettings& s) const;
+    // A spring leg's stance from its hip `along` m past the foot (along the
+    // motion; `side` m across) and `up` m above it, at vertical speed `vy`,
+    // the hips going on at `speed`: the time until it is back at rest length
+    // behind them (Blickhan 1989's spring-mass model, as runSpring).
+    float springStance(int o, float along, float side, float up, float vy, float speed,
+                       const BodyDeciderSettings& s) const;
     float swingTimeAtLeast(int f, math::Vec3 spot, float left, const BodyDeciderSettings& s) const;
     math::Vec3 runSpot(int i, float time, const BodyDeciderSettings& s) const;
     float touchdownTime(int i, const BodyDeciderSettings& s) const;
@@ -432,6 +447,12 @@ private:
     // the start) and the last stance's time from landing to take-off (0:
     // none yet).
     float clock_ = 0.0f, landedAt_[2] = {-1.0f, -1.0f}, lastContact_ = 0.0f;
+    // Each foot's stance is a spring (it landed running, run share >= 0.5)
+    // or the walking height's; a foot's event this tick (the swings' times
+    // are planned again) and the hips target's level velocity last tick.
+    bool springLeg_[2] = {false, false};
+    bool footEvent_ = false;
+    math::Vec3 lastGoalVelocity_{0.0f};
     // The trunk's spring-damper: the pelvis's turn and its rate last tick,
     // the chest's turn against the pelvis and its rate (rad, rad/s).
     float lastPelvisYaw_ = 0.0f, lastPelvisRate_ = 0.0f;

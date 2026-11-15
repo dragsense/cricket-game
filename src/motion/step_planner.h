@@ -6,9 +6,9 @@
 // other foot), Up (the swing: minimum jerk along, an arc up and down, the
 // heel rising first over the ball of the foot), Land (Pinned on the spot).
 // A new spot mid-way re-aims the rest of the swing from where the target is;
-// a cancel brings the foot down under where it is. A new time left (running:
-// the foot lands with the body) re-plans the rest of the swing from where the
-// target is, at its speed. The decider does the rest (hips, trunk, other leg,
+// a cancel brings the foot down under where it is. A new time left (the
+// foot lands with the body) keeps the step's progress and changes only the
+// rest of its clock. The decider does the rest (hips, trunk, other leg,
 // head). Character space. No allocations.
 
 #include "math/math.h"
@@ -38,11 +38,10 @@ public:
     void retarget(math::Vec3 spot);
     // The foot comes down under where its target is (in Start: it stays).
     void cancel();
-    // The rest of the step takes `left` seconds: re-planned from where the
-    // target is now, at its speed, to the landing spot (running: the foot
-    // lands with the body, whenever that is). From then on a new spot or
-    // time re-plans it again.
-    void setTimeLeft(float left, const StepPlannerSettings& s);
+    // The rest of the step takes `left` seconds (0: it lands now): its
+    // progress stays, its clock (`s.duration`, the step's own timing) is
+    // set so the rest lasts that long; the path goes on from where it is.
+    void setTimeLeft(float left, StepPlannerSettings& s);
     float timeLeft(const StepPlannerSettings& s) const;  // s until it lands
     // The character root moved (`toNew`: old character space to new).
     void rebase(const math::Transform& toNew);
@@ -58,14 +57,9 @@ public:
     math::Vec3 landing() const { return aim_; } // where it lands (character space)
     math::Vec3 target() const { return at_; }   // the foot's target now
     float along() const { return lastAlong_; }  // of the way from its spot to the landing, 0..1
-    bool replanned() const { return plan_.on; } // on a re-planned rest of the swing
 
 private:
     float along(float time, const StepPlannerSettings& s) const;
-    // The rest of the swing from the target now (its place and speed) to
-    // `spot` in `left` s.
-    void replan(math::Vec3 spot, float left);
-    void tickReplanned(float dt, TargetSet& t);
 
     Phase phase_ = Phase::None;
     int foot_ = -1;
@@ -73,15 +67,6 @@ private:
     bool landed_ = false;
     math::Vec3 from_{0.0f}, aim_{0.0f}, at_{0.0f}, vel_{0.0f};
     math::Vec3 normal_ = math::kUp;
-    float height_ = 0.2f, peakAt_ = 0.5f;  // the step's arc (the last tick's settings)
-    // A re-planned rest of the swing: from where (`from`) at what speed,
-    // its time so far and in all, and the clock shares it started from.
-    struct Replan {
-        bool on = false;
-        math::Vec3 from{0.0f}, velocity{0.0f};
-        float time = 0.0f, duration = 0.0f;
-        float share = 0.0f, along = 0.0f, u = 0.0f;
-    } plan_;
 };
 
 } // namespace motion
