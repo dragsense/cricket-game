@@ -1343,3 +1343,60 @@ TEST_CASE("measure: hand pressed 0.1 m at a time" * doctest::skip()) {
                     100.0f * math::distance(h.wrist(true, *h.bodyQueue().plan, h.root()), goal), h.supported() ? "no" : "yes");
     }
 }
+
+// Measurement (on demand): the user's report (2026-11-15): the left hand
+// pressed down, then forward (0.1 m a press, as in the game): steps go back
+// and forth. Prints each step's cause and the plan's hips, centre of mass
+// and hand through it.
+TEST_CASE("measure: hand down then forward, the steps" * doctest::skip()) {
+    const int downs = std::getenv("CRICKET_DOWNS") ? std::atoi(std::getenv("CRICKET_DOWNS")) : 7;
+    const int fwds = std::getenv("CRICKET_FWDS") ? std::atoi(std::getenv("CRICKET_FWDS")) : 6;
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    const math::Vec3 start = h.root().position;
+    math::Vec3 goal = h.wrist(true, *h.bodyQueue().plan, h.root());
+    const int presses = downs + fwds;
+    for (int i = 0; i < 60 * (presses + 6); ++i) {
+        const float time = i * kDt;
+        if (i % 60 == 0 && i / 60 < presses) {
+            const bool down = i / 60 < downs;
+            goal += h.root().transformDirection(down ? math::Vec3(0.0f, -0.1f, 0.0f) : math::Vec3(0.0f, 0.0f, 0.1f));
+            goal.y = std::max(goal.y, 0.05f);
+            std::printf("%.2f s press %s: goal %.2f m along, %.2f m up\n", time, down ? "down" : "fwd",
+                        math::dot(goal - start, fwd), goal.y);
+        }
+        h.setPoseHand(true, goal);
+        const int before = h.stepFoot();
+        h.tick(kDt);
+        world.step(kDt);
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        auto along = [&](math::Vec3 v) { return 100.0f * math::dot(v - start, fwd); };
+        const math::Vec3 hips = h.root().transformPoint(math::Vec3(p[0][3]));
+        const math::Vec3 com = h.root().transformPoint(h.decider().planCentreOfMass());
+        const math::Vec3 l = h.ankle(true, p, h.root()), r = h.ankle(false, p, h.root());
+        if (before < 0 && h.stepFoot() >= 0) {
+            const motion::StepAdvice& a = h.bodyQueue().step;
+            std::printf("  %.2f s step %s starts: spot %.1f | capture %.1f, outside %.1f cm | hips %.1f, CoM %.1f | feet L %.1f "
+                        "R %.1f | hand short %.1f cm\n",
+                        time, h.stepFoot() == 0 ? "L" : "R", along(h.root().transformPoint(a.spot)),
+                        along(h.root().transformPoint(a.capturePoint)), 100.0f * a.outside, along(hips), along(com),
+                        along(l), along(r), 100.0f * h.bodyQueue().reach[0].shortfall);
+        }
+        for (int f = 0; f < 2; ++f)
+            if (h.bodyQueue().landed[f])
+                std::printf("  %.2f s step %s lands | hips %.1f, CoM %.1f\n", time, f == 0 ? "L" : "R", along(hips), along(com));
+        if (i % 30 == 0)
+            std::printf("    %.2f s hips %.1f (%.1f cm up), CoM %.1f | feet L %.1f R %.1f | hand %.1f, short %.1f cm\n", time,
+                        along(hips), 100.0f * hips.y, along(com), along(l), along(r),
+                        along(h.wrist(true, p, h.root())), 100.0f * h.bodyQueue().reach[0].shortfall);
+    }
+    std::printf("dropped %s\n", h.supported() ? "no" : "yes");
+}

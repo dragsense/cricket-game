@@ -1392,7 +1392,7 @@ float BodyDecider::pathStepTime(const TargetSet& t, int i, math::Vec3 from, math
     return std::max(time, swing / (1.0f - std::clamp(liftAt, 0.0f, 0.9f)));
 }
 
-math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd,
+math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd, bool hipsGoal,
                                  const BodyDeciderSettings& s, float& miss, math::Vec3* idealOut,
                                  bool* beyondReach) const {
     if (beyondReach) *beyondReach = false;
@@ -1403,10 +1403,13 @@ math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, ma
     math::Vec3 ideal = xcom - dir * s.landingBehind + math::Vec3(hipOffset_[i].x, 0.0f, 0.0f);
     const int o = 1 - i;
     const bool otherDown = grounded_[o] && joints_.legs[o].end >= 0;
-    if (otherDown) {
+    if (otherDown && hipsGoal) {
         // The hips stopping there: the foot lands so they end between the
         // feet (the other foot mirrored about them: a normal stance), by how
-        // slowly they get there (moving on: the capture point's).
+        // slowly they get there (moving on: the capture point's). Only where
+        // a hips target sets that place: free hips settle between the feet,
+        // so their place would follow the step's own spot (a loop: the
+        // spot crept on with the reach's lean, measured 2026-11-15).
         const float speed = std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
         const float stop = 1.0f - std::clamp(speed / std::max(s.stopBlendSpeed, 1e-3f), 0.0f, 1.0f);
         ideal.x = math::lerp(ideal.x, 2.0f * hipsEnd.x - anchor_[o].x, stop);
@@ -1507,7 +1510,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
         const float left = swingTime * (1.0f - u) + (u <= 0.0f ? lead : 0.0f);
         out.step.wanted = true;
         out.step.foot = swing;
-        out.step.spot = stepSpot(swing, future(left), vGoal, hipsAt(left), s, miss);
+        out.step.spot = stepSpot(swing, future(left), vGoal, hipsAt(left), kh > 0.0f, s, miss);
         if (runShare_ > 0.0f)
             out.step.spot = math::lerp(out.step.spot, runSpot(swing, steps_[swing].timeLeft(stepNow_[swing]), s), runShare_);
         return;
@@ -1552,7 +1555,10 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
         for (int i = 0; i < 2; ++i) {
             const math::Vec3 hip = hipsThen + pelvisNow.rotation * hipOffset_[i];
             const math::Vec3 restHip = restPelvis_.position + restPelvis_.rotation * hipOffset_[i];
-            const float up = restHip.y - restFootY_[i] - s.reachDrop;  // the leg's height allowed
+            // The leg's height allowed: reachDrop below standing, or where the
+            // plan holds the hips if lower (a crouch on purpose, a reach's
+            // bend: the leg is not at its reach there, no reason to step).
+            const float up = std::min(restHip.y - restFootY_[i] - s.reachDrop, hip.y - anchor_[i].y);
             const float reach = limbReach(2 + i, s);
             const float flatMax = up < reach ? std::sqrt(reach * reach - up * up) : 0.0f;
             const float dx = hip.x - anchor_[i].x, dz = hip.z - anchor_[i].z;
@@ -1573,7 +1579,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
         if (behind < 0) return;
         math::Vec3 ideal;
         bool beyond = false;
-        const math::Vec3 spot = stepSpot(behind, at, vGoal, hipsEnd, s, miss, &ideal, &beyond);
+        const math::Vec3 spot = stepSpot(behind, at, vGoal, hipsEnd, kh > 0.0f, s, miss, &ideal, &beyond);
         if (!moves(behind, spot)) return;
         timed(behind, spot, ideal, beyond);
         return;
@@ -1587,7 +1593,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     bool beyond[2] = {false, false};
     float after[2], travel[2];
     for (int i = 0; i < 2; ++i) {
-        spot[i] = stepSpot(i, at, vGoal, hipsEnd, s, miss, &ideal[i], &beyond[i]);
+        spot[i] = stepSpot(i, at, vGoal, hipsEnd, kh > 0.0f, s, miss, &ideal[i], &beyond[i]);
         const math::Vec3 feet[2] = {spot[i], anchor_[1 - i]};
         after[i] = outsideFeet(at, feet, 2, s);
         const math::Vec3 d = spot[i] - anchor_[i];

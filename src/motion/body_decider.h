@@ -339,11 +339,13 @@ private:
     // feet with their ankles at `ankles` (n of them; 0: inside).
     static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
     // Where foot i lands for capture point `xcom` moving with `velocity`, the
-    // hips (centre of mass, on the ground) ending at `hipsEnd`; `miss`: how
+    // hips (centre of mass, on the ground) ending at `hipsEnd` (`hipsGoal`:
+    // a hips target sets that place; free hips: the capture point); `miss`: how
     // far it stays from the ideal spot (crossing, reach), `ideal` that spot,
     // `beyondReach` whether a step's reach cut it short (more steps go on).
-    math::Vec3 stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd, const BodyDeciderSettings& s,
-                        float& miss, math::Vec3* ideal = nullptr, bool* beyondReach = nullptr) const;
+    math::Vec3 stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd, bool hipsGoal,
+                        const BodyDeciderSettings& s, float& miss, math::Vec3* ideal = nullptr,
+                        bool* beyondReach = nullptr) const;
     // A step of foot i from `from` to `spot` on the hips target's path: the
     // time it takes (the sync formula), `steps` steps sharing the way, the
     // foot down for the share `liftAt` first; negative: no path.

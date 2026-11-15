@@ -175,6 +175,15 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   - Measure `measure: hips pressed 0.1 m at a time` (as in the game): fwd and left, the
     step lands with the hips (0.71 s, hips 19.9 cm). Single press left 0.25: lands 0.33 s,
     hips 0.34 s (was 0.18 vs 0.34). `measure: hand pressed 0.1 m at a time`: no steps.
+- [x] **B2d-3 A hand reaching low and far: no steps back and forth** (2026-11-15, the
+  user's report). Measure `measure: hand down then forward, the steps` (7 presses down,
+  6 forward): was 5 steps (a step back, then the left foot creeping 40 -> 56 cm and the
+  right to 91 cm, past the hand's goal at 58); now none: the hips 23 cm back, the hand
+  2.7 cm short at 58 cm. Two causes: the "hips end between the feet" spot (B2c) also
+  served free hips, whose place follows the feet (a loop: the spot crept on with the
+  reach's lean): now only where a hips target sets the place; and the foot-left-behind
+  rule took a deliberate crouch for a leg at its reach: it now measures at the plan's hip
+  height when that is lower.
 - [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
   derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
   arms relaxed (physics). Plan agreed with the user 2026-11-15.
