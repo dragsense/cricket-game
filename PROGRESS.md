@@ -204,6 +204,9 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   presses of 0.1 m): each a 0.2 s step, hips half the way (4.9 .. 18.6 cm), 1 cm from the
   feet's middle; the real ankle 2.4-3.1 cm ahead of the plan. Walking, running, the hips'
   and hand's cases unchanged.
+  A foot held up and put down elsewhere steps down too (from where it is in the air), the
+  user's rule "a foot never slides": `measure: foot held up` (15 cm up, then 20 cm ahead
+  on the ground): a 0.3 s step, the plan ankle at most 2.3 cm a tick, the real 22.1 cm.
 - [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
   derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
   arms relaxed (physics). Plan agreed with the user 2026-11-15.

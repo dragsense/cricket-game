@@ -1493,3 +1493,45 @@ TEST_CASE("measure: foot moved on the ground, it steps" * doctest::skip()) {
         }
     }
 }
+
+// Measurement (on demand): the limb test's left foot held up, then put down
+// on the ground elsewhere: it lands there by a step (never jumps there).
+TEST_CASE("measure: foot held up, put down ahead, it steps down" * doctest::skip()) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    const math::Vec3 a0 = h.ankle(true, *h.bodyQueue().plan, h.root());
+    math::Vec3 last = a0;
+    float worst = 0.0f, worstAt = 0.0f;
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    for (int i = 0; i < 240; ++i) {
+        const float time = i * kDt;
+        const math::Vec3 goal = time < 0.8f ? a0 + math::Vec3(0.0f, 0.15f, 0.0f) : a0 + fwd * 0.2f;
+        h.setPoseFoot(motion::Foot::Left, goal);
+        const int before = h.stepFoot();
+        h.tick(kDt);
+        world.step(kDt);
+        const math::Vec3 a = h.ankle(true, *h.bodyQueue().plan, h.root());
+        if (time > 0.8f && math::distance(a, last) > worst) {
+            worst = math::distance(a, last);
+            worstAt = time;
+        }
+        last = a;
+        if (before < 0 && h.stepFoot() >= 0) std::printf("  %.2f s step %s starts\n", time, h.stepFoot() == 0 ? "L" : "R");
+        for (int f = 0; f < 2; ++f)
+            if (h.bodyQueue().landed[f]) std::printf("  %.2f s step %s lands\n", time, f == 0 ? "L" : "R");
+    }
+    REQUIRE(h.physicalModels(world, 1.0f, real));
+    const math::Vec3 a = h.ankle(true, *h.bodyQueue().plan, h.root()), r = h.ankle(true, real, h.root());
+    std::printf("put down: biggest plan ankle move in a tick %.1f cm at %.2f s | end plan %.1f cm along (up %.1f), real %.1f "
+                "(up %.1f) | dropped %s\n",
+                100.0f * worst, worstAt, 100.0f * math::dot(a - a0, fwd), 100.0f * (a.y - a0.y), 100.0f * math::dot(r - a0, fwd),
+                100.0f * (r.y - a0.y), h.supported() ? "no" : "yes");
+}

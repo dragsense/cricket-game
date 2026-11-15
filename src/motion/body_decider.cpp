@@ -378,18 +378,22 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
     const TargetSet& t = work_;
     bool stepping = false, landedNow[2] = {false, false};
     clock_ += std::max(t.dt, 0.0f);
-    // A pinned foot never slides: given a new spot on the ground (further
-    // than stepMargin from where it stands), it steps there, in its path's
-    // time if it has one (the sync formula), else the gait's.
+    // A foot never slides (the user's rule): given a spot on the ground
+    // further than stepMargin from where it is (standing there, or held up
+    // in the air), it steps there, in its path's time if it has one (the
+    // sync formula), else the gait's, and is pinned there as it lands.
     for (int i = 0; i < 2; ++i) {
         const Target& f = given.foot[i];
-        if (steps_[i].running() || steps_[1 - i].running() || !grounded_[i] || f.mode != TargetMode::Pinned) continue;
-        const float dx = f.position.x - anchor_[i].x, dz = f.position.z - anchor_[i].z;
-        if (std::sqrt(dx * dx + dz * dz) <= s.stepMargin) continue;
+        const int ankle = joints_.legs[i].end;
+        if (ankle < 0 || steps_[i].running() || steps_[1 - i].running() || f.mode != TargetMode::Pinned) continue;
+        const math::Vec3 from = grounded_[i] ? anchor_[i] : planPos(output_, ankle);
+        math::Vec3 way = f.position - from;
+        if (grounded_[i]) way.y = 0.0f;  // standing: only a new place on the ground
+        if (math::length(way) <= s.stepMargin) continue;
         timeStep(math::Vec3(0.0f), s);
         stepNow_[i] = nextStep_;
         if (f.pathLeft > 0.0f) stepNow_[i].duration = f.pathLeft;
-        steps_[i].start(i, anchor_[i], f.position, f.contactNormal);
+        steps_[i].start(i, from, f.position, f.contactNormal);
         lastStarted_ = i;
         footEvent_ = true;
     }
