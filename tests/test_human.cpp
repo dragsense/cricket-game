@@ -879,7 +879,7 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                                           (*h.bodyQueue().plan)[static_cast<size_t>(ankleR)][3].y);
         int steps = 0, lastFoot = -1, flight = 0, ticks = 0, contacts = 0;
         float lastPhase = 0.0f, stepLen = 0.0f, contactTime = 0.0f, landedAt[2] = {-1.0f, -1.0f};
-        Range bob, lead, speed, runShare;
+        Range bob, lead, planLead, speed, runShare, realY, realAll;
         math::Vec3 lastHips(0.0f), lastLanding(0.0f);
         bool have = false, dropped = false, landedOnce = false;
         for (int i = 0; i < 540; ++i) {
@@ -914,6 +914,7 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                 landedOnce = true;
                 landedAt[f] = time;
             }
+            realAll.add(h.root().transformPoint(math::Vec3(real[0][3])).y);
             const char* traceFrom = std::getenv("CRICKET_FROM");
             const float from = traceFrom ? static_cast<float>(std::atof(traceFrom)) : 3.0f;
             if (std::getenv("CRICKET_TRACE") && pace == std::atoi(std::getenv("CRICKET_TRACE")) && time > from &&
@@ -943,8 +944,14 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
             if (ground > standAnkle + 0.03f) ++flight;  // both ankles off the ground (3 cm above standing)
             bob.add(plan[0][3].y);
             const math::Vec3 hips = h.root().transformPoint(math::Vec3(real[0][3]));
+            realY.add(hips.y);
             const math::Vec3 mid = 0.5f * (h.ankle(true, real, h.root()) + h.ankle(false, real, h.root()));
             lead.add(math::dot(hips - mid, fwd));
+            {
+                const math::Vec3 planHips = h.root().transformPoint(math::Vec3(plan[0][3]));
+                const math::Vec3 planMid = 0.5f * (h.ankle(true, plan, h.root()) + h.ankle(false, plan, h.root()));
+                planLead.add(math::dot(planHips - planMid, fwd));
+            }
             if (have) speed.add(math::dot(hips - lastHips, fwd) / kDt);
             lastHips = hips;
             have = true;
@@ -957,5 +964,8 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                     steps ? stepLen / steps : 0.0f, contacts ? contactTime / contacts : 0.0f,
                     ticks ? 100.0f * flight / ticks : 0.0f, 100.0f * bob.span(), 100.0f * lead.lo, 100.0f * lead.hi, speed.lo,
                     speed.hi, dropped ? "yes" : "no");
+        std::printf("        real pelvis height: steady %.2f .. %.2f m, whole run (from standing) %.2f .. %.2f m | plan hips ahead of the feet "
+                    "%.0f .. %.0f cm\n",
+                    realY.lo, realY.hi, realAll.lo, realAll.hi, 100.0f * planLead.lo, 100.0f * planLead.hi);
     }
 }
