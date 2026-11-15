@@ -1689,3 +1689,90 @@ TEST_CASE("measure: gaits by speed" * doctest::skip()) {
                     100.0f * slide, h.runShare(), dropped ? "yes" : "no");
     }
 }
+
+// Measurement (on demand): where the real swing foot falls behind its plan
+// (pace via CRICKET_PACE 0/1/2, walk presses CRICKET_PRESSES). For each swing
+// of the left foot in the steady part: the real ankle's lag behind the plan
+// (along the way, and up) at lift-off, mid-swing, landing, and 0.1 s after;
+// the plan's and the real ankle's top speed; and the hip and knee joints'
+// angle gap (plan minus real) at mid-swing.
+TEST_CASE("measure: swing foot, plan against real" * doctest::skip()) {
+    const int pace = std::getenv("CRICKET_PACE") ? std::atoi(std::getenv("CRICKET_PACE")) : 1;
+    const int presses = std::getenv("CRICKET_PRESSES") ? std::atoi(std::getenv("CRICKET_PRESSES")) : 0;
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    for (int i = 0; i < presses; ++i) h.changeWalkSpeed(1);
+    h.setPace(pace);
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    const int thigh = h.rig().findJoint("thigh_l"), shin = h.rig().findJoint("shin_l"), ankle = h.rig().findJoint("foot_l");
+    bool was = false;
+    float start = 0.0f, planTop = 0.0f, realTop = 0.0f, afterAt = -1.0f;
+    math::Vec3 lastP(0.0f), lastR(0.0f);
+    bool printedMid = false;
+    int swings = 0;
+    auto lag = [&](const char* when) {
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        const math::Vec3 a = h.ankle(true, p, h.root()), r = h.ankle(true, real, h.root());
+        std::printf("    %-9s real behind plan %5.1f cm, below %5.1f cm\n", when, 100.0f * math::dot(a - r, fwd), 100.0f * (a.y - r.y));
+    };
+    auto angle = [&](const std::vector<math::Mat4>& m, int a, int b, int c) {
+        const math::Vec3 pa(m[static_cast<size_t>(a)][3]), pb(m[static_cast<size_t>(b)][3]), pc(m[static_cast<size_t>(c)][3]);
+        const math::Vec3 d1 = math::normalize(pb - pa), d2 = math::normalize(pc - pb);
+        return math::degrees(std::acos(std::clamp(math::dot(d1, d2), -1.0f, 1.0f)));
+    };
+    auto pitch = [&](const std::vector<math::Mat4>& m, int a, int b) {
+        const math::Vec3 d = math::Vec3(m[static_cast<size_t>(b)][3]) - math::Vec3(m[static_cast<size_t>(a)][3]);
+        return math::degrees(std::atan2(math::dot(d, math::inverse(h.root()).transformDirection(fwd)), -d.y));
+    };
+    for (int i = 0; i < 600 && swings < 3; ++i) {
+        const float time = i * kDt;
+        h.setStepInput(math::Vec2(0.0f, 1.0f));
+        h.tick(kDt);
+        world.step(kDt);
+        if (!h.physicalModels(world, 1.0f, real)) continue;
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        const math::Vec3 a = h.ankle(true, p, h.root()), r = h.ankle(true, real, h.root());
+        const motion::StepPlanner& sp = h.decider().step(0);
+        const bool swinging = sp.running() && sp.phase() == motion::StepPlanner::Phase::Up;
+        if (time > 2.5f) {
+            if (swinging && !was) {
+                start = time;
+                planTop = realTop = 0.0f;
+                printedMid = false;
+                std::printf("  swing %d at %.2f s (%.2f s long)\n", ++swings, time, sp.timeLeft(h.decider().stepTiming(0)));
+                lag("lift-off");
+            }
+            if (swinging) {
+                planTop = std::max(planTop, math::length(a - lastP) / kDt);
+                realTop = std::max(realTop, math::length(r - lastR) / kDt);
+                if (!printedMid && sp.along() >= 0.5f) {
+                    lag("mid-swing");
+                    std::printf("              thigh pitch plan %5.1f real %5.1f deg | knee plan %5.1f real %5.1f deg\n",
+                                pitch(p, thigh, shin), pitch(real, thigh, shin), angle(p, thigh, shin, ankle),
+                                angle(real, thigh, shin, ankle));
+                    printedMid = true;
+                }
+            }
+            if (!swinging && was) {
+                lag("landing");
+                std::printf("              ankle top speed plan %.1f real %.1f m/s (%.2f s swing)\n", planTop, realTop, time - start);
+                afterAt = time + 0.1f;
+            }
+            if (afterAt > 0.0f && time >= afterAt) {
+                lag("+0.1 s");
+                afterAt = -1.0f;
+            }
+        }
+        was = swinging;
+        lastP = a;
+        lastR = r;
+    }
+}
