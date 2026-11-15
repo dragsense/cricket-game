@@ -147,10 +147,26 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   the stopping step now ends with the hips between the feet.
   fwd 0.10 and left 0.15 take no step: the centre of mass stays inside the whole foot's
   outline (toes 16 cm ahead of the ankle); the user: that is right (kept).
-- [ ] **B2d Sync formula, part 2: an active foot moves the hips** on its path (shift, side
-  drop, turn); 3: a hand's trunk within reach by research shares, derived hips step;
-  4: the head's small share; 5: clavicle bodies and muscles; 6: free arms relaxed
-  (physics). Plan agreed with the user 2026-11-15.
+- [x] **B2d Sync formula, part 2: a foot held up moves the hips** (2026-11-15, awaiting the
+  user's check in the game). Measure `measure: foot pressed once*` (limb test left foot,
+  one press, 15 cm up):
+  - Pelvic list (new, general: walking too): the side of the leg with less weight drops
+    `decider.pelvisListDeg` 4 deg (BIOMECHANICS 4.3) by the weight's share, eased; turned
+    on the output pelvis exactly about the loaded hip (so it never rises past its leg),
+    its place within the hips' bounds. The trunk turns back from it (three spine joints)
+    so the chest stays upright. Foot held up: 4.0 deg, reached by the foot's 50 % (the
+    weight shift leads the lift, Massion 1992; was 0).
+  - One-leg standing balance: the centre of mass over the standing foot each tick (as
+    two-leg standing), so it follows the foot's path: foot 30 cm forward, hips 5.1 cm
+    back (was 0.6 forward), CoM 0.2 cm from the ankle fore-aft (was 4.5 ahead).
+  - The pelvis turn with the foot (6.6 deg at 30 cm) was already there.
+  Walking W: chest lean 2.2 deg, bob plan 2.2 cm / real 3.0 (was 3.1 / 4.1), pelvis turn
+  15.4 deg, foot slide 6.2 cm at the stop; jog and run: steps 1.05 / 1.56 m at the same
+  speeds. All tests pass (decider: hips speed 1.36 m/s, accel 8.0 m/s^2; stance knee
+  never under 3.7 deg).
+- [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
+  derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
+  arms relaxed (physics). Plan agreed with the user 2026-11-15.
 - [ ] **B3 Reach**: how far the ball is decides step, hop / jump or dive (one push).
 
 - [x] **6.1 Action point and release** (the user: "feels better"; commit dbcbde0 has the

@@ -763,3 +763,18 @@ Dated log. Format: decision, reason, alternatives rejected.
   parts no target needs relaxed (passive joint stiffness only), physics moving them.
 - **Rejected:** the step on its own gait clock (it landed 0.2 s after the hips arrived);
   stepping on every hips move (replaced by the centre of mass rule, the user's call).
+
+## 2026-11-15: Pelvic list and one-leg balance (sync formula part 2)
+- **Decision (the user's OK):** the pelvis drops on the side of the leg with less weight,
+  4 deg with all the weight on one leg (BIOMECHANICS 4.3), by the weight's share eased, so
+  it comes with the weight shift and leads a lift (Massion 1992). General: walking and
+  running get it too. The trunk turns back from it so the chest stays upright. A foot held
+  up keeps the centre of mass over the standing foot each tick (the foot's path moves the
+  hips: a leg forward takes them back).
+- **How:** the list turns the output pelvis exactly about the loaded hip, its place inside
+  the hips' speed and acceleration bounds.
+- **Rejected:** the list in the desired pose (the output's turn and place arrive at their
+  own rates: the stance knee went straight, 1.5 deg); a height clamp on the output (it
+  snapped the hips 13 cm in one tick when a foot was pinned far ahead); the list after the
+  bounds (accel 8.906 over the 8.9 bound); a pivot between the hips by weight (the
+  standing hip rose).

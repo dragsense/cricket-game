@@ -176,6 +176,8 @@ void BodyDecider::seed(const rig::Pose& pose) {
     if (!rig_ || pose.locals.size() != output_.pose.locals.size()) return;
     output_.pose.locals = pose.locals;  // same size: no allocation
     refresh(output_);
+    appliedList_ = 0.0f;
+    appliedPivot_ = math::Vec3(0.0f);
     desired_.pose.locals = pose.locals;
     refresh(desired_);
     for (int i = 0; i < 2; ++i) {
@@ -876,6 +878,21 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     const float pelvisYaw = pelvisTurn(t, s);
     math::Quat pelvisRot = math::fromAxisAngle(math::kUp, pelvisYaw) * restPelvis_.rotation;
     {
+        // Pelvic list: the side whose leg carries less weight drops, by the
+        // weight's share: it comes with the weight shift, so it leads a lift
+        // (Massion 1992). Turned on the output pelvis about the hip that
+        // carries the weight (limitOutput), so that hip never rises; here the
+        // trunk turns back from it.
+        // Eased (smoothstep of the weight's share) so it starts and stops
+        // without a jerk although the weight shifts at an even rate.
+        const float load = support_[0] + support_[1];
+        const float x = std::clamp(support_[0] - support_[1], -1.0f, 1.0f), ax = std::abs(x);
+        listAngle_ = load > 1e-3f && joints_.legs[0].start >= 0 && joints_.legs[1].start >= 0
+                         ? s.pelvisList * std::copysign(ax * ax * (3.0f - 2.0f * ax), x)  // +: the left side up
+                         : 0.0f;
+        listAxis_ = math::fromAxisAngle(math::kUp, pelvisYaw) * math::kForward;
+    }
+    {
         // A driven hips target turns the pelvis by its rotation weight, as
         // every driven target turns its part; within the pelvis's range from
         // standing (pelvisMin / pelvisMax, rotation vector, character axes).
@@ -991,6 +1008,14 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         for (int j : joints_.spine)
             if (j >= 0) turnPlanned(d, j, part);
     }
+    // The trunk upright over the pelvic list: the lumbar and lower thoracic
+    // spine bend the other way (side flexion), shared evenly by the three
+    // spine joints; a hand or chest target driving the trunk serves its goal.
+    if (act_[HandLW] <= 0.0f && act_[HandRW] <= 0.0f && act_[ChestW] <= 0.0f && std::abs(listAngle_) > 1e-6f) {
+        const math::Quat part = math::fromAxisAngle(listAxis_, -listAngle_ / 3.0f);
+        for (int j : joints_.spine)
+            if (j >= 0) turnPlanned(d, j, part);
+    }
     freeArms(t, s, out);
     levelHead(t, s, out);
     solveArms(d, t, s, out);
@@ -1038,9 +1063,15 @@ void BodyDecider::balanceStanding(const TargetSet& t, const BodyDeciderSettings&
     // way through a step the hips follow the support reference itself
     // (walking is not statically balanced: the body vaults over the stance
     // leg on its own momentum).
+    // A foot held up (driven, no step's timing) is standing too, on the other
+    // foot: the centre of mass over it, so a leg going forward takes the hips
+    // back as it goes (its path's progress, each tick) and one going back
+    // takes them forward. A step on its way is walking (above).
     Plan& d = desired_;
-    const bool standing = grounded_[0] && grounded_[1] && act_[FootLW] <= 0.0f && act_[FootRW] <= 0.0f &&
-                          act_[HipsW] <= 0.0f && totalMass_ > 0.0f;
+    bool stepping = false;
+    for (int i = 0; i < 2; ++i)
+        if (t.foot[i].mode == TargetMode::Driven && t.foot[i].swing >= 0.0f) stepping = true;
+    const bool standing = !stepping && (grounded_[0] || grounded_[1]) && act_[HipsW] <= 0.0f && totalMass_ > 0.0f;
     if (!standing) return;
     constexpr int kPasses = 3;
     constexpr float kOver = 1e-3f;  // m: the centre of mass over the support
@@ -1050,7 +1081,6 @@ void BodyDecider::balanceStanding(const TargetSet& t, const BodyDeciderSettings&
         if (math::length(off) <= kOver) break;
         movePelvis(d, off);  // the upper body moves with the hips; the next pass measures again
     }
-    (void)t;
     (void)s;
 }
 
@@ -1233,12 +1263,25 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
     const float dt = std::max(t.dt, 0.0f);
     const math::Transform want = pelvisOf(desired_);
     math::Transform have = pelvisOf(output_);
+    // The pelvic list is the output's own: turned exactly about the hip
+    // that carries the weight (so that hip never rises past its leg); its
+    // place goes into the hips' bounded motion with the rest (the muscles
+    // move the whole pelvis). `have` keeps its place; its turn without the
+    // list follows the desired one's.
+    const math::Vec3 localForward = math::inverse(restPelvis_.rotation) * math::kForward;
+    have.rotation = math::normalize(have.rotation * math::inverse(math::fromAxisAngle(localForward, appliedList_)));
+    // The hip of the leg with more weight (the same at no list); the list
+    // eases with the weight's share over supportBlendTime.
+    appliedPivot_ = hipOffset_[support_[0] >= support_[1] ? 0 : 1];
+    appliedList_ = listAngle_;
+    const math::Quat roll = math::fromAxisAngle(localForward, appliedList_);
+    const math::Vec3 wantPosition = want.position + want.rotation * (appliedPivot_ - roll * appliedPivot_);
     if (dt > 0.0f) {
         // The height, by the run's share, is the spring's and gravity's (set
         // below), not commanded: only the rest takes the muscles' bounds, so
         // a fall or a push never uses up the level motion's acceleration.
         const float commanded = 1.0f - runShare_;
-        math::Vec3 d = want.position - have.position;
+        math::Vec3 d = wantPosition - have.position;
         d.y *= commanded;
         const float dist = math::length(d);
         const float speed = std::min(s.hipsMaxSpeed, std::sqrt(2.0f * std::max(s.hipsMaxAccel, 0.0f) * dist));
@@ -1260,9 +1303,10 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
             runVy_ = hipsVel_.y;
         }
     } else {
-        have = want;
+        have = math::Transform{wantPosition, want.rotation};
         hipsVel_ = math::Vec3(0.0f);
     }
+    have.rotation = math::normalize(have.rotation * roll);
     // The height under every grounded leg's reach is the desired pose's
     // (solveLegs), so the hips get there within the legs' bounds.
     placePelvis(output_, have);

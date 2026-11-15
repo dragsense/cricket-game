@@ -699,6 +699,8 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         auto dv = [&](const char* key, float value) { return jointsConfig_->getFloat(key, value); };
         deciderSettings_.hipsSway = dv("decider.hipsSway", deciderSettings_.hipsSway);
         deciderSettings_.pelvisTurnShare = dv("decider.pelvisTurnShare", deciderSettings_.pelvisTurnShare);
+        deciderSettings_.pelvisList =
+            math::radians(dv("decider.pelvisListDeg", math::degrees(deciderSettings_.pelvisList)));
         deciderSettings_.trunkTurnFrequency = dv("decider.trunkTurn.frequency", deciderSettings_.trunkTurnFrequency);
         deciderSettings_.trunkTurnDamping = dv("decider.trunkTurn.damping", deciderSettings_.trunkTurnDamping);
         deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));

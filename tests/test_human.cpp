@@ -1194,3 +1194,56 @@ TEST_CASE("measure: fast walk, jog, run, then stop" * doctest::skip()) {
                     100.0f * math::dot(hips - mid, fwd), h.supported() ? "no" : "yes");
     }
 }
+
+// Measurement (on demand): the limb test's left foot moved once (one press)
+// in the air; by the foot's progress along its path: the plan's hips toward
+// the standing foot, the pelvis's drop on the lifted side and its turn, and
+// the plan's centre of mass from the standing ankle (part 2 of the sync
+// formula: an active foot moves the hips).
+TEST_CASE("measure: foot pressed once, the hips with it" * doctest::skip()) {
+    struct Case {
+        const char* name;
+        math::Vec3 way;  // character space from the ankle: +Z forward, +X left, +Y up
+    };
+    for (const Case& c : {Case{"up 0.15", {0.0f, 0.15f, 0.0f}}, Case{"fwd 0.30 up 0.15", {0.0f, 0.15f, 0.30f}},
+                          Case{"back 0.30 up 0.15", {0.0f, 0.15f, -0.30f}}, Case{"out 0.20 up 0.15", {0.20f, 0.15f, 0.0f}}}) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        const math::Vec3 a0 = h.ankle(true, *h.bodyQueue().plan, h.root());
+        const math::Vec3 goal = a0 + h.root().transformDirection(c.way);
+        const math::Vec3 stand = h.ankle(false, *h.bodyQueue().plan, h.root());  // the right foot stands
+        const math::Vec3 hips0 = h.root().transformPoint(math::Vec3((*h.bodyQueue().plan)[0][3]));
+        const math::Vec3 left = h.root().transformDirection(math::Vec3(1, 0, 0)), fwd = h.root().transformDirection(math::kForward);
+        std::printf("--- foot L %s (hips start %.1f cm left of the standing ankle)\n", c.name, 100.0f * math::dot(hips0 - stand, left));
+        float lastShare = -1.0f;
+        for (int i = 0; i < 120; ++i) {
+            h.setPoseFoot(motion::Foot::Left, goal);
+            h.tick(kDt);
+            world.step(kDt);
+            const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+            const math::Vec3 a = h.ankle(true, p, h.root());
+            const float share = math::length(a - a0) / std::max(math::length(goal - a0), 1e-3f);
+            if (share - lastShare < 0.1f && i != 119 && !(i % 12 == 0)) continue;
+            lastShare = share;
+            const math::Vec3 hips = h.root().transformPoint(math::Vec3(p[0][3]));
+            const math::Vec3 side = math::normalize(math::Vec3(p[0][0]));  // the pelvis's left axis (character space)
+            const math::Vec3 sideW = h.root().transformDirection(side);
+            const float drop = math::degrees(std::asin(std::clamp(-sideW.y, -1.0f, 1.0f)));  // + left side lower
+            const float yaw = math::degrees(std::atan2(math::dot(sideW, fwd), math::dot(sideW, left)));  // + left hip forward
+            const math::Vec3 com = h.root().transformPoint(h.decider().planCentreOfMass());
+            std::printf("  %.2f s foot %3.0f %% | hips toward the standing foot %5.1f cm, fwd %5.1f cm, down %4.1f cm | "
+                        "pelvis left side down %4.1f deg, left hip fwd %5.1f deg | CoM from the standing ankle: left %5.1f, fwd %5.1f cm\n",
+                        i * kDt, 100.0f * share, 100.0f * math::dot(hips0 - hips, left), 100.0f * math::dot(hips - hips0, fwd),
+                        100.0f * (hips0.y - hips.y), drop, yaw, 100.0f * math::dot(com - stand, left),
+                        100.0f * math::dot(com - stand, fwd));
+        }
+        std::printf("  dropped %s\n", h.supported() ? "no" : "yes");
+    }
+}

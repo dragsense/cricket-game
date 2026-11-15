@@ -147,6 +147,10 @@ struct BodyDeciderSettings {
     // longer steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at
     // 0.40 m/s, 19 at 1.47 m/s, Yang 2013; larger with big steps, Liang 2014).
     float pelvisTurnShare = 0.11f;
+    // The pelvis drops on the side of the leg without weight, about the hip
+    // that carries it (pelvic list), this much (rad) with all the weight on
+    // one leg, by the weight's share (the weight shift: it leads a lift).
+    float pelvisList = 0.0698f;  // 4 deg
     // The trunk's axial spring-damper (Prins et al. 2019): the chest's turn
     // follows the pelvis's through it (natural frequency rad/s, damping
     // ratio). Driven faster than its frequency (quicker steps) it lags and
@@ -485,6 +489,14 @@ private:
     // the chest's turn against the pelvis and its rate (rad, rad/s).
     float lastPelvisYaw_ = 0.0f, lastPelvisRate_ = 0.0f;
     float trunkTwist_ = 0.0f, trunkTwistRate_ = 0.0f;
+    // The pelvic list this decide (rad about the pelvis's forward, +: the
+    // left side up) and that forward: the trunk turns back from it.
+    float listAngle_ = 0.0f;
+    math::Vec3 listAxis_{0.0f, 0.0f, 1.0f};
+    // The list the output pelvis carries and its pivot (pelvis frame: the
+    // weighted hips), taken off before its bounds each tick and put back on.
+    float appliedList_ = 0.0f;
+    math::Vec3 appliedPivot_{0.0f};
     int trunkTicks_ = 0;  // ticks since the plan started (no rates before 2)
 };
 
