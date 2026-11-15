@@ -164,6 +164,17 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   15.4 deg, foot slide 6.2 cm at the stop; jog and run: steps 1.05 / 1.56 m at the same
   speeds. All tests pass (decider: hips speed 1.36 m/s, accel 8.0 m/s^2; stance knee
   never under 3.7 deg).
+- [x] **B2d-2 Limb test fixes** (2026-11-15, the user's report: side moves, odd steps):
+  - The limb test's paths are kept in the world (the root moves under them); a press (the
+    goal jumps over 2 cm) starts a new path in Fitts' time from where the point is. Before,
+    the root's drift restarted tiny paths and the next press reused their tiny time (the
+    hips target took a 10 cm press in ~0.07 s, the step landed before the hips moved).
+  - More steps share a hips path only if this one leaves the centre of mass out of the
+    support (a wide side step catches it); a path that has ended times no step (the foot
+    left behind follows in the gait's time).
+  - Measure `measure: hips pressed 0.1 m at a time` (as in the game): fwd and left, the
+    step lands with the hips (0.71 s, hips 19.9 cm). Single press left 0.25: lands 0.33 s,
+    hips 0.34 s (was 0.18 vs 0.34). `measure: hand pressed 0.1 m at a time`: no steps.
 - [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
   derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
   arms relaxed (physics). Plan agreed with the user 2026-11-15.

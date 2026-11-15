@@ -829,22 +829,33 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     // path starts; the decider never reads it (its plan carries on).
     humanBody_.boneModels(*physics_, 1.0f, rig_, current_, root_, physicsModels_);
     // The commanded point on its way to the goal (GoalPath), from the end's
-    // real position when a move starts.
-    auto travel = [&](GoalPath& path, math::Vec3 goal, int end) {
-        const bool done = path.time >= path.duration;
-        if (!path.on || path.end != end || (done && math::distance(goal, path.to) > 1e-3f)) {
-            path.from = path.on && path.end == end ? path.at : math::Vec3(physicsModels_[static_cast<size_t>(end)][3]);
+    // real position when a move starts. The path is kept in the world (the
+    // root moves under it as the body does); returned in character space.
+    auto travel = [&](GoalPath& path, math::Vec3 goalWorld, int end) {
+        // A new goal (a press: it jumps) starts a new path from where the
+        // point is, in Fitts' time for the new way; a goal moving on smoothly
+        // retargets the path under way, or starts one once it has ended.
+        constexpr float kJump = 0.02f, kMoved = 1e-3f;  // m in one tick
+        const float moved = math::distance(goalWorld, path.to);
+        if (!path.on || path.end != end || moved > kJump || (path.time >= path.duration && moved > kMoved)) {
+            path.from = path.on && path.end == end ? path.at
+                                                   : root_.transformPoint(math::Vec3(physicsModels_[static_cast<size_t>(end)][3]));
             path.end = end;
             path.time = 0.0f;
-            path.duration = movementTime(math::distance(path.from, goal), muscleTiming_.fittsWidth,
-                                                 muscleTiming_.fittsA, muscleTiming_.fittsB);
+            path.duration = movementTime(math::distance(path.from, goalWorld), muscleTiming_.fittsWidth,
+                                         muscleTiming_.fittsA, muscleTiming_.fittsB);
             path.on = true;
         }
-        path.to = goal;  // mid-way: the same path, retargeted
+        path.to = goalWorld;
         path.time += dt;
         const float s = std::clamp(path.time / std::max(path.duration, 1e-3f), 0.0f, 1.0f);
         path.at = math::lerp(path.from, path.to, s * s * s * (10.0f + s * (6.0f * s - 15.0f)));  // minimum jerk
-        return path.at;
+        return math::inverse(root_).transformPoint(path.at);
+    };
+    // A path's end (character space) and its time left, for the sync formula.
+    auto pathOf = [&](const GoalPath& path, motion::Target& target) {
+        target.pathEnd = math::inverse(root_).transformPoint(path.to);
+        target.pathLeft = std::max(0.0f, path.duration - path.time);
     };
     // The planner's targets: every foot pinned where the stepper has it (on
     // the ground), the hips, chest and head free (the decider's own frames),
@@ -871,10 +882,8 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         const bool left = g == static_cast<int>(motion::Goal::HandL);
         motion::Target& hand = t.hand[left ? 0 : 1];
         hand.mode = motion::TargetMode::Driven;
-        hand.position = travel(handPath_, math::inverse(root_).transformPoint(posePosition_[g]),
-                               left ? joints_.armL.end : joints_.armR.end);
-        hand.pathEnd = handPath_.to;
-        hand.pathLeft = std::max(0.0f, handPath_.duration - handPath_.time);
+        hand.position = travel(handPath_, posePosition_[g], left ? joints_.armL.end : joints_.armR.end);
+        pathOf(handPath_, hand);
         turn(hand);
     } else {
         handPath_.on = false;
@@ -882,9 +891,8 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     if (g == static_cast<int>(motion::Goal::Hips) && joints_.pelvis >= 0) {
         // The hips go there (every direction) and turn, within the pelvis's range.
         t.hips.mode = motion::TargetMode::Driven;
-        t.hips.position = travel(hipsPath_, math::inverse(root_).transformPoint(posePosition_[g]), joints_.pelvis);
-        t.hips.pathEnd = hipsPath_.to;
-        t.hips.pathLeft = std::max(0.0f, hipsPath_.duration - hipsPath_.time);
+        t.hips.position = travel(hipsPath_, posePosition_[g], joints_.pelvis);
+        pathOf(hipsPath_, t.hips);
         t.hips.weightRotation = 0.0f;
         turn(t.hips);
     } else {
@@ -967,9 +975,8 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         } else {
             // Above the ground: the foot is held up there (no weight on it).
             t.foot[f].mode = motion::TargetMode::Driven;
-            t.foot[f].position = travel(footPath_, goal, ankle);
-            t.foot[f].pathEnd = footPath_.to;
-            t.foot[f].pathLeft = std::max(0.0f, footPath_.duration - footPath_.time);
+            t.foot[f].position = travel(footPath_, root_.transformPoint(goal), ankle);
+            pathOf(footPath_, t.foot[f]);
             turn(t.foot[f]);
         }
     } else {

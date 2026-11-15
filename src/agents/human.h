@@ -242,7 +242,8 @@ private:
     float ballReach_ = 0.0f;  // m, ankle to the ball of the foot, level (rest): push-off rolls over it
     // Physics: a hand's or foot's commanded point travels from where it was
     // to its goal in Fitts' time on a minimum-jerk path (Flash & Hogan 1985);
-    // the IK solves for it (character space). A goal moved mid-way retargets.
+    // kept in the world (the root moves under it); a new goal (a press)
+    // starts a new path from where the point is.
     struct GoalPath {
         math::Vec3 from{0.0f}, to{0.0f}, at{0.0f};
         float time = 0.0f, duration = 0.0f;

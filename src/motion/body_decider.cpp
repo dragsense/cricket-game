@@ -631,6 +631,7 @@ void BodyDecider::timeSwings(const TargetSet& t, const BodyDeciderSettings& s) {
             const bool lifted = steps_[f].phase() == StepPlanner::Phase::Up;
             left = pathStepTime(t, f, steps_[f].target(), steps_[f].landing(), pathSteps_[f],
                                 lifted ? 0.0f : stepNow_[f].liftAt, s);
+            if (left < 0.0f) continue;  // the path has ended: the swing keeps its own time
         } else if (steps_[o].running()) {
             if (!running || f != (lastStarted_ >= 0 ? 1 - lastStarted_ : 0)) continue;
             left = touchdownTime(f, s);
@@ -1379,7 +1380,9 @@ float BodyDecider::pathStepTime(const TargetSet& t, int i, math::Vec3 from, math
     // legMaxRate x the leg's length).
     const Target& hips = given(t, HipsW);
     const float kw = std::clamp(hips.weightPosition, 0.0f, 1.0f);
-    if (act_[HipsW] <= 0.0f || kw <= 0.0f || hips.pathLeft < 0.0f) return -1.0f;
+    // A path that has ended times nothing: a step after it (the foot left
+    // behind follows) takes the gait's time.
+    if (act_[HipsW] <= 0.0f || kw <= 0.0f || hips.pathLeft <= t.dt) return -1.0f;
     math::Vec3 lag = drivenPart(hips, hips.pathEnd - pelvisOf(output_).position) * kw;
     lag.y = 0.0f;
     const float hipsTime = math::length(lag) / std::max(s.hipsMaxSpeed, 1e-3f);
@@ -1521,8 +1524,13 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
                                      (ideal.z - anchor_[foot].z) * (ideal.z - anchor_[foot].z));
         const float got = std::sqrt((spot.x - anchor_[foot].x) * (spot.x - anchor_[foot].x) +
                                     (spot.z - anchor_[foot].z) * (spot.z - anchor_[foot].z));
+        // More steps only when this one, cut short by its reach, still leaves
+        // the centre of mass out of the support (a wide side step may catch
+        // it although the hips do not end between the feet).
         constexpr int kMostSteps = 4;
-        const int steps = beyondReach && got > 1e-3f
+        const math::Vec3 after[2] = {spot, anchor_[1 - foot]};
+        const bool caught = outsideFeet(at, after, 2, s) <= s.stepMargin;
+        const int steps = beyondReach && !caught && got > 1e-3f
                               ? std::clamp(static_cast<int>(std::ceil(need / got - 1e-3f)), 1, kMostSteps)
                               : 1;
         out.step.wanted = true;
