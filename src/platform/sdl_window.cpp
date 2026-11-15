@@ -7,6 +7,16 @@
 
 #include <algorithm>
 
+#ifdef _WIN32
+// Laptops with two GPUs (Intel + NVIDIA / AMD) run a program on the
+// integrated one unless the exe asks for the fast one: the drivers read
+// these exported symbols (NVIDIA Optimus, AMD PowerXpress).
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 namespace platform {
 
 namespace {
