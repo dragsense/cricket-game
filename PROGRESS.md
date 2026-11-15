@@ -195,6 +195,15 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   `measure: foot out to the side, plan against real`: 20 cm out, 15 up: real 18.7 / 13.9
   cm, thigh at the range. Open: 60 cm out (past the range) ends with the thigh 81 deg
   forward and out, the foot 28 cm up: to look at.
+- [x] **B2d-5 Limb test: a foot moved on the ground steps** (2026-11-15, the user: "foot
+  moves, the hips move with it: a mini step"). Before, the limb test pinned the foot at
+  its new spot at once (it slid; the plan's hips went on, the real foot stayed: the body
+  fell back into a split). Now a pinned foot given a new spot (past stepMargin) steps
+  there, in its path's Fitts time (the sync formula); the hips go between the feet with
+  the swing as in walking. Measure `measure: foot moved on the ground, it steps` (4
+  presses of 0.1 m): each a 0.2 s step, hips half the way (4.9 .. 18.6 cm), 1 cm from the
+  feet's middle; the real ankle 2.4-3.1 cm ahead of the plan. Walking, running, the hips'
+  and hand's cases unchanged.
 - [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
   derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
   arms relaxed (physics). Plan agreed with the user 2026-11-15.

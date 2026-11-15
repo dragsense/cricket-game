@@ -968,7 +968,13 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             // On or under the ground: the foot is at once on the ground under
             // the target and stands there (pinned: it carries weight, the
             // hips go between the feet); it stays there after.
+            // The decider steps there (a pinned foot never slides): in Fitts'
+            // time for the way (the sync formula).
             const math::Vec3 spot(goal.x, liftedAnkleMin_ - toeClearance_, goal.z);
+            const float way = math::distance(stepper_.foot(static_cast<motion::Foot>(f)), spot);
+            t.foot[f].pathEnd = spot;
+            t.foot[f].pathLeft =
+                movementTime(way, muscleTiming_.fittsWidth, muscleTiming_.fittsA, muscleTiming_.fittsB);
             stepper_.place(static_cast<motion::Foot>(f), spot);
             t.foot[f].mode = motion::TargetMode::Pinned;
             t.foot[f].position = spot;

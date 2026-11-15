@@ -1449,3 +1449,47 @@ TEST_CASE("measure: foot out to the side, plan against real" * doctest::skip()) 
         }
     }
 }
+
+// Measurement (on demand): the user's report (2026-11-15): the limb test's
+// left foot moved forward on the ground (0.1 m a press): it should step there
+// (a pinned foot never slides), the hips going between the feet with it.
+TEST_CASE("measure: foot moved on the ground, it steps" * doctest::skip()) {
+    const int presses = std::getenv("CRICKET_PRESSES") ? std::atoi(std::getenv("CRICKET_PRESSES")) : 4;
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    const math::Vec3 a0 = h.ankle(true, *h.bodyQueue().plan, h.root());
+    const math::Vec3 hips0 = h.root().transformPoint(math::Vec3((*h.bodyQueue().plan)[0][3]));
+    math::Vec3 goal = a0;
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    for (int i = 0; i < 60 * (presses + 3); ++i) {
+        const float time = i * kDt;
+        if (i % 60 == 0 && i / 60 < presses) goal += fwd * 0.1f;
+        h.setPoseFoot(motion::Foot::Left, goal);
+        const int before = h.stepFoot();
+        h.tick(kDt);
+        world.step(kDt);
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        auto along = [&](math::Vec3 v, math::Vec3 o) { return 100.0f * math::dot(v - o, fwd); };
+        const math::Vec3 hips = h.root().transformPoint(math::Vec3(p[0][3]));
+        if (before < 0 && h.stepFoot() >= 0) std::printf("  %.2f s step %s starts\n", time, h.stepFoot() == 0 ? "L" : "R");
+        for (int f = 0; f < 2; ++f)
+            if (h.bodyQueue().landed[f])
+                std::printf("  %.2f s step %s lands | hips %.1f cm along\n", time, f == 0 ? "L" : "R", along(hips, hips0));
+        if (i % 30 == 29 && h.physicalModels(world, 1.0f, real)) {
+            const math::Vec3 lp = h.ankle(true, p, h.root()), lr = h.ankle(true, real, h.root());
+            const math::Vec3 rp = h.ankle(false, p, h.root());
+            std::printf("    %.2f s goal %.1f | left ankle plan %.1f real %.1f (up %.1f) | right %.1f | hips plan %.1f, %.1f cm "
+                        "from the feet's middle | dropped %s\n",
+                        time, along(goal, a0), along(lp, a0), along(lr, a0), 100.0f * (lr.y - a0.y), along(rp, a0),
+                        along(hips, hips0), along(hips, 0.5f * (lp + rp)), h.supported() ? "no" : "yes");
+        }
+    }
+}
