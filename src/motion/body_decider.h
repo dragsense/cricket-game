@@ -219,6 +219,10 @@ struct BodyDeciderSettings {
     float walkRunFroude = 0.5f, walkRunBand = 0.3f;
     float legStiffness = 11200.0f;  // N/m
     float flightTimeJog = 0.10f, flightTimeRun = 0.14f;  // s
+    // The running swing's ankle apex (m) at the jog .. run speed and its
+    // peak's share of the swing (heel recovery; BIOMECHANICS 5), by the
+    // run's share over the walking step's.
+    float swingHeightJog = 0.22f, swingHeightRun = 0.36f, runSwingPeakAt = 0.38f;
 };
 
 class BodyDecider {
@@ -317,6 +321,8 @@ private:
     float runAhead(int i, const BodyDeciderSettings& s) const;
     float contactTime(const BodyDeciderSettings& s) const;
     float flightTime(const BodyDeciderSettings& s) const;
+    // 0 at the gait's jog speed .. 1 at its run speed (the body's speed).
+    float paceShare(const BodyDeciderSettings& s) const;
     // How far a ground point (character space) is out of the outline of
     // feet with their ankles at `ankles` (n of them; 0: inside).
     static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);

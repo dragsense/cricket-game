@@ -915,6 +915,34 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                 landedAt[f] = time;
             }
             realAll.add(h.root().transformPoint(math::Vec3(real[0][3])).y);
+            if (std::getenv("CRICKET_REAL") && pace == std::atoi(std::getenv("CRICKET_REAL")) && time > 3.0f &&
+                time < 3.6f && i % 2 == 0) {
+                // On demand: plan vs real body, character space (z ahead): pelvis, its
+                // pitch, the ankles from their own pelvis, each thigh's and shin's pitch.
+                auto pos = [&](const std::vector<math::Mat4>& m, const char* j) {
+                    return math::Vec3(m[static_cast<size_t>(h.rig().findJoint(j))][3]);
+                };
+                auto pitch = [&](const std::vector<math::Mat4>& m, const char* a, const char* b) {
+                    const math::Vec3 d = pos(m, b) - pos(m, a);
+                    return math::degrees(std::atan2(d.z, -d.y));  // + : the lower end ahead
+                };
+                auto pelvisPitch = [&](const std::vector<math::Mat4>& m) {
+                    const math::Vec3 up = math::normalize(math::Vec3(m[0][1]));
+                    return math::degrees(std::atan2(up.z, up.y));  // + : leaning forward
+                };
+                const std::vector<math::Mat4>* both[2] = {&plan, &real};
+                for (const std::vector<math::Mat4>* m : both) {
+                    const std::vector<math::Mat4>& p = *m;
+                    const math::Vec3 pv = pos(p, "pelvis");
+                    std::printf("  t %.3f %s pelvis z %+.2f y %.2f pitch %+4.0f | ankle z L %+.2f R %+.2f y L %.2f R %.2f | thigh L "
+                                "%+4.0f R %+4.0f | shin L %+4.0f R %+4.0f | support %.2f %.2f | landed %d%d | toe y L %.2f R %.2f\n",
+                                time, m == &plan ? "plan" : "real", pv.z, pv.y, pelvisPitch(p), pos(p, "foot_l").z - pv.z,
+                                pos(p, "foot_r").z - pv.z, pos(p, "foot_l").y, pos(p, "foot_r").y, pitch(p, "thigh_l", "shin_l"),
+                                pitch(p, "thigh_r", "shin_r"), pitch(p, "shin_l", "foot_l"), pitch(p, "shin_r", "foot_r"),
+                                h.bodyQueue().supportWeight[0], h.bodyQueue().supportWeight[1], h.bodyQueue().landed[0] ? 1 : 0,
+                                h.bodyQueue().landed[1] ? 1 : 0, pos(p, "toe_l").y, pos(p, "toe_r").y);
+                }
+            }
             const char* traceFrom = std::getenv("CRICKET_FROM");
             const float from = traceFrom ? static_cast<float>(std::atof(traceFrom)) : 3.0f;
             if (std::getenv("CRICKET_TRACE") && pace == std::atoi(std::getenv("CRICKET_TRACE")) && time > from &&

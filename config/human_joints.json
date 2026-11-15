@@ -188,7 +188,17 @@
       "walkRunBand": 0.3,
       "legStiffness": 11200,
       "flightTimeJog": 0.10,
-      "flightTimeRun": 0.14
+      "flightTimeRun": 0.14,
+      // The running swing's ankle apex (m above its ground): the heel comes up
+      // toward the buttock, more the faster (swing knee ~90 deg jogging, 120-130
+      // sprinting, Novacheck 1998; BIOMECHANICS 5: ~0.22 m jogging, ~0.36 m
+      // running). At the jog speed .. the run speed, by the run's share over
+      // the walking step's height; peak early (heel recovery, 0.38 of the swing).
+      // The walking step's 0.10 m left the toes 4-9 cm up: the real body, a few
+      // cm lower than the plan, dragged them on the ground (measured 2026-11-15).
+      "swingHeightJog": 0.22,
+      "swingHeightRun": 0.36,
+      "swingPeakAt": 0.38
     },
     // The lowest hips: no grounded knee bends past this (deg). Two feet: the
     // semi-squat ~90 (Straker 2003; measured self-chosen ground lifts 48-71,

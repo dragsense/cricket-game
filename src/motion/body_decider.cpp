@@ -450,6 +450,10 @@ void BodyDecider::timeStep(math::Vec3 velocity, const BodyDeciderSettings& s) {
     if (runShare_ > 0.0f) {
         nextStep_.duration = math::lerp(nextStep_.duration, contactTime(s) + 2.0f * flightTime(s), runShare_);
         nextStep_.liftAt = math::lerp(nextStep_.liftAt, 0.0f, runShare_);
+        // The heel comes up higher the faster (heel recovery).
+        const float height = math::lerp(s.swingHeightJog, s.swingHeightRun, paceShare(s));
+        nextStep_.height = math::lerp(nextStep_.height, height, runShare_);
+        nextStep_.peakAt = math::lerp(nextStep_.peakAt, s.runSwingPeakAt, runShare_);
     }
 }
 
@@ -531,12 +535,14 @@ float BodyDecider::contactTime(const BodyDeciderSettings& s) const {
     return math::kPi * std::sqrt(std::max(totalMass_, 1.0f) / std::max(s.legStiffness, 1.0f));
 }
 
+float BodyDecider::paceShare(const BodyDeciderSettings& s) const {
+    if (!s.gait || s.gait->runSpeed <= s.gait->jogSpeed) return 0.0f;
+    return std::clamp((math::length(runVelocity_) - s.gait->jogSpeed) / (s.gait->runSpeed - s.gait->jogSpeed), 0.0f, 1.0f);
+}
+
 float BodyDecider::flightTime(const BodyDeciderSettings& s) const {
     // flightTimeJog at the gait's jog speed .. flightTimeRun at its run speed.
-    float share = 0.0f;
-    if (s.gait && s.gait->runSpeed > s.gait->jogSpeed)
-        share = std::clamp((math::length(runVelocity_) - s.gait->jogSpeed) / (s.gait->runSpeed - s.gait->jogSpeed), 0.0f, 1.0f);
-    return std::max(math::lerp(s.flightTimeJog, s.flightTimeRun, share), 0.02f);
+    return std::max(math::lerp(s.flightTimeJog, s.flightTimeRun, paceShare(s)), 0.02f);
 }
 
 float BodyDecider::runAhead(int i, const BodyDeciderSettings& s) const {

@@ -716,6 +716,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.legStiffness = dv("decider.run.legStiffness", deciderSettings_.legStiffness);
         deciderSettings_.flightTimeJog = dv("decider.run.flightTimeJog", deciderSettings_.flightTimeJog);
         deciderSettings_.flightTimeRun = dv("decider.run.flightTimeRun", deciderSettings_.flightTimeRun);
+        deciderSettings_.swingHeightJog = dv("decider.run.swingHeightJog", deciderSettings_.swingHeightJog);
+        deciderSettings_.swingHeightRun = dv("decider.run.swingHeightRun", deciderSettings_.swingHeightRun);
+        deciderSettings_.runSwingPeakAt = dv("decider.run.swingPeakAt", deciderSettings_.runSwingPeakAt);
         deciderSettings_.twoLegKneeMax =
             math::radians(dv("decider.twoLegKneeMaxDeg", math::degrees(deciderSettings_.twoLegKneeMax)));
         deciderSettings_.oneLegKneeMax =
