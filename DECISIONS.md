@@ -707,3 +707,12 @@ Dated log. Format: decision, reason, alternatives rejected.
   overridden (0.2 cm); now 4.5 cm (real 3.9-7 cm).
 - **Rejected:** the separate hips weights across / up (`hipsWeightHorizontal/Vertical`):
   forward and across could not be split.
+
+## 2026-11-15: One move controller; the decider makes walk, run and flight
+- **Decision (the user's design):** the walk controller is the move controller
+  (`motion::MoveController`, config "move"). It gives only the hips target's eased speed.
+  The body's decider makes walking, running and the air from that speed (how far the hips
+  are pushed decides the steps; a bigger push, running's flight). The same push will
+  drive jump and dive: a small push steps, a large one, or the hips turning the legs off
+  the ground, dives.
+- **Rejected:** separate walk / run controllers or modes.

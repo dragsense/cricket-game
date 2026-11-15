@@ -1,6 +1,6 @@
 #include "motion/foot_stepper.h"
 
-#include "motion/walk_controller.h"
+#include "motion/move_controller.h"
 
 #include <algorithm>
 #include <cmath>

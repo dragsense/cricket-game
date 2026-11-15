@@ -16,7 +16,7 @@
 #include "motion/jump_planner.h"
 #include "motion/target_set.h"
 #include "motion/body_decider.h"
-#include "motion/walk_controller.h"
+#include "motion/move_controller.h"
 #include "rig/rig.h"
 #include "rig/skeleton_def.h"
 
@@ -149,7 +149,7 @@ public:
     // the next step takes it.
     void changeWalkSpeed(int direction);
     float walkSpeedScale() const { return speedScale_; }
-    float speed() const { return walker_.speed(); }  // m/s
+    float speed() const { return mover_.speed(); }  // m/s
     // Stands the fielder at `position` (world) facing `yaw` radians, feet at
     // rest, any jump cleared.
     void placeAt(math::Vec3 position, float yaw);
@@ -286,9 +286,9 @@ private:
     float ballDistance_ = 0.1f;  // ankle to ball of the foot (m), from the skeleton
     float ballDrop_ = 0.03f;     // ball of the foot below the ankle (m), from the skeleton
 
-    motion::WalkSettings walkSettings_;  // the only pace (jog and run removed 2026-11-09)
+    motion::MoveSettings moveSettings_;  // the only pace (jog and run removed 2026-11-09)
     float postureLean_ = 0.087f;  // rad, walking posture: trunk held slightly forward
-    motion::WalkController walker_;
+    motion::MoveController mover_;
     motion::FootStepper stepper_;
     bool face_ = false;
     float faceYaw_ = 0.0f;

@@ -589,19 +589,6 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
             world.step(kDt);
             if (!h.bodyQueue().plan || !h.physicalModels(world, 1.0f, real)) continue;
             const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
-            if (false && time > 2.4f && time < 3.6f && i % 6 == 0) {
-                const motion::StepAdvice& a = h.bodyQueue().step;
-                const math::Vec3 xc = h.root().transformPoint(a.capturePoint);
-                const math::Vec3 pl = h.root().transformPoint(math::Vec3(plan[0][3]));
-                const math::Vec3 tg = h.root().transformPoint(h.bodyTargets().hips.position);
-                auto fl = [&](math::Vec3 p) { return 100.0f * math::dot(p, left); };
-                auto ff = [&](math::Vec3 p) { return 100.0f * math::dot(p, fwd); };
-                std::printf("    t %.2f: xcom fwd %5.1f left %5.1f | outside %4.1f cm | wanted %d foot %d | plan hips "
-                            "%5.1f/%5.1f target %5.1f/%5.1f | feet L %5.1f/%5.1f R %5.1f/%5.1f\n",
-                            time, ff(xc), fl(xc), 100.0f * a.outside, a.wanted, a.foot, ff(pl), fl(pl), ff(tg), fl(tg),
-                            ff(h.ankle(true, plan, h.root())), fl(h.ankle(true, plan, h.root())),
-                            ff(h.ankle(false, plan, h.root())), fl(h.ankle(false, plan, h.root())));
-            }
             const int foot = h.stepFoot();
             // A step ended: the foot changed, or the same foot began again.
             const bool restarted = foot >= 0 && foot == lastFoot && h.stepPhase() < lastPhase;

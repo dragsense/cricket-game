@@ -1,5 +1,8 @@
 #pragma once
-// Walk: desired-velocity controller and gait timing. Movement is requested in
+// Move (was the walk controller; the user's name, 2026-11-15): the
+// desired velocity that drives the hips target, and gait timing. Walking,
+// running and the air are not separate here: the body's decider makes
+// them from the speed. Movement is requested in
 // character space (forward, back, sidesteps) and the velocity eases toward it
 // (smooth start and stop). Turning is separate: when asked to face a heading,
 // the character turns toward it at a limited rate, slowing its forward walk on
@@ -7,13 +10,13 @@
 // gives step length and swing/stance durations for a speed, from
 // docs/BIOMECHANICS.md section 4 (step = k * H * (v / v_ref)^0.42). Running
 // uses the same settings with a flight phase (section 5).
-// Tunables in config/locomotion.json "walk". Pure math, no allocations.
+// Tunables in config/locomotion.json "move". Pure math, no allocations.
 
 #include "math/math.h"
 
 namespace motion {
 
-struct WalkSettings {
+struct MoveSettings {
     float speed = 1.35f;         // m/s at full forward input
     float backSpeed = 0.9f;      // m/s walking backward
     float sideSpeed = 0.8f;      // m/s sidestepping
@@ -66,7 +69,7 @@ struct GaitTiming {
     float flight = 0.0f;      // s both feet are off the ground per step (running)
 };
 
-GaitTiming gaitTiming(float speed, float height, const WalkSettings& s);
+GaitTiming gaitTiming(float speed, float height, const MoveSettings& s);
 
 // Pelvis height over one step, in [-0.5, 0.5], at swing progress t. Walking
 // (no flight): lowest in double support, highest mid-swing. Running: lowest
@@ -78,7 +81,7 @@ float gaitBob(float t, float flightShare);
 // (blends walk-only and run-only behaviour so pace changes never snap).
 float runShare(float flightShare);
 
-class WalkController {
+class MoveController {
 public:
     void reset(float yaw);
     // Sets the velocity at once (character space, x = left, y = forward), e.g.
@@ -91,7 +94,7 @@ public:
     // `move` is the requested movement in character space (x = left, y =
     // forward), length 0..1 scales the speed. When `face` is set the
     // character turns toward world heading `faceYaw` (radians about +Y).
-    void tick(float dt, math::Vec2 move, bool face, float faceYaw, const WalkSettings& s);
+    void tick(float dt, math::Vec2 move, bool face, float faceYaw, const MoveSettings& s);
 
     float yaw() const { return yaw_; }
     float speed() const { return math::length(local_); }

@@ -71,6 +71,10 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   Added the "foot left behind steps" rule (`reachDrop` 0.04 m: a leg at its reach would
   hold the hips lower than that); it does not fire in steady walking (the steps chain),
   kept for reaches and pushes.
+- [x] **B1d Walk controller renamed** (the user's call): `motion::MoveController`,
+  `MoveSettings`, `src/motion/move_controller.*`, `tests/test_move.cpp`, config block
+  `locomotion.json` "move" (was "walk"). It only gives the hips target's speed; walking,
+  running and flight are the decider's, from the speed.
 - [ ] **B1c Shares from the targets** (the rest): passive config shares to 0;
   a stepping foot turns the pelvis (not pushing it on: the hips target already does), the
   pelvis's turn turns the chest back, the arms cancel; posture (chest upright, head level)

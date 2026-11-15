@@ -1,4 +1,4 @@
-#include "motion/walk_controller.h"
+#include "motion/move_controller.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,7 +16,7 @@ float wrapAngle(float a) {
 
 } // namespace
 
-GaitTiming gaitTiming(float speed, float height, const WalkSettings& s) {
+GaitTiming gaitTiming(float speed, float height, const MoveSettings& s) {
     const float v = std::max(speed, kMinGaitSpeed);
     GaitTiming g;
     g.stepLength = s.stepK * height * std::pow(v / std::max(s.refSpeed, kMinGaitSpeed), 0.42f);
@@ -42,13 +42,13 @@ float runShare(float flightShare) {
     return math::clamp(flightShare / kRunShareFlight, 0.0f, 1.0f);
 }
 
-void WalkController::reset(float yaw) {
+void MoveController::reset(float yaw) {
     yaw_ = yaw;
     local_ = math::Vec2(0.0f);
     accel_ = yawRate_ = gaitSpeed_ = 0.0f;
 }
 
-void WalkController::tick(float dt, math::Vec2 move, bool face, float faceYaw, const WalkSettings& s) {
+void MoveController::tick(float dt, math::Vec2 move, bool face, float faceYaw, const MoveSettings& s) {
     if (dt <= 0.0f) return;
     if (math::length2(move) > 1.0f) move /= math::length(move);  // diagonals
 
@@ -71,7 +71,7 @@ void WalkController::tick(float dt, math::Vec2 move, bool face, float faceYaw, c
     local_ += step;
 }
 
-math::Vec3 WalkController::velocity() const {
+math::Vec3 MoveController::velocity() const {
     // Character +X (left) is world (cos, 0, -sin); +Z (forward) is (sin, 0, cos).
     const float c = std::cos(yaw_), sn = std::sin(yaw_);
     return math::Vec3(c, 0.0f, -sn) * local_.x + math::Vec3(sn, 0.0f, c) * local_.y;

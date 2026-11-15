@@ -36,7 +36,7 @@
 #include "math/math.h"
 #include "motion/step_planner.h"
 #include "motion/target_set.h"
-#include "motion/walk_controller.h"
+#include "motion/move_controller.h"
 #include "rig/rig.h"
 
 #include <array>
@@ -195,7 +195,7 @@ struct BodyDeciderSettings {
     // locomotion.json "walk"; none: the shape's), and the parts' passive
     // shares while it runs ("step.passive", unless the action gives its own).
     StepPlannerSettings stepShape;
-    const WalkSettings* gait = nullptr;
+    const MoveSettings* gait = nullptr;
     PassiveShares stepPassive;
 };
 

@@ -123,7 +123,7 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
     root_.position = def.spawnPosition;
     root_.rotation = math::fromAxisAngle(math::kUp, def.spawnYaw);
     previousRoot_ = root_;
-    walker_.reset(def.spawnYaw);
+    mover_.reset(def.spawnYaw);
     legPhase_ = armAmount_ = headYaw_ = 0.0f;
     loadLocomotion(locomotion);
 
@@ -145,7 +145,7 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
 void Human::loadLocomotion(const core::Config& c) {
     // Load-time only (builds path strings). Walking is the only pace (jog and
     // run removed, the user's call 2026-11-09).
-    auto load = [&](const std::string& block, motion::WalkSettings& w) {
+    auto load = [&](const std::string& block, motion::MoveSettings& w) {
         auto get = [&](const char* key, float v) { return c.getFloat(block + "." + key, v); };
         auto deg = [&](const char* key, float radians) { return math::radians(get(key, math::degrees(radians))); };
         w.speed = get("speed", w.speed);
@@ -189,8 +189,8 @@ void Human::loadLocomotion(const core::Config& c) {
         w.pelvisDrop = get("pelvisDrop", w.pelvisDrop);
         w.sideFollow = get("sideFollow", w.sideFollow);
     };
-    load("walk", walkSettings_);
-    postureLean_ = math::radians(c.getFloat("walk.postureLeanDeg", math::degrees(postureLean_)));
+    load("move", moveSettings_);
+    postureLean_ = math::radians(c.getFloat("move.postureLeanDeg", math::degrees(postureLean_)));
     stepSettings_.stepLength = c.getFloat("step.stepLength", stepSettings_.stepLength);
     toeClearance_ = c.getFloat("step.toeClearance", toeClearance_);
     stepSettings_.backStepLength = c.getFloat("step.backStepLength", stepSettings_.backStepLength);
@@ -297,7 +297,7 @@ void Human::placeAt(math::Vec3 position, float yaw) {
     root_.position = position;
     root_.rotation = math::fromAxisAngle(math::kUp, yaw);
     previousRoot_ = root_;
-    walker_.reset(yaw);
+    mover_.reset(yaw);
     if (physics_) physics_->placeCharacter(capsule_, position);
     plantFeet();
 }
@@ -376,15 +376,15 @@ void Human::walk(float dt) {
     // at the pace E / Q set); the decider's balance step takes the steps.
     // The root does not move with it: it follows the real hips (the capsule).
     const bool body = physics_ && humanBody_.ready();
-    motion::WalkSettings paced = walkSettings_;
+    motion::MoveSettings paced = moveSettings_;
     paced.speed *= speedScale_;
     paced.backSpeed *= speedScale_;
     paced.sideSpeed *= speedScale_;
-    walker_.tick(dt, body && !posing ? stepInput_ : math::Vec2(0.0f), face_ && !posing, faceYaw_, paced);
-    const motion::WalkSettings& w = walkSettings_;
+    mover_.tick(dt, body && !posing ? stepInput_ : math::Vec2(0.0f), face_ && !posing, faceYaw_, paced);
+    const motion::MoveSettings& w = moveSettings_;
     const math::Transform from = root_;
-    if (!body) root_.position += walker_.velocity() * dt;
-    root_.rotation = math::fromAxisAngle(math::kUp, walker_.yaw());
+    if (!body) root_.position += mover_.velocity() * dt;
+    root_.rotation = math::fromAxisAngle(math::kUp, mover_.yaw());
     stepper_.rebase(from, root_);
     {
         // The planted feet (and a step's points) keep their place and heading
@@ -393,11 +393,11 @@ void Human::walk(float dt) {
         decider_.rebase(turned);
     }
 
-    const math::Vec3 velocity = math::inverse(root_).transformDirection(walker_.velocity());
+    const math::Vec3 velocity = math::inverse(root_).transformDirection(mover_.velocity());
     // Below walking speed, steps keep the walk's rhythm (full size from the
     // first step and while stopping); faster, they follow the actual speed.
-    const float walkSpeed = walkSettings_.speed;
-    const float timingSpeed = walker_.speed() > walkSpeed ? walker_.speed() : std::min(walker_.gaitSpeed(), walkSpeed);
+    const float walkSpeed = moveSettings_.speed;
+    const float timingSpeed = mover_.speed() > walkSpeed ? mover_.speed() : std::min(mover_.gaitSpeed(), walkSpeed);
     // Single steps: the stepper picks the foot (the leading side's foot, else
     // alternating) and swings it to its spot; the body follows from the
     // body reposition. The root (and the camera with it) stays between the
@@ -410,9 +410,9 @@ void Human::walk(float dt) {
         shape.liftAt = stepSettings_.liftAt;
         shape.height = stepSettings_.stepHeight;
         shape.peakAt = stepSettings_.peakAt;
-        shape.toeOffPitch = walkSettings_.toeOffPitch;
+        shape.toeOffPitch = moveSettings_.toeOffPitch;
         shape.ballReach = ballReach_;
-        deciderSettings_.gait = &walkSettings_;
+        deciderSettings_.gait = &moveSettings_;
         deciderSettings_.stepPassive = stepPassive_;
         return;
     }
@@ -435,7 +435,7 @@ void Human::walk(float dt) {
 }
 
 motion::GaitStyle Human::gaitStyle() const {
-    const motion::WalkSettings& w = walkSettings_;
+    const motion::MoveSettings& w = moveSettings_;
     motion::GaitStyle s;
     s.toeOffPitch = w.toeOffPitch;
     s.landPitch = w.landPitch;
@@ -459,10 +459,10 @@ void Human::repositionBody(float dt) {
     // The lower foot carries the body; even weight when both are level.
     const float stance = math::clamp(0.5f + 0.5f * (left.foot.y - right.foot.y) / stanceBlendHeight_, 0.0f, 1.0f);
     RepositionSettings reposition = reposition_;
-    reposition.sideFollow = walkSettings_.sideFollow;  // runners barely shift sideways
+    reposition.sideFollow = moveSettings_.sideFollow;  // runners barely shift sideways
     // Moving, the root already travels smoothly; chasing the stance foot
     // (which slides back every step) would make the body lag and surge.
-    reposition.forwardFollow = 1.0f - math::clamp(walker_.speed() / std::max(walkSettings_.speed, 0.1f), 0.0f, 1.0f);
+    reposition.forwardFollow = 1.0f - math::clamp(mover_.speed() / std::max(moveSettings_.speed, 0.1f), 0.0f, 1.0f);
     reposition.restZ = restPelvis.z;
     // Standing rules (straight-leg height, hip drop); moving, the gait's own
     // pelvis motion (addGaitMotion) takes over.
@@ -535,10 +535,10 @@ void Human::swingArms(float dt) {
     const float sweep = std::cos(math::kPi * stepper_.swingProgress());
     if (swing == static_cast<int>(motion::Foot::Left)) legPhase_ = -sweep;
     else if (swing == static_cast<int>(motion::Foot::Right)) legPhase_ = sweep;
-    const motion::WalkSettings& w = walkSettings_;
+    const motion::MoveSettings& w = moveSettings_;
 
     // Full swing walking forward, little when sidestepping or backing up.
-    const float forward = math::dot(math::inverse(root_).transformDirection(walker_.velocity()), math::kForward);
+    const float forward = math::dot(math::inverse(root_).transformDirection(mover_.velocity()), math::kForward);
     const float want = math::clamp(forward / std::max(w.speed, 0.1f), 0.0f, 1.0f);
     armAmount_ += (want - armAmount_) * std::min(1.0f, w.armRate * dt);
 
@@ -557,12 +557,12 @@ void Human::swingArms(float dt) {
 }
 
 void Human::stabiliseHead(float dt) {
-    const motion::WalkSettings& w = walkSettings_;
+    const motion::MoveSettings& w = moveSettings_;
 
     // Lead turns: the head looks toward the requested heading before the body.
     float want = 0.0f;
     if (face_) {
-        const float diff = std::remainder(faceYaw_ - walker_.yaw(), math::kTwoPi);
+        const float diff = std::remainder(faceYaw_ - mover_.yaw(), math::kTwoPi);
         want = math::clamp(diff, -w.headLead, w.headLead);
     }
     headYaw_ += (want - headYaw_) * std::min(1.0f, w.headRate * dt);
@@ -856,7 +856,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     // support's. Stopped, it holds there until the last balance step has
     // landed and the body is over its feet, then lets go (the hips settle
     // between the feet); let go at once, the hips would swing back and step.
-    const math::Vec3 hipsVelocity = walker_.velocity();
+    const math::Vec3 hipsVelocity = mover_.velocity();
     const bool moving = math::length2(hipsVelocity) > 1e-6f;
     const bool settling = hipsDriven_ && (decider_.stepFoot() >= 0 || queue_.step.wanted);
     if ((moving || settling) && phase_ != Phase::Pose && joints_.pelvis >= 0) {

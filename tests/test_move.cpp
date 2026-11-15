@@ -4,7 +4,7 @@
 // stance when stopped.
 
 #include "motion/foot_stepper.h"
-#include "motion/walk_controller.h"
+#include "motion/move_controller.h"
 
 #include <doctest/doctest.h>
 
@@ -21,7 +21,7 @@ constexpr float kDt = 1.0f / 120.0f;
 } // namespace
 
 TEST_CASE("gait timing at the reference speed") {
-    WalkSettings s;
+    MoveSettings s;
     GaitTiming g = gaitTiming(s.refSpeed, 1.8f, s);
     CHECK(g.stepLength == doctest::Approx(0.41f * 1.8f).epsilon(1e-3));
     CHECK(g.period == doctest::Approx(g.stepLength / s.refSpeed).epsilon(1e-3));
@@ -31,8 +31,8 @@ TEST_CASE("gait timing at the reference speed") {
 }
 
 TEST_CASE("walk controller eases speed and turns at a limited rate") {
-    WalkSettings s;
-    WalkController w;
+    MoveSettings s;
+    MoveController w;
     w.reset(0.0f);
     w.tick(kDt, Vec2(0, 1), true, 0.0f, s);
     CHECK(w.speed() == doctest::Approx(s.acceleration * kDt));
@@ -51,8 +51,8 @@ TEST_CASE("walk controller eases speed and turns at a limited rate") {
 }
 
 TEST_CASE("sidestep and back up without turning") {
-    WalkSettings s;
-    WalkController w;
+    MoveSettings s;
+    MoveController w;
     w.reset(0.0f);
     for (int i = 0; i < 240; ++i) w.tick(kDt, Vec2(1, 0), false, 0.0f, s);  // +X is left
     CHECK(w.yaw() == doctest::Approx(0.0f));
@@ -63,7 +63,7 @@ TEST_CASE("sidestep and back up without turning") {
 }
 
 TEST_CASE("gait stepping alternates feet, keeps the planted foot fixed, then settles") {
-    WalkSettings s;
+    MoveSettings s;
     FootStepper st;
     const Vec3 restL(0.1f, 0, 0), restR(-0.1f, 0, 0);
     st.reset(restL, restR);
@@ -110,7 +110,7 @@ TEST_CASE("run share blends walk to run by flight") {
 }
 
 TEST_CASE("running swing foot eases off the ground (no jump at lift-off)") {
-    WalkSettings s;
+    MoveSettings s;
     s.speed = s.refSpeed = 5.0f;
     s.stepK = 0.92f;
     s.swingFraction = 1.0f;
