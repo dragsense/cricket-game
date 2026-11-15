@@ -941,8 +941,34 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         const math::Vec3 restWorld = planPos(d, joints_.spine[2]) + planRot(d, joints_.spine[2]) * restHandChest_[h];
         endTarget[h] = restWorld + drivenPart(hand, hand.position - restWorld) * k;
         endOn[h] = true;
-        handTrunk(h, endTarget[h], s, out);
     }
+    // A hand further than a body reaches standing (the arm and
+    // standingReachShare of the height past it, from the upright shoulder,
+    // level; Moriyama 2022) takes the whole body after it: the hips toward
+    // it by the rest, decided from where the hand's target is (it moves on
+    // its path: the hips with it, the sync formula). Balance keeps the centre
+    // of mass over the support moved on by that much, so once it leaves the
+    // support the balance step steps toward the hand. Both hands one way:
+    // the body goes once (the further one's).
+    reachShift_ = math::Vec3(0.0f);
+    if (act_[HipsW] < 1.0f && s.standingReachShare > 0.0f) {
+        const float standing = s.standingReachShare * rig_->height();
+        float most = 0.0f;
+        for (int h = 0; h < 2; ++h) {
+            if (!endOn[h] || joints_.arms[h].start < 0) continue;
+            math::Vec3 way = endTarget[h] - planPos(d, joints_.arms[h].start);
+            way.y = 0.0f;
+            const float level = math::length(way);
+            const float over = level - limbReach(h, s) - standing;
+            if (over > most && level > 1e-4f) {
+                most = over;
+                reachShift_ = way * (over * (1.0f - act_[HipsW]) / level);
+            }
+        }
+        if (most > 0.0f) movePelvis(d, reachShift_);
+    }
+    for (int h = 0; h < 2; ++h)
+        if (endOn[h]) handTrunk(h, endTarget[h], s, out);
     for (int i = 0; i < 2; ++i) {
         if (joints_.legs[i].end < 0 || grounded_[i] || act_[FootLW + i] <= 0.0f || t.foot[i].mode != TargetMode::Driven)
             continue;
@@ -1094,15 +1120,27 @@ void BodyDecider::balanceStanding(const TargetSet& t, const BodyDeciderSettings&
         if (t.foot[i].mode == TargetMode::Driven && t.foot[i].swing >= 0.0f) stepping = true;
     const bool standing = !stepping && (grounded_[0] || grounded_[1]) && act_[HipsW] <= 0.0f && totalMass_ > 0.0f;
     if (!standing) return;
+    // On both feet the centre of mass may go anywhere over them (a reach
+    // leans the body out to the toes, the hips staying: Moriyama 2022's
+    // functional reach, the pressure 0.05 H forward, the pelvis +-0.01 H):
+    // the hips go back only as far as keeps it within the feet. On one foot
+    // it stays over that foot's ankle (its outline is narrow). A hand past
+    // the standing reach moves it on by reachShift_ (out: the body steps).
+    const bool bothFeet = grounded_[0] && grounded_[1];
+    const bool reaching = math::length(reachShift_) > 0.0f;
     constexpr int kPasses = 3;
     constexpr float kOver = 1e-3f;  // m: the centre of mass over the support
     for (int pass = 0; pass < kPasses; ++pass) {
         const math::Vec3 com = planCentreOfMass();
-        const math::Vec3 off(hipsRef_.x - com.x, 0.0f, hipsRef_.z - com.z);
+        math::Vec3 off(hipsRef_.x + reachShift_.x - com.x, 0.0f, hipsRef_.z + reachShift_.z - com.z);
+        if (bothFeet && !reaching) {
+            const float out = outsideFeet(math::Vec3(com.x, anchor_[0].y, com.z), anchor_, 2, s);
+            if (out <= kOver) break;
+            off = math::safeNormalize(off) * (out + kOver);  // back toward the support's centre, to its edge
+        }
         if (math::length(off) <= kOver) break;
         movePelvis(d, off);  // the upper body moves with the hips; the next pass measures again
     }
-    (void)s;
 }
 
 void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {

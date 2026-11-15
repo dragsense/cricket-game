@@ -127,6 +127,10 @@ struct BodyDeciderSettings {
     // share of the leg ahead of the hip (a foot right under the hip: the knee
     // forward). Design value.
     float kneeForwardBias = 0.25f;
+    // A body standing reaches a hand this share of its height past the arm
+    // (forward, level; Moriyama 2022's functional reach, young adults 0.22-
+    // 0.24 H); a hand further takes the whole body after it (a step).
+    float standingReachShare = 0.23f;
     // Each next part in a reach queue carries this times the share of the
     // part before it.
     float queueShare = 0.5f;
@@ -455,6 +459,10 @@ private:
     math::Vec3 hipsVel_{0.0f};
     // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
     int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};
+    // How far (level) a hand beyond the standing reach takes the hips toward
+    // it this decide: standing balance keeps the centre of mass over the
+    // support moved on by it (the body leans out and steps after the hand).
+    math::Vec3 reachShift_{0.0f};
     std::vector<float> mass_;          // per rig joint (kg)
     std::vector<math::Vec3> centre_;   // per rig joint: its mass's centre in the bone's frame
     float totalMass_ = 0.0f;

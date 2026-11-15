@@ -121,6 +121,10 @@
     // leg ahead of the hip, so a foot right under the hip keeps the knee
     // forward. [E] design value.
     "kneeForwardBias": 0.25,
+    // A body standing reaches a hand this share of its height past the arm
+    // (level; functional reach, young adults 0.22-0.24 H, Moriyama 2022); a
+    // hand further takes the hips after it by the rest (the body steps).
+    "standingReachShare": 0.23,
     // The chest's turn follows the pelvis's through the trunk's axial
     // spring-damper (Prins et al. 2019): natural frequency (rad/s) and damping
     // ratio. Quick steps drive it faster than its frequency: the chest lags,

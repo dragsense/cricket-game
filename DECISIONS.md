@@ -778,3 +778,14 @@ Dated log. Format: decision, reason, alternatives rejected.
   snapped the hips 13 cm in one tick when a foot was pinned far ahead); the list after the
   bounds (accel 8.906 over the 8.9 bound); a pivot between the hips by weight (the
   standing hip rose).
+
+## 2026-11-15: Standing reach by research shares; the body steps after a far hand
+- **Decision (the user's design, research numbers):** shares are decided from where the
+  target is, never a queue's leftover. On both feet the centre of mass may lie anywhere
+  over the feet (the hips go back only to keep it inside); a hand further than the arm and
+  0.23 of the height past it (Moriyama 2022, functional reach) takes the hips toward it by
+  the rest, so the centre of mass leaves the feet and the balance step steps. A foot never
+  slides: a foot given a new spot (standing or held up) steps there in its path's time.
+- **Rejected:** the hips last in the hand's trunk queue (1.6 % share, never moved: the trunk
+  reached 80 cm with the hips 20 cm back); the trunk's leftover to the hips (the trunk
+  reached on its own, the hips still went back); the centre of mass held over the ankles.

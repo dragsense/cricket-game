@@ -1307,7 +1307,8 @@ TEST_CASE("measure: hand pressed 0.1 m at a time" * doctest::skip()) {
         math::Vec3 press;
         int presses;
     };
-    for (const Case& c : {Case{"fwd", {0.0f, 0.0f, 0.1f}, 6}, Case{"down", {0.0f, -0.1f, 0.0f}, 6},
+    for (const Case& c : {Case{"fwd", {0.0f, 0.0f, 0.1f}, 6}, Case{"fwd far", {0.0f, 0.0f, 0.1f}, 12},
+                          Case{"down", {0.0f, -0.1f, 0.0f}, 6},
                           Case{"out", {0.1f, 0.0f, 0.0f}, 5}, Case{"across", {-0.1f, 0.0f, 0.0f}, 5},
                           Case{"up", {0.0f, 0.1f, 0.0f}, 6}}) {
         core::Config pw;

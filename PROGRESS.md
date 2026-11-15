@@ -207,6 +207,20 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   A foot held up and put down elsewhere steps down too (from where it is in the air), the
   user's rule "a foot never slides": `measure: foot held up` (15 cm up, then 20 cm ahead
   on the ground): a 0.3 s step, the plan ankle at most 2.3 cm a tick, the real 22.1 cm.
+- [x] **B2d-6 A hand far out takes the body after it** (2026-11-15, the user: the hips
+  move by their share, decided from where the target is, not a queue's leftover; a step
+  comes by itself). Research (Moriyama 2022, functional reach, young adults): standing, a
+  hand reaches 0.22-0.24 H past the arm with the pelvis +-0.01 H and the pressure 0.05 H
+  forward. Now (a) on both feet balance keeps the centre of mass anywhere within the feet
+  (the hips go back only to keep it inside; it was pulled over the ankles: the hips went
+  20 cm back); (b) a hand further than the arm and `decider.standingReachShare` 0.23 H
+  (level, from the upright shoulder) takes the hips toward it by the rest, decided from
+  the hand's target each tick (so with its path), and balance keeps that: the centre of
+  mass leaves the feet and the balance step steps. Measure `measure: hand pressed 0.1 m
+  at a time` and `measure: hand down then forward` (CRICKET_DOWNS / CRICKET_FWDS): hand
+  1.18 m ahead at shoulder height: one step, reached (was 10 cm short); 0.8 m: no step,
+  hips 0 (was 19 cm back); down then 58 cm ahead: hips 7 cm back (was 23), reached.
+  Walking, the foot and hips cases unchanged (S's widest foot slide 7.9 cm, was 5.5).
 - [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
   derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
   arms relaxed (physics). Plan agreed with the user 2026-11-15.
