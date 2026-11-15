@@ -1122,3 +1122,75 @@ TEST_CASE("measure: hips pressed once, the step with the hips" * doctest::skip()
                     100.0f * math::dot(r - ankle0[1], dir));
     }
 }
+
+// Measurement (on demand): fast walking, jogging and running, then letting go:
+// the steps, the real speed, the widest foot slide, and how the body stops
+// (the stopping steps, the hips from the feet's middle at the end).
+TEST_CASE("measure: fast walk, jog, run, then stop" * doctest::skip()) {
+    struct Case {
+        const char* name;
+        int presses, pace;  // walk pace presses (x speedStep each), 0 walk / 1 jog / 2 run
+    };
+    for (const Case& c : {Case{"walk x1", 0, 0}, Case{"walk fast", 6, 0}, Case{"jog", 0, 1}, Case{"run", 0, 2}}) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        for (int i = 0; i < c.presses; ++i) h.changeWalkSpeed(1);
+        h.setPace(c.pace);
+        const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+        std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+        Range speed;
+        math::Vec3 lastHips(0.0f), still[2], lastPlan[2];
+        bool have = false, holding[2] = {false, false};
+        float slideMove = 0.0f, slideStop = 0.0f, stoppedAt = -1.0f;
+        int stepsMoving = 0, stepsStopping = 0;
+        constexpr float kGo = 3.0f;
+        for (int i = 0; i < 120 * 6; ++i) {
+            const float time = i * kDt;
+            h.setStepInput(time < kGo ? math::Vec2(0.0f, 1.0f) : math::Vec2(0.0f));
+            h.tick(kDt);
+            world.step(kDt);
+            for (int f = 0; f < 2; ++f)
+                if (h.bodyQueue().landed[f]) {
+                    if (time < kGo) ++stepsMoving;
+                    else {
+                        ++stepsStopping;
+                        stoppedAt = time;
+                    }
+                }
+            if (!h.bodyQueue().plan || !h.physicalModels(world, 1.0f, real)) continue;
+            const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+            const math::Vec3 hips = h.root().transformPoint(math::Vec3(real[0][3]));
+            if (have && time > 1.5f && time < kGo) speed.add(math::dot(hips - lastHips, fwd) / kDt);
+            lastHips = hips;
+            for (int f = 0; f < 2; ++f) {
+                const math::Vec3 p = h.ankle(f == 0, plan, h.root()), a = h.ankle(f == 0, real, h.root());
+                const bool stands = have && math::length(p - lastPlan[f]) / kDt < 0.05f;
+                if (stands && !holding[f]) still[f] = a;
+                holding[f] = stands;
+                if (stands) {
+                    const float d = math::length(math::Vec3(a.x - still[f].x, 0.0f, a.z - still[f].z));
+                    (time < kGo ? slideMove : slideStop) = std::max(time < kGo ? slideMove : slideStop, d);
+                }
+                lastPlan[f] = p;
+            }
+            have = true;
+        }
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        const math::Vec3 hips = h.root().transformPoint(math::Vec3(p[0][3]));
+        const math::Vec3 l = h.ankle(true, p, h.root()), r = h.ankle(false, p, h.root());
+        const math::Vec3 mid = 0.5f * (l + r);
+        std::printf("%-10s moving: %2d steps, real speed %.2f .. %.2f m/s, foot slide %.1f cm | stopping: %d steps, last "
+                    "lands %.2f s after letting go, foot slide %.1f cm | end: feet %.1f cm apart along, hips from their "
+                    "middle %.1f cm along | dropped %s\n",
+                    c.name, stepsMoving, speed.lo, speed.hi, 100.0f * slideMove, stepsStopping,
+                    stoppedAt >= 0.0f ? stoppedAt - kGo : 0.0f, 100.0f * slideStop, 100.0f * math::dot(l - r, fwd),
+                    100.0f * math::dot(hips - mid, fwd), h.supported() ? "no" : "yes");
+    }
+}
