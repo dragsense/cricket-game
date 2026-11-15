@@ -139,6 +139,11 @@ struct BodyDeciderSettings {
     // far toward the standing foot at mid-swing and back (centre of mass
     // side to side 3.9-7 cm over a stride, Orendurff et al. 2004).
     float hipsSway = 0.027f;
+    // The pelvis turns about the vertical with the legs: a share of the turn
+    // of the line between the feet (a foot ahead turns its hip forward), so
+    // longer steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at
+    // 0.40 m/s, 19 at 1.47 m/s, Yang 2013; larger with big steps, Liang 2014).
+    float pelvisTurnShare = 0.11f;
     // A limb reaches at most its span with the knee or elbow bent this much
     // (rad): quiet standing knee 0-5 deg (BIOMECHANICS 2); the two-bone
     // solve's soften keeps it from snapping.
@@ -272,6 +277,8 @@ private:
     // The desired pelvis under the hands' and lifted feet's trunk: the
     // centre of mass over the support (standing only).
     void balanceStanding(const TargetSet& t, const BodyDeciderSettings& s);
+    // The pelvis's turn about the vertical from the feet (rad, + to the left).
+    float pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const;
     // Free arms (no goal) swing to cancel the plan's turning and settle to
     // their rest in the chest's frame.
     void freeArms(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);

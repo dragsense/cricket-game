@@ -105,6 +105,12 @@
     // heel strike; centre of mass side-to-side 3.9-7 cm in all over a stride,
     // Orendurff et al. 2004).
     "hipsSway": 0.027,
+    // The pelvis turns about the vertical with the legs: this share of the
+    // turn of the line between the feet from straight across (a foot ahead
+    // turns its hip forward; longer steps turn it more). Real: 11 deg peak to
+    // peak at 0.40 m/s, 19 at 1.47 m/s (Yang 2013, BIOMECHANICS 4.3). [E] the
+    // share is fitted so walking at 0.9 m/s gives about 15 deg.
+    "pelvisTurnShare": 0.11,
     // Free arms (no goal) cancel this share of the rest of the body's turning
     // about the vertical: arm swing cuts the vertical ground reaction moment
     // by ~63 % in walking (Collins, Adamczyk & Kuo 2009).

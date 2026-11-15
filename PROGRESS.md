@@ -32,7 +32,15 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   feet). W drives the hips forward only; across and up stay the body's own, so the hips
   sway over the standing foot again: side sway 4.5 cm walking (was 0.2 cm; real 3.9-7 cm,
   Orendurff 2004). Replaces `hipsWeightHorizontal/Vertical`.
-- [ ] **B1c Shares from the targets** (planned, research first): passive config shares to 0;
+- [x] **B1c-1 Pelvis turns with the legs** (BIOMECHANICS 4.3, research done): the decider
+  turns the pelvis by `decider.pelvisTurnShare` 0.11 of the turn of the line between the
+  feet (a swinging foot counts at its target). Walking 0.9 m/s: pelvis 15.8 deg peak to
+  peak in the plan, 15.2 real (real people 11 at 0.40 m/s, 19 at 1.47 m/s). Hand and
+  chest targets still turn the pelvis on top (their reach queue composes with it).
+  Measured too: the chest turns with the pelvis exactly (15.2 deg, correlation +1.00):
+  the physics trunk does not counter-turn on its own (real ~8 deg and opposite), so B1c-2
+  needs the trunk's spring-damper in the plan (Prins 2019).
+- [ ] **B1c Shares from the targets** (the rest): passive config shares to 0;
   a stepping foot turns the pelvis (not pushing it on: the hips target already does), the
   pelvis's turn turns the chest back, the arms cancel; posture (chest upright, head level)
   a decider rule. Every share from real numbers.

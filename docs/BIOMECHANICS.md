@@ -303,6 +303,33 @@ foot). Sources: ([Wikipedia gait cycle](https://en.wikipedia.org/wiki/Bipedal_ga
   so it is mostly a visual detail, not a gait driver.
 - **Thorax** counter-rotates against the pelvis, which is why the arms swing opposite to
   the legs **[T]**.
+- **Pelvis and thorax turn: numbers and mechanism (added 2026-11-15, for the decider's
+  shares):**
+  - Amplitudes, peak to peak, 9 young women on a treadmill
+    ([Yang et al. 2013, J Appl Biomech](https://journals.humankinetics.com/view/journals/jab/29/3/article-p261.xml);
+    full numbers in the [thesis](http://hdl.handle.net/2065/40309)) **[P]**: pelvis 11° at
+    0.40 m/s, 19° at 1.47 m/s (+80 %); thorax 12° slow, 6° fast (−50 %); at slow speed
+    all trunk levels turn about the same. The turn peaks in order pelvis, L5, L3, L1,
+    thorax: the pelvis leads, the thorax follows.
+  - Other data: pelvis 4.3° ± 1.1 total at preferred speed in one lab, 3–14° across
+    studies (marker sets differ) **[T]**; Liang et al. 2014 (20 men, 1–5 km/h): pelvis
+    amplitude U-shaped with speed with normal steps (least near 3 km/h), larger with big
+    steps ([VU](https://research.vu.nl/ws/files/42834063/Liang_G_P_2014.pdf)) **[P]**.
+  - Timing: thorax–pelvis relative phase about −20° at 1 km/h (in phase), about −150° at
+    5.4 km/h (nearly opposite) (cited in
+    [Prins et al. 2019, Sci Rep](https://www.nature.com/articles/s41598-018-37549-9)) **[P]**.
+    The shift comes from the pelvis turning in phase with the swinging thigh at higher
+    speeds while the thorax keeps turning against the thigh
+    ([Bruijn et al. 2008](https://www.academia.edu/5620440/Coordination_of_leg_swing_thorax_rotations_and_pelvis_rotations_during_gait_The_organisation_of_total_body_angular_momentum)) **[P]**.
+  - Angular momentum: pelvis and thorax give under 10 % of the body's angular momentum
+    about the vertical, legs and arms about 90 % (Bruijn 2008) **[P]**. So the thorax's
+    counter-turn is not mainly there to cancel the legs; the arms do that.
+  - Mechanism (Prins 2019, forward dynamic model, 30 subjects at 4 km/h, 83 % of the
+    thorax turn explained) **[P]**: the thorax turn = the pelvis turn passed up through the
+    trunk's axial stiffness and damping (a spring-damper at L5/S1), plus the arm swing's
+    moment on the shoulders. Stiffer trunk: more in phase, smaller thorax turn. More arm
+    swing: more out of phase, larger thorax turn. Trunk stiffness changes with speed
+    (Kubo et al. 2006).
 
 ### 4.4 Arms
 - The arms swing opposite to the same-side leg. Arm swing lowers metabolic cost and

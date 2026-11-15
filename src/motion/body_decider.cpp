@@ -539,7 +539,8 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             markPlanned(j, out);
         }
     refresh(d);
-    placePelvis(d, math::Transform{out.hipsReference, restPelvis_.rotation});
+    placePelvis(d, math::Transform{out.hipsReference,
+                                   math::fromAxisAngle(math::kUp, pelvisTurn(t, s)) * restPelvis_.rotation});
 
     // Reach: a hand or lifted foot out of its limb's reach brings the trunk
     // in (its queue and plan), then the standing balance and the grounded
@@ -626,6 +627,24 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     freeArms(t, s, out);
     levelHead(t, s, out);
     solveArms(d, t, s, out);
+}
+
+float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const {
+    // Each foot where it stands, or where its target is on a timed swing (the
+    // swinging leg carries its hip with it); the pelvis turns by a share of
+    // the turn of the line between them from straight across. Left foot ahead:
+    // the left hip forward, a turn to the right (negative about +Y).
+    math::Vec3 at[2];
+    for (int i = 0; i < 2; ++i) {
+        if (joints_.legs[i].end < 0) return 0.0f;
+        const Target& f = t.foot[i];
+        const bool swinging = f.mode == TargetMode::Driven && f.swing >= 0.0f;
+        at[i] = swinging ? f.position : grounded_[i] ? anchor_[i] : planPos(output_, joints_.legs[i].end);
+    }
+    const float ahead = at[0].z - at[1].z;   // left ahead of right
+    const float across = at[0].x - at[1].x;  // left of right (+X left)
+    if (std::abs(across) < 1e-3f && std::abs(ahead) < 1e-3f) return 0.0f;
+    return -s.pelvisTurnShare * std::atan2(ahead, std::max(across, 1e-3f));
 }
 
 void BodyDecider::balanceStanding(const TargetSet& t, const BodyDeciderSettings& s) {

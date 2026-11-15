@@ -553,7 +553,23 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
         std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
         int lastFoot = -1, steps = 0;
         float lastPhase = 0.0f, slideAt = 0.0f;
-        Range sway;
+        Range sway, pelvisYawPlan, pelvisYawReal, chestYawReal;
+        double sumPC = 0.0, sumPP = 0.0, sumCC = 0.0;
+        // A bone's turn about the vertical (deg) from its lateral axis, against
+        // the same axis standing (character space: the facing stays fixed).
+        auto yawOf = [](const math::Mat4& m, math::Vec3 ref) {
+            math::Vec3 v(m[0]);
+            v.y = 0.0f;
+            v = math::normalize(v);
+            return math::degrees(std::atan2(math::cross(ref, v).y, math::dot(ref, v)));
+        };
+        auto flatX = [](const math::Mat4& m) {
+            math::Vec3 v(m[0]);
+            v.y = 0.0f;
+            return math::normalize(v);
+        };
+        math::Vec3 pelvisRef(1, 0, 0), chestRef(1, 0, 0);
+        bool refs = false;
         int slideFoot = -1;
         float stepStart = 0.0f, hipsAheadMax = -9.0f, hipsAheadMin = 9.0f, slide = 0.0f, chest = 0.0f;
         math::Vec3 still[2];
@@ -610,6 +626,21 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
                     sway.add(math::dot(hips, across));
                 }
             }
+            if (!refs) {
+                pelvisRef = flatX(real[0]);
+                chestRef = flatX(real[static_cast<size_t>(chestJ)]);
+                refs = true;
+            }
+            if (time > 1.0f && time < 2.5f) {
+                const float pp = yawOf(plan[0], pelvisRef), pr = yawOf(real[0], pelvisRef);
+                const float cr = yawOf(real[static_cast<size_t>(chestJ)], chestRef);
+                pelvisYawPlan.add(pp);
+                pelvisYawReal.add(pr);
+                chestYawReal.add(cr);
+                sumPC += pr * cr;
+                sumPP += pr * pr;
+                sumCC += cr * cr;
+            }
             const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(chestJ)][1]));
             chest = std::max(chest, math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f))));
             for (int f = 0; f < 2; ++f) {
@@ -633,6 +664,11 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
                     "lean %.1f deg | dropped %s | slide foot %d at %.2f s | hips side sway %.1f cm\n",
                     steps, 100.0f * hipsAheadMin, 100.0f * hipsAheadMax, 100.0f * slide, chest, h.supported() ? "no" : "yes",
                     slideFoot, slideAt, 100.0f * sway.span());
+        // Peak to peak; chest with pelvis: +1 turning together, -1 opposite.
+        const double corr = sumPP > 0.0 && sumCC > 0.0 ? sumPC / std::sqrt(sumPP * sumCC) : 0.0;
+        std::printf("  turn (peak to peak): pelvis plan %.1f deg, real %.1f deg | chest real %.1f deg | chest with pelvis "
+                    "%+.2f\n",
+                    pelvisYawPlan.span(), pelvisYawReal.span(), chestYawReal.span(), corr);
     }
 }
 
