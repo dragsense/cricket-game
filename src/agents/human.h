@@ -301,6 +301,7 @@ private:
     bool jumpHeld_ = false;
     // WASD's hips target (world): it moves at the walker's velocity.
     math::Vec3 hipsGoal_{0.0f};
+    math::Vec3 hipsDirection_ = math::kForward;  // world, level: the way it moves (its active direction)
     bool hipsDriven_ = false;
     bool holdOff_ = false;  // the hold's joint off for the jump's push and flight
     float legPhase_ = 0.0f;  // left leg fore-aft position, -1 back .. +1 forward

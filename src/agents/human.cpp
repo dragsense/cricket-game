@@ -863,12 +863,16 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             hipsDriven_ = true;
         }
         hipsGoal_ += hipsVelocity * dt;
+        // Active along the way WASD moves (kept while it settles); across and
+        // up the body's own: the hips sway over the standing foot, the legs
+        // set the height.
+        if (moving) hipsDirection_ = math::normalize(math::Vec3(hipsVelocity.x, 0.0f, hipsVelocity.z));
         t.hips.mode = motion::TargetMode::Driven;
         t.hips.position = math::inverse(root_).transformPoint(hipsGoal_);
         t.hips.velocity = math::inverse(root_).transformDirection(hipsVelocity);
         t.hips.weightRotation = 0.0f;
-        t.hipsWeightHorizontal = 1.0f;
-        t.hipsWeightVertical = 0.0f;
+        t.hips.directions[0] = math::inverse(root_).transformDirection(hipsDirection_);
+        t.hips.directionCount = 1;
     } else {
         hipsDriven_ = false;
     }

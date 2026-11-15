@@ -553,6 +553,7 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
         std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
         int lastFoot = -1, steps = 0;
         float lastPhase = 0.0f, slideAt = 0.0f;
+        Range sway;
         int slideFoot = -1;
         float stepStart = 0.0f, hipsAheadMax = -9.0f, hipsAheadMin = 9.0f, slide = 0.0f, chest = 0.0f;
         math::Vec3 still[2];
@@ -604,6 +605,10 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
                 const float ahead = math::dot(hips - centre, dir);
                 hipsAheadMax = std::max(hipsAheadMax, ahead);
                 hipsAheadMin = std::min(hipsAheadMin, ahead);
+                if (time > 1.0f) {  // across the way it moves: the side sway (real hips, world)
+                    const math::Vec3 across = math::cross(math::kUp, dir);
+                    sway.add(math::dot(hips, across));
+                }
             }
             const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(chestJ)][1]));
             chest = std::max(chest, math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f))));
@@ -625,9 +630,9 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
             have = true;
         }
         std::printf("  %d steps | hips ahead of the feet's centre (moving) %.1f .. %.1f cm | foot slide %.1f cm | chest "
-                    "lean %.1f deg | dropped %s | slide foot %d at %.2f s\n",
+                    "lean %.1f deg | dropped %s | slide foot %d at %.2f s | hips side sway %.1f cm\n",
                     steps, 100.0f * hipsAheadMin, 100.0f * hipsAheadMax, 100.0f * slide, chest, h.supported() ? "no" : "yes",
-                    slideFoot, slideAt);
+                    slideFoot, slideAt, 100.0f * sway.span());
     }
 }
 

@@ -17,6 +17,10 @@
 //   carrying weight; it never slides.
 // Mode and weight changes never switch at once: the decider blends them
 // over its blendTime.
+// Active directions (the user's design, 2026-11-15): a Driven target may
+// drive its part along some directions only (W: the hips forward); the rest
+// of the part's place stays the body's own (the hips across: over the
+// support, swaying to the standing foot; up: the legs' reach).
 
 #include "math/math.h"
 
@@ -36,7 +40,22 @@ struct Target {
     // no timing, a foot just held up), and the ground's normal under it.
     float swing = -1.0f;
     math::Vec3 contactNormal = math::kUp;
+    // Driven along these directions only (character space, unit, at right
+    // angles to each other); none: the whole position.
+    static constexpr int kMaxDirections = 3;
+    math::Vec3 directions[kMaxDirections]{};
+    int directionCount = 0;
 };
+
+// The part of `v` (a way to the target, or its velocity) that the target
+// drives: along its active directions only (none given: all of it).
+inline math::Vec3 drivenPart(const Target& t, math::Vec3 v) {
+    if (t.directionCount <= 0) return v;
+    math::Vec3 sum(0.0f);
+    for (int i = 0; i < t.directionCount && i < Target::kMaxDirections; ++i)
+        sum += t.directions[i] * math::dot(v, t.directions[i]);
+    return sum;
+}
 
 // The passive shares (0..1) the planner gives for its action: how far each
 // part without a goal goes back to its own target (decider.passiveInfluence
@@ -51,8 +70,6 @@ struct TargetSet {
     Target hips;     // the pelvis
     Target chest;    // rotation only
     Target head;     // rotation only (gaze)
-    // The hips' position weight split: up/down and across (both 0..1).
-    float hipsWeightVertical = 1.0f, hipsWeightHorizontal = 1.0f;
     float dt = 0.0f;        // s, this tick (the fixed physics step)
     float strength = 1.0f;  // 0..1, the whole body's: hits, falls, get-up (scales motors and the pin)
     PassiveShares passive;  // the action's own passive shares (each negative: the decider's)

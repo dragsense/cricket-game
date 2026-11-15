@@ -208,6 +208,7 @@ void BodyDecider::rebase(const math::Transform& toNew) {
         l.position = toNew.transformPoint(l.position);
         l.rotation = toNew.rotation * l.rotation;
         l.velocity = toNew.rotation * l.velocity;
+        for (math::Vec3& d : l.directions) d = toNew.rotation * d;
     }
     hipsRef_ = toNew.transformPoint(hipsRef_);
     hipsRefVel_ = toNew.rotation * hipsRefVel_;
@@ -510,14 +511,12 @@ void BodyDecider::supportAndHips(const TargetSet& t, const BodyDeciderSettings& 
         ref = hipsRef_ + hipsRefVel_ * t.dt;
     }
     hipsRef_ = ref;
-    // Driven hips: the given place, by the blended weight, split across and up.
+    // Driven hips: the given place along its active directions, by the
+    // blended weight; the other directions stay the support's.
     const Target& hips = given(t, HipsW);
     const float k = act_[HipsW] * std::clamp(hips.weightPosition, 0.0f, 1.0f);
-    const float kh = k * std::clamp(t.hipsWeightHorizontal, 0.0f, 1.0f), kv = k * std::clamp(t.hipsWeightVertical, 0.0f, 1.0f);
     if (k > 0.0f) {
-        ref.x = math::lerp(ref.x, hips.position.x, kh);
-        ref.z = math::lerp(ref.z, hips.position.z, kh);
-        ref.y = math::lerp(ref.y, hips.position.y, kv);
+        ref += drivenPart(hips, hips.position - ref) * k;
         const math::Vec3 dir = math::safeNormalize(ref - pelvisOf(output_).position);
         if (math::length(dir) > 0.0f) add(out, joints_.pelvis, PartMove::Move, dir, hips.velocity, Goal::Hips, true);
     }
@@ -553,7 +552,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         const Target& hand = given(t, h);
         const float k = act_[h] * std::clamp(hand.weightPosition, 0.0f, 1.0f);
         const math::Vec3 restWorld = planPos(d, joints_.spine[2]) + planRot(d, joints_.spine[2]) * restHandChest_[h];
-        endTarget[h] = math::lerp(restWorld, hand.position, k);
+        endTarget[h] = restWorld + drivenPart(hand, hand.position - restWorld) * k;
         endOn[h] = true;
         handTrunk(h, endTarget[h], s, out);
     }
@@ -562,7 +561,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             continue;
         const Target& foot = given(t, FootLW + i);
         const float k = act_[FootLW + i] * std::clamp(foot.weightPosition, 0.0f, 1.0f);
-        endTarget[2 + i] = math::lerp(anchor_[i], foot.position, k);
+        endTarget[2 + i] = anchor_[i] + drivenPart(foot, foot.position - anchor_[i]) * k;
         endOn[2 + i] = true;
         footTrunk(i, endTarget[2 + i], foot.velocity, s, out);
     }
@@ -975,11 +974,11 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     // own), so only the drive carries the body on, never the plan's speed
     // now (that stops at its reference).
     const Target& hipsGoal = given(t, HipsW);
-    const float kh = act_[HipsW] * std::clamp(hipsGoal.weightPosition, 0.0f, 1.0f) *
-                     std::clamp(t.hipsWeightHorizontal, 0.0f, 1.0f);
-    math::Vec3 lag = (hipsGoal.position - pelvisOf(output_).position) * kh;
+    const float kh = act_[HipsW] * std::clamp(hipsGoal.weightPosition, 0.0f, 1.0f);
+    math::Vec3 lag = drivenPart(hipsGoal, hipsGoal.position - pelvisOf(output_).position) * kh;
     lag.y = 0.0f;
-    const math::Vec3 vGoal = math::Vec3(hipsGoal.velocity.x, 0.0f, hipsGoal.velocity.z) * kh;
+    math::Vec3 vGoal = drivenPart(hipsGoal, hipsGoal.velocity) * kh;
+    vGoal.y = 0.0f;
     auto future = [&](float time) { return math::Vec3(com.x, groundY, com.z) + lag + vGoal * time + vGoal / w0; };
     out.step.capturePoint = xcom;
     out.step.velocity = vGoal;

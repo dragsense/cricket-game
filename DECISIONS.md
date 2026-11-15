@@ -697,3 +697,13 @@ Dated log. Format: decision, reason, alternatives rejected.
   spot would chase itself).
 - **Not used now (files kept, the user's call):** `motion::JumpPlanner` (Space no longer
   jumps); reach and dive will come from the same push on the hips.
+
+## 2026-11-15: Active directions on a target
+- **Decision (the user's design):** a Driven target can drive its part along chosen
+  directions only (`Target::directions`, up to three at right angles; none: the whole
+  position). Along the others the part's place is the body's own (support, legs, other
+  targets). WASD gives the hips the way it moves; the jump (unused) gave up only.
+- **Why:** with the hips driven across too, the support's sway to the standing foot was
+  overridden (0.2 cm); now 4.5 cm (real 3.9-7 cm).
+- **Rejected:** the separate hips weights across / up (`hipsWeightHorizontal/Vertical`):
+  forward and across could not be split.

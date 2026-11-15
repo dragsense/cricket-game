@@ -68,8 +68,8 @@ bool JumpPlanner::tick(float dt, const JumpPlannerSettings& s, TargetSet& t) {
     }
     t.hips.mode = TargetMode::Driven;
     t.hips.position = math::Vec3(0.0f, y, 0.0f);
-    t.hipsWeightHorizontal = 0.0f;
-    t.hipsWeightVertical = 1.0f;
+    t.hips.directions[0] = math::kUp;  // up only: across stays over the feet
+    t.hips.directionCount = 1;
     return phase_ != Phase::None;
 }
 
