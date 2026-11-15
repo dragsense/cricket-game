@@ -997,3 +997,56 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                     realY.lo, realY.hi, realAll.lo, realAll.hi, 100.0f * planLead.lo, 100.0f * planLead.hi);
     }
 }
+
+// Measurement (on demand): the limb test's hand pushed far ahead (0.1 m per
+// press every 0.3 s, as the arrow keys do), then held: every balance step
+// (time, foot, where it landed along the way) and whether the steps stop.
+TEST_CASE("measure: hand far ahead, the steps settle" * doctest::skip()) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    const math::Vec3 start = h.root().position;
+    math::Vec3 goal = h.wrist(true, *h.bodyQueue().plan, h.root());
+    int presses = 0, held = 0;
+    Range hipsHeld;
+    for (int i = 0; i < 120 * 7; ++i) {
+        const float time = i * kDt;
+        if (presses < (std::getenv("CRICKET_PRESSES") ? std::atoi(std::getenv("CRICKET_PRESSES")) : 8) && i % 36 == 0) {
+            goal += fwd * 0.1f;
+            ++presses;
+        }
+        h.setPoseHand(true, goal);
+        const int stepBefore = h.stepFoot();
+        h.tick(kDt);
+        world.step(kDt);
+        if (stepBefore < 0 && h.stepFoot() >= 0) {
+            // Why a step starts: the balance step's advice now (character space).
+            const motion::StepAdvice& a = h.bodyQueue().step;
+            const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+            std::printf("  %.2f s step %d starts | capture point x %+.3f z %+.3f, outside %.3f | spot z %+.3f | ankles z "
+                        "L %+.3f R %+.3f | pelvis z %+.3f | reach short hand L %.3f\n",
+                        time, h.stepFoot(), a.capturePoint.x, a.capturePoint.z, a.outside, a.spot.z,
+                        h.ankle(true, p, math::Transform{}).z, h.ankle(false, p, math::Transform{}).z, p[0][3].z,
+                        h.bodyQueue().reach[0].shortfall);
+        }
+        for (int f = 0; f < 2; ++f) {
+            if (!h.bodyQueue().landed[f]) continue;
+            const math::Vec3 spot = h.root().transformPoint(h.bodyQueue().landedSpot[f]);
+            std::printf("  %.2f s step %s lands %+.2f m along | plan hips %+.2f m | goal %+.2f m\n", time, f == 0 ? "L" : "R",
+                        math::dot(spot - start, fwd),
+                        math::dot(h.root().transformPoint(math::Vec3((*h.bodyQueue().plan)[0][3])) - start, fwd),
+                        math::dot(goal - start, fwd));
+            if (time > 4.0f) ++held;
+        }
+        if (time > 4.0f) hipsHeld.add(math::dot(h.root().transformPoint(math::Vec3((*h.bodyQueue().plan)[0][3])) - start, fwd));
+    }
+    std::printf("hand far ahead: steps in the last 3 s (goal held) %d | plan hips along %.2f .. %.2f m | dropped %s\n", held,
+                hipsHeld.lo, hipsHeld.hi, h.supported() ? "no" : "yes");
+}

@@ -29,16 +29,22 @@
     "Jump": ["Space"],
     // I: slow motion for the whole game (engine.json debug.slowMotionFactor).
     "SlowMotion": ["I"],
-    // Limb test (engine.json debug.limbTest): F chooses the limb (right foot,
-    // left foot, right hand, left hand); each arrow press jumps its target one
-    // step (engine.json debug.limbTestStep) relative to the camera (Up away,
-    // Down near, Left/Right sideways; with Shift, Up/Down raise/lower it); it
+    // Limb test (engine.json debug.limbTest): F chooses the target (right
+    // foot, left foot, right hand, left hand, hips, chest, head); each arrow
+    // press jumps it one step (engine.json debug.limbTestStep) relative to the
+    // camera (Up away, Down near, Left/Right sideways; with Shift, Up/Down
+    // raise/lower it). With Ctrl held the arrows turn it instead (debug.
+    // limbTestTurnDeg per press): Left/Right about up, Up/Down tipping it
+    // away/near; Ctrl+Shift Left/Right roll it about the camera's view. The
+    // head only turns (its arrows turn it without Ctrl); the chest moves by
+    // the trunk bending, within its joints' ranges. It
     // stays where it is left. R resets the pose.
     "ResetPose": ["R"],
     "PoseLimb": ["F"],
     "PoseAway": ["Up"],
     "PoseNear": ["Down"],
     "PoseLeft": ["Left"],
-    "PoseRight": ["Right"]
+    "PoseRight": ["Right"],
+    "PoseTurn": ["LeftCtrl", "RightCtrl"]
   }
 }

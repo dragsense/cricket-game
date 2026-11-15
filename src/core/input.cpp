@@ -37,6 +37,7 @@ constexpr const char* kActionNames[] = {
     "SlowMotion",
     "PoseLimb",
     "PoseAway", "PoseNear", "PoseLeft", "PoseRight",
+    "PoseTurn",
 };
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == static_cast<int>(Action::Count));
 
@@ -102,6 +103,7 @@ ActionMap::ActionMap() {
     bind(Action::PoseNear, Key::Down);
     bind(Action::PoseLeft, Key::Left);
     bind(Action::PoseRight, Key::Right);
+    bind(Action::PoseTurn, Key::LeftCtrl, Key::RightCtrl);
 }
 
 void ActionMap::load(const Config& config) {

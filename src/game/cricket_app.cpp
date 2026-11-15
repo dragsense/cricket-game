@@ -14,6 +14,11 @@ namespace game {
 
 namespace {
 
+// The limb test's targets in F's order.
+constexpr motion::Goal kPoseOrder[] = {motion::Goal::FootR, motion::Goal::FootL, motion::Goal::HandR, motion::Goal::HandL,
+                                       motion::Goal::Hips,  motion::Goal::Chest, motion::Goal::Head};
+constexpr int kPoseCount = static_cast<int>(sizeof(kPoseOrder) / sizeof(kPoseOrder[0]));
+
 core::LoopSettings loopSettings(const core::Config& c) {
     core::LoopSettings s;
     s.simHz = c.getFloat("sim.tickHz", 120.0f);
@@ -248,7 +253,7 @@ void CricketApp::updatePose(float /*seconds: the target jumps per press, not per
         poseActive_ = false;
     }
     if (actions_.pressed(input_, core::Action::PoseLimb)) {
-        poseLimb_ = (poseLimb_ + 1) % 4;  // right foot, left foot, right hand, left hand
+        poseLimb_ = (poseLimb_ + 1) % kPoseCount;
         poseActive_ = false;
     }
     if (input_.uiWantsKeyboard) return;
@@ -260,27 +265,43 @@ void CricketApp::updatePose(float /*seconds: the target jumps per press, not per
     const float ahead = axis(core::Action::PoseAway, core::Action::PoseNear);
     if (side == 0.0f && ahead == 0.0f) return;
 
-    // The target starts where the limb is; each arrow press jumps it one step
-    // relative to the camera on the ground plane, or up/down with Shift.
-    const bool hand = poseLimb_ >= 2;
-    const bool left = poseLimb_ % 2 == 1;
+    // The target starts where its part is and as it is turned (the drawn
+    // pose); each arrow press jumps it one step relative to the camera on the
+    // ground plane, or up/down with Shift; with Ctrl (the chest and head
+    // always) it turns instead.
+    const motion::Goal goal = kPoseOrder[poseLimb_];
+    const int joint = fielder.goalJoint(goal);
+    if (joint < 0) return;
     if (!poseActive_) {
-        poseTarget_ = hand ? fielder.wrist(left, fielderModels_, fielder.root())
-                           : fielder.ankle(left, fielderModels_, fielder.root());
+        const math::Transform bone = fielder.root() * math::toTransform(fielderModels_[static_cast<size_t>(joint)]);
+        poseTarget_ = bone.position;
+        poseTurn_ = bone.rotation;
+        poseTurned_ = false;
         poseActive_ = true;
     }
     const camera::CameraPose view = camera_.pose();
     const math::Vec3 forward =
         math::safeNormalize(math::Vec3(view.target.x - view.eye.x, 0.0f, view.target.z - view.eye.z), -math::kForward);
     const math::Vec3 right = math::cross(forward, math::kUp);
-    const math::Vec3 move = actions_.down(input_, core::Action::ModShift) ? math::kUp * ahead + right * side
-                                                                    : forward * ahead + right * side;
-    poseTarget_ += move * cfg_.engine.getFloat("debug.limbTestStep", 0.1f);
-    // The target goes anywhere in the air, never under the ground (y = 0);
-    // the limb reaches as near as the body allows.
-    poseTarget_.y = std::max(poseTarget_.y, 0.0f);
-    if (hand) fielder.setPoseHand(left, poseTarget_);
-    else fielder.setPoseFoot(left ? motion::Foot::Left : motion::Foot::Right, poseTarget_);
+    const bool shift = actions_.down(input_, core::Action::ModShift);
+    const bool turnOnly = goal == motion::Goal::Head;
+    if (turnOnly || actions_.down(input_, core::Action::PoseTurn)) {
+        // Left/Right about up; Up/Down tip it away from / toward the camera
+        // (about the camera's right); with Shift, Left/Right roll it about
+        // the camera's view.
+        const float step = math::radians(cfg_.engine.getFloat("debug.limbTestTurnDeg", 15.0f));
+        math::Quat turn = shift ? math::fromAxisAngle(forward, side * step)
+                                : math::fromAxisAngle(math::kUp, -side * step) * math::fromAxisAngle(right, -ahead * step);
+        poseTurn_ = math::normalize(turn * poseTurn_);
+        poseTurned_ = true;
+    } else {
+        const math::Vec3 move = shift ? math::kUp * ahead + right * side : forward * ahead + right * side;
+        poseTarget_ += move * cfg_.engine.getFloat("debug.limbTestStep", 0.1f);
+        // The target goes anywhere in the air, never under the ground (y = 0);
+        // the part reaches as near as the body allows.
+        poseTarget_.y = std::max(poseTarget_.y, 0.0f);
+    }
+    fielder.setPoseGoal(goal, poseTarget_, poseTurn_, poseTurned_);
 }
 
 void CricketApp::fixedUpdate(double dt) {
@@ -372,13 +393,15 @@ void CricketApp::drawDebugGeometry(float alpha) {
     // limb before that).
     const agents::Human& fielder = sim_.fielder();
     if (limbTest_) {
-        const bool hand = poseLimb_ >= 2;
-        const bool left = poseLimb_ % 2 == 1;
-        const math::Vec3 at = poseActive_ ? poseTarget_
-                              : hand        ? fielder.wrist(left, fielderModels_, fielder.interpolatedRoot(alpha))
-                              : left        ? fielder.targets().footL
-                                            : fielder.targets().footR;
-        dd.sphere(at, 0.05f, poseActive_ ? render::colors::kRed : render::colors::kYellow);
+        // The chosen target (yellow at its part until moved, red after) and,
+        // once turned, its axes.
+        const int joint = fielder.goalJoint(kPoseOrder[poseLimb_]);
+        if (joint >= 0) {
+            const math::Transform bone =
+                fielder.interpolatedRoot(alpha) * math::toTransform(fielderModels_[static_cast<size_t>(joint)]);
+            dd.sphere(poseActive_ ? poseTarget_ : bone.position, 0.05f, poseActive_ ? render::colors::kRed : render::colors::kYellow);
+            if (poseActive_ && poseTurned_) dd.axes(math::Transform{poseTarget_, poseTurn_}, 0.2f);
+        }
     }
     // The fielder's physics body (HumanBody): each part's Jolt shape (white)
     // and each joint at its pivot: hinge (yellow, a line along its axis),

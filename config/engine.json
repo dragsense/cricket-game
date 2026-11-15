@@ -58,6 +58,7 @@
     // Limb test: each arrow press jumps the target this far (m) to its new
     // point at once (no slide), so the body shows what it does for that point.
     "limbTestStep": 0.1,
+    "limbTestTurnDeg": 15,  // deg per Ctrl+arrow press (the limb test turns its target)
     // I: slow motion, the whole game at this share of real speed.
     "slowMotionFactor": 0.2
   }

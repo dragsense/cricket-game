@@ -857,7 +857,22 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         }
     refresh(d);
     const float pelvisYaw = pelvisTurn(t, s);
-    placePelvis(d, math::Transform{out.hipsReference, math::fromAxisAngle(math::kUp, pelvisYaw) * restPelvis_.rotation});
+    math::Quat pelvisRot = math::fromAxisAngle(math::kUp, pelvisYaw) * restPelvis_.rotation;
+    {
+        // A driven hips target turns the pelvis by its rotation weight, as
+        // every driven target turns its part; within the pelvis's range from
+        // standing (pelvisMin / pelvisMax, rotation vector, character axes).
+        const Target& hips = given(t, HipsW);
+        const float kr = act_[HipsW] * std::clamp(hips.weightRotation, 0.0f, 1.0f);
+        if (kr > 0.0f) {
+            const math::Quat want = math::normalize(math::slerp(pelvisRot, hips.rotation, kr));
+            math::Vec3 v = math::rotationVector(want * math::inverse(restPelvis_.rotation));
+            for (int a = 0; a < 3; ++a) v[a] = std::clamp(v[a], s.pelvisMin[a], s.pelvisMax[a]);
+            const float angle = math::length(v);
+            pelvisRot = (angle > 1e-6f ? math::fromAxisAngle(v / angle, angle) : math::identityQuat()) * restPelvis_.rotation;
+        }
+    }
+    placePelvis(d, math::Transform{out.hipsReference, pelvisRot});
 
     // Reach: a hand or lifted foot out of its limb's reach brings the trunk
     // in (its queue and plan), then the standing balance and the grounded
@@ -911,7 +926,16 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     if (act_[ChestW] > 0.0f && joints_.spine[2] >= 0) {
         const Target& chest = given(t, ChestW);
         const float k = act_[ChestW] * std::clamp(chest.weightRotation, 0.0f, 1.0f);
-        const math::Quat delta = math::slerp(math::identityQuat(), chest.rotation * math::inverse(planRot(d, joints_.spine[2])), k);
+        math::Quat delta = math::slerp(math::identityQuat(), chest.rotation * math::inverse(planRot(d, joints_.spine[2])), k);
+        // A chest place: the trunk bends from the lumbar spine so the chest
+        // goes toward it (the same chain, each joint within its range).
+        const float kp = act_[ChestW] * std::clamp(chest.weightPosition, 0.0f, 1.0f);
+        if (kp > 0.0f && joints_.spine[0] >= 0) {
+            const math::Vec3 base = planPos(d, joints_.spine[0]);
+            const math::Vec3 from = planPos(d, joints_.spine[2]) - base, to = drivenPart(chest, chest.position - base);
+            if (math::length(from) > 1e-4f && math::length(to) > 1e-4f)
+                delta = math::slerp(math::identityQuat(), math::fromTo(math::normalize(from), math::normalize(to)), kp) * delta;
+        }
         const int chain[4] = {joints_.spine[2], joints_.spine[1], joints_.spine[0], joints_.pelvis};
         const int first = out.count;
         turnChain(chain, 4, delta, chest.angularVelocity, Goal::Chest, s, out);
@@ -1410,11 +1434,19 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
             }
         }
     }
+    // A step that would put the foot back where it stands (within the
+    // margin) changes nothing: no step (it would be taken again and again).
+    auto moves = [&](int foot, math::Vec3 spot) {
+        const float dx = spot.x - anchor_[foot].x, dz = spot.z - anchor_[foot].z;
+        return std::sqrt(dx * dx + dz * dz) > s.stepMargin;
+    };
     if (outsideFeet(at, standing, n, s) <= s.stepMargin) {
         if (behind < 0) return;
+        const math::Vec3 spot = stepSpot(behind, at, vGoal, s, miss);
+        if (!moves(behind, spot)) return;
         out.step.wanted = true;
         out.step.foot = behind;
-        out.step.spot = stepSpot(behind, at, vGoal, s, miss);
+        out.step.spot = spot;
         return;
     }
     // The foot whose step leaves the capture point (where it will be by the
@@ -1437,6 +1469,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     if (std::abs(after[0] - after[1]) > kTie && !(neither && lastStepped_ >= 0)) foot = after[0] < after[1] ? 0 : 1;
     else if (lastStepped_ >= 0) foot = 1 - lastStepped_;
     else foot = travel[0] >= travel[1] ? 0 : 1;
+    if (!moves(foot, spot[foot])) return;
     out.step.wanted = true;
     out.step.foot = foot;
     out.step.spot = spot[foot];

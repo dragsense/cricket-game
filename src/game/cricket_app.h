@@ -71,12 +71,15 @@ private:
     rig::Pose fielderPose_;                  // interpolated, render side
     std::vector<math::Mat4> fielderModels_;  // model-space joint matrices
     debug::DebugSettings debugSettings_;
-    // Limb test (engine.json debug.limbTest): limb 0 right foot, 1 left
-    // foot, 2 right hand, 3 left hand.
+    // Limb test (engine.json debug.limbTest): the chosen target, in F's
+    // order (kPoseOrder: right foot, left foot, right hand, left hand, hips,
+    // chest, head), where its goal is and how it is turned (world).
     bool limbTest_ = false;
     int poseLimb_ = 0;
-    bool poseActive_ = false;      // poseTarget_ belongs to the chosen limb
+    bool poseActive_ = false;      // poseTarget_ / poseTurn_ belong to the chosen target
+    bool poseTurned_ = false;      // the chosen target was turned
     math::Vec3 poseTarget_{0.0f};  // world
+    math::Quat poseTurn_ = math::identityQuat();  // world
     bool slowMotion_ = false;      // I: the whole game in slow motion
     float heading_ = 0.0f;    // the fielder's heading: the camera's, unless freeView_
     bool freeView_ = false;   // V: the camera moves freely; the heading is held

@@ -158,13 +158,18 @@ public:
     // rest, any jump cleared.
     void placeAt(math::Vec3 position, float yaw);
 
-    // Limb test (physics only, the user's call): a wrist goal for one hand or
-    // an ankle goal for one foot (world space) for the physics body; only the
-    // limb moved last has a target, the rest holds and balances. Nothing
-    // while physics is off. clearPose() drops the goals.
+    // Limb test (physics only, the user's call): a goal for any one of the
+    // seven targets (motion::Goal: a hand's wrist, a foot's ankle, the hips,
+    // the chest, the head), where it goes (world; hands, feet and hips) and,
+    // once `turned`, how it is turned (world; every part). Only the target
+    // set last drives; the rest holds and balances. Nothing while physics is
+    // off. clearPose() drops the goals.
+    void setPoseGoal(motion::Goal goal, math::Vec3 world, math::Quat rotation, bool turned);
     void setPoseHand(bool left, math::Vec3 world);
     void setPoseFoot(motion::Foot foot, math::Vec3 world);
     void clearPose();
+    // The rig joint a target moves (its bone: wrist, ankle, pelvis, chest, head).
+    int goalJoint(motion::Goal goal) const;
     // Every part back at the planned standing pose, at rest, the hold on
     // again; the muscles pull from there.
     void resetPhysicsBody();
@@ -223,14 +228,12 @@ private:
     Phase phase_ = Phase::Idle;
     RepositionSettings reposition_;
     float stanceBlendHeight_ = 0.1f;
-    // Limb test: the hand with a wrist goal (its side) and the goal, the foot
-    // last placed (motion::Foot, -1 none) and its ankle goal (world space).
-    bool poseHand_ = false;
-    bool poseLeft_ = false;
-    math::Vec3 poseGoal_{0.0f};
-    int posedFoot_ = -1;
-    bool poseHandLast_ = false;  // the hand was moved after the foot (only it has a target)
-    math::Vec3 poseFootGoal_{0.0f};
+    // Limb test: the target set last (motion::Goal, -1 none: only it drives),
+    // and each target's goal (world space): where, how turned, turned yet.
+    int poseLast_ = -1;
+    math::Vec3 posePosition_[7]{};
+    math::Quat poseRotation_[7]{};
+    bool poseTurned_[7]{};
     // A lifted foot's ankle stays at least this high (character space): its
     // standing height plus the minimum toe clearance (locomotion.json
     // "step.toeClearance"), so its target never runs along or into the ground.
@@ -246,7 +249,7 @@ private:
         int end = -1;  // the rig joint it moves (wrist or ankle)
         bool on = false;
     };
-    GoalPath handPath_, footPath_;
+    GoalPath handPath_, footPath_, hipsPath_;
     math::Vec2 stepInput_{0.0f};    // single steps: requested direction (character space)
     int pace_ = 0;                  // 0 walk, 1 jog, 2 run (forward speed)
     bool stepWalk_ = false;         // single steps in use (standing)

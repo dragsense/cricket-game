@@ -70,6 +70,7 @@ bool JumpPlanner::tick(float dt, const JumpPlannerSettings& s, TargetSet& t) {
     t.hips.position = math::Vec3(0.0f, y, 0.0f);
     t.hips.directions[0] = math::kUp;  // up only: across stays over the feet
     t.hips.directionCount = 1;
+    t.hips.weightRotation = 0.0f;      // no turn: the pelvis stays the body's
     return phase_ != Phase::None;
 }
 

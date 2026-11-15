@@ -116,6 +116,18 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
     lands before the stance leg runs out). Limb test: no steps. All tests pass.
   - Open: 5 m/s cadence 210/min is above the 175-185 of recreational runners (the sim had
     189); next: leg push for B3.
+- [x] **B2b Limb test: every target, turned too** (2026-11-15, the user's ask): F picks any of
+  the seven targets (right/left foot, right/left hand, hips, chest, head); arrows move it
+  (Shift: up/down), Ctrl+arrows turn it (`debug.limbTestTurnDeg` 15 per press; Ctrl+Shift
+  Left/Right roll). The decider, generally: a driven hips target turns the pelvis too
+  (within pelvisMin/MaxDeg); a chest target's place bends the trunk from the lumbar spine
+  (each joint within its range). The jump drives the hips up only (no turn).
+  - A balance step that would land the foot where it stands (within stepMargin) is no
+    step: a hand far out of reach re-stepped one foot on the spot every ~0.4 s forever.
+    Measure `measure: hand far ahead, the steps settle` (CRICKET_PRESSES): 12-15 presses
+    5-6 steps while held -> 0. Walking, limb test, reach shape unchanged.
+  - Found: the run measure is chaotic (normalizing one quaternion moved the 5 m/s plan bob
+    7.0 -> 11.1 cm): the running loop is not robust yet.
 - [ ] **B3 Reach**: how far the ball is decides step, hop / jump or dive (one push).
 
 - [x] **6.1 Action point and release** (the user: "feels better"; commit dbcbde0 has the

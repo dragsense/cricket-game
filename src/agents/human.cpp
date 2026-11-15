@@ -855,13 +855,44 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         t.foot[i].position = stepper_.foot(static_cast<motion::Foot>(i));
         t.foot[i].contactNormal = math::kUp;
     }
-    if (poseHand_ && poseHandLast_) {
-        motion::Target& hand = t.hand[poseLeft_ ? 0 : 1];
+    // The limb test's target (the one set last): turned once the player
+    // turned it (character space), else as the part's own default.
+    const int g = poseLast_;
+    auto turn = [&](motion::Target& target) {
+        if (g < 0 || !poseTurned_[g]) return;
+        target.rotation = math::normalize(math::inverse(root_.rotation) * poseRotation_[g]);
+        target.weightRotation = 1.0f;
+    };
+    const bool poseHand = g == static_cast<int>(motion::Goal::HandL) || g == static_cast<int>(motion::Goal::HandR);
+    if (poseHand) {
+        const bool left = g == static_cast<int>(motion::Goal::HandL);
+        motion::Target& hand = t.hand[left ? 0 : 1];
         hand.mode = motion::TargetMode::Driven;
-        hand.position = travel(handPath_, math::inverse(root_).transformPoint(poseGoal_),
-                               poseLeft_ ? joints_.armL.end : joints_.armR.end);
+        hand.position = travel(handPath_, math::inverse(root_).transformPoint(posePosition_[g]),
+                               left ? joints_.armL.end : joints_.armR.end);
+        turn(hand);
     } else {
         handPath_.on = false;
+    }
+    if (g == static_cast<int>(motion::Goal::Hips) && joints_.pelvis >= 0) {
+        // The hips go there (every direction) and turn, within the pelvis's range.
+        t.hips.mode = motion::TargetMode::Driven;
+        t.hips.position = travel(hipsPath_, math::inverse(root_).transformPoint(posePosition_[g]), joints_.pelvis);
+        t.hips.weightRotation = 0.0f;
+        turn(t.hips);
+    } else {
+        hipsPath_.on = false;
+    }
+    for (motion::Goal part : {motion::Goal::Chest, motion::Goal::Head}) {
+        if (g != static_cast<int>(part)) continue;
+        // The chest goes there (the trunk bends, within its joints' ranges)
+        // and turns; the head only turns.
+        motion::Target& target = part == motion::Goal::Chest ? t.chest : t.head;
+        target.mode = motion::TargetMode::Driven;
+        target.position = math::inverse(root_).transformPoint(posePosition_[g]);
+        target.weightPosition = part == motion::Goal::Chest ? 1.0f : 0.0f;
+        target.weightRotation = 0.0f;
+        turn(target);
     }
     // WASD: the hips target moves at the walker's velocity (world), from
     // where the plan's hips are when it starts; the height stays the
@@ -871,7 +902,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     const math::Vec3 hipsVelocity = mover_.velocity();
     const bool moving = math::length2(hipsVelocity) > 1e-6f;
     const bool settling = hipsDriven_ && (decider_.stepFoot() >= 0 || queue_.step.wanted);
-    if ((moving || settling) && phase_ != Phase::Pose && joints_.pelvis >= 0) {
+    if ((moving || settling) && phase_ != Phase::Pose && joints_.pelvis >= 0 && g != static_cast<int>(motion::Goal::Hips)) {
         if (!hipsDriven_) {
             const std::vector<math::Mat4>& plan = decider_.outputModels();
             const size_t pelvis = static_cast<size_t>(joints_.pelvis);
@@ -912,10 +943,11 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         decider_.decide(t, deciderSettings_, queue_);  // the decider as for everything else
         return queue_.plan;
     }
-    if (posedFoot_ >= 0 && !poseHandLast_) {
-        const int f = posedFoot_;
+    const bool poseFoot = g == static_cast<int>(motion::Goal::FootL) || g == static_cast<int>(motion::Goal::FootR);
+    if (poseFoot) {
+        const int f = g == static_cast<int>(motion::Goal::FootL) ? 0 : 1;
         const int ankle = f == 0 ? joints_.legL.end : joints_.legR.end;
-        math::Vec3 goal = math::inverse(root_).transformPoint(poseFootGoal_);
+        math::Vec3 goal = math::inverse(root_).transformPoint(posePosition_[g]);
         if (goal.y <= liftedAnkleMin_) {
             // On or under the ground: the foot is at once on the ground under
             // the target and stands there (pinned: it carries weight, the
@@ -929,6 +961,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             // Above the ground: the foot is held up there (no weight on it).
             t.foot[f].mode = motion::TargetMode::Driven;
             t.foot[f].position = travel(footPath_, goal, ankle);
+            turn(t.foot[f]);
         }
     } else {
         footPath_.on = false;
@@ -937,7 +970,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     // moves only by a step, never slides; none in the limb test's foot case:
     // that foot is placed by hand), and gives the muscles its plan. A step
     // that landed: the foot stays on its spot from now on.
-    t.balanceSteps = !(posedFoot_ >= 0 && !poseHandLast_);
+    t.balanceSteps = !poseFoot;
     decider_.decide(t, deciderSettings_, queue_);
     for (int i = 0; i < 2; ++i) {
         if (!queue_.landed[i]) continue;
@@ -1072,21 +1105,36 @@ math::Vec3 Human::centreOfMass() {
     return root_.transformPoint(modelCentreOfMass());
 }
 
-void Human::setPoseHand(bool left, math::Vec3 world) {
+void Human::setPoseGoal(motion::Goal goal, math::Vec3 world, math::Quat rotation, bool turned) {
     if (!physics_) return;
+    const int g = static_cast<int>(goal);
+    if (g < 0 || g >= 7) return;
     phase_ = Phase::Pose;
-    poseHand_ = true;
-    poseHandLast_ = true;
-    poseLeft_ = left;
-    poseGoal_ = world;
+    poseLast_ = g;
+    posePosition_[g] = world;
+    poseRotation_[g] = math::normalize(rotation);
+    poseTurned_[g] = turned;
+}
+
+void Human::setPoseHand(bool left, math::Vec3 world) {
+    setPoseGoal(left ? motion::Goal::HandL : motion::Goal::HandR, world, math::identityQuat(), false);
 }
 
 void Human::setPoseFoot(motion::Foot foot, math::Vec3 world) {
-    if (!physics_) return;
-    phase_ = Phase::Pose;
-    posedFoot_ = static_cast<int>(foot);
-    poseHandLast_ = false;
-    poseFootGoal_ = world;
+    setPoseGoal(foot == motion::Foot::Left ? motion::Goal::FootL : motion::Goal::FootR, world, math::identityQuat(), false);
+}
+
+int Human::goalJoint(motion::Goal goal) const {
+    switch (goal) {
+    case motion::Goal::HandL: return joints_.armL.end;
+    case motion::Goal::HandR: return joints_.armR.end;
+    case motion::Goal::FootL: return joints_.legL.end;
+    case motion::Goal::FootR: return joints_.legR.end;
+    case motion::Goal::Hips: return joints_.pelvis;
+    case motion::Goal::Chest: return joints_.chest;
+    case motion::Goal::Head: return joints_.head;
+    }
+    return -1;
 }
 
 void Human::resetPhysicsBody() {
@@ -1111,8 +1159,8 @@ void Human::resetPhysicsBody() {
 void Human::clearPose() {
     if (phase_ != Phase::Pose) return;
     phase_ = Phase::Idle;
-    posedFoot_ = -1;
-    poseHand_ = false;
+    poseLast_ = -1;
+    for (bool& turned : poseTurned_) turned = false;
     plantFeet();
 }
 
