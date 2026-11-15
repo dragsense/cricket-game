@@ -1776,3 +1776,53 @@ TEST_CASE("measure: swing foot, plan against real" * doctest::skip()) {
         lastR = r;
     }
 }
+
+
+// Measurement (on demand): the left hip through one swing at a pace
+// (CRICKET_PACE 0/1/2, walk presses CRICKET_PRESSES): the thigh's pitch, plan
+// against real, the hip motor's torque against its limit, and the torque its
+// range's limits took: is the swing short of strength, of range, or neither.
+TEST_CASE("measure: hip through a swing" * doctest::skip()) {
+    const int pace = std::getenv("CRICKET_PACE") ? std::atoi(std::getenv("CRICKET_PACE")) : 2;
+    const int presses = std::getenv("CRICKET_PRESSES") ? std::atoi(std::getenv("CRICKET_PRESSES")) : 0;
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    for (int i = 0; i < presses; ++i) h.changeWalkSpeed(1);
+    h.setPace(pace);
+    const math::Vec3 fwdW = h.root().transformDirection(math::kForward);
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    const int thigh = h.rig().findJoint("thigh_l"), shin = h.rig().findJoint("shin_l");
+    const int part = h.humanBody().partOf(thigh);
+    REQUIRE(part >= 0);
+    auto pitch = [&](const std::vector<math::Mat4>& m) {
+        const math::Vec3 d = math::Vec3(m[static_cast<size_t>(shin)][3]) - math::Vec3(m[static_cast<size_t>(thigh)][3]);
+        const math::Vec3 f = math::inverse(h.root()).transformDirection(fwdW);
+        return math::degrees(std::atan2(math::dot(d, f), -d.y));  // + : the knee ahead of the hip
+    };
+    int swings = 0;
+    bool was = false;
+    for (int i = 0; i < 600 && swings < 3; ++i) {
+        const float time = i * kDt;
+        h.setStepInput(math::Vec2(0.0f, 1.0f));
+        h.tick(kDt);
+        world.step(kDt);
+        const motion::StepPlanner& sp = h.decider().step(0);
+        const bool swinging = sp.running() && sp.phase() == motion::StepPlanner::Phase::Up;
+        if (time > 2.5f && swinging && !was) ++swings;
+        was = swinging;
+        if (time < 2.5f || swings != 2 || i % 2 != 0 || !h.physicalModels(world, 1.0f, real)) continue;
+        physics::PhysicsWorld::RagdollJointState st;
+        if (!world.ragdollJointState(h.humanBody().ragdoll(), part, kDt, st)) continue;
+        std::printf("  %.3f s %s along %.2f | thigh pitch plan %6.1f real %6.1f deg | motor x %6.1f y %6.1f z %6.1f N m (limit "
+                    "twist %5.1f swing %5.1f) | range x %6.1f y %6.1f z %6.1f\n",
+                    time, swinging ? "swing " : "stance", sp.along(), pitch(*h.bodyQueue().plan), pitch(real), st.motor.x,
+                    st.motor.y, st.motor.z, st.twistLimit, st.swingLimit, st.range.x, st.range.y, st.range.z);
+    }
+}

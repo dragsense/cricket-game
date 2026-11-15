@@ -1087,6 +1087,25 @@ void PhysicsWorld::setRagdollHold(RagdollId id, const math::Vec3* torques, int c
     for (size_t i = 0; i < n; ++i) r.hold[i] = torques[i];
 }
 
+bool PhysicsWorld::ragdollJointState(RagdollId id, int part, float dt, RagdollJointState& out) const {
+    if (!impl_ || id >= impl_->ragdolls.size() || dt <= 0.0f) return false;
+    const Impl::RagdollSlot& r = impl_->ragdolls[id];
+    const size_t n = std::min(static_cast<size_t>(r.ragdoll->GetConstraintCount()), r.jointPart.size());
+    for (size_t i = 0; i < n; ++i) {
+        if (r.jointPart[i] != part) continue;
+        const JPH::TwoBodyConstraint* c = r.ragdoll->GetConstraint(static_cast<int>(i));
+        if (!c || c->GetSubType() != JPH::EConstraintSubType::SwingTwist) return false;
+        const JPH::SwingTwistConstraint* st = static_cast<const JPH::SwingTwistConstraint*>(c);
+        const JPH::Vec3 m = st->GetTotalLambdaMotor() / dt;
+        out.motor = math::Vec3(m.GetX(), m.GetY(), m.GetZ());
+        out.twistLimit = st->GetTwistMotorSettings().mMaxTorqueLimit;
+        out.swingLimit = st->GetSwingMotorSettings().mMaxTorqueLimit;
+        out.range = math::Vec3(st->GetTotalLambdaTwist(), st->GetTotalLambdaSwingY(), st->GetTotalLambdaSwingZ()) / dt;
+        return true;
+    }
+    return false;
+}
+
 void PhysicsWorld::setRagdollStrength(RagdollId id, float scale) {
     if (!impl_ || id >= impl_->ragdolls.size()) return;
     Impl::RagdollSlot& r = impl_->ragdolls[id];

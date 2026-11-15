@@ -66,6 +66,7 @@ public:
               const ik::JointLimits& limits, const MuscleSettings& muscles, const math::Transform& root,
               uint32_t group);
     bool ready() const { return !parts_.empty(); }
+    physics::RagdollId ragdoll() const { return ragdoll_; }  // its Jolt ragdoll (measuring)
 
     struct Part {
         int joint = -1;                    // rig joint the body belongs to

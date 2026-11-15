@@ -324,6 +324,17 @@ public:
     // Every motor's torque limit at `scale` (0..1) of its MotorDesc's: the
     // body's strength (hits, falls, get-up). No allocations.
     void setRagdollStrength(RagdollId id, float scale);
+    // A ragdoll joint's last step, for measuring (the joint moving part
+    // `part`, as built): its motor's torque (N m, about the joint's twist X,
+    // swing Y and Z axes), the motor's torque limits now (twist, swing), and
+    // the torque its range's limits took (twist, swing Y, swing Z; 0: not at
+    // a limit). False if there is no such joint.
+    struct RagdollJointState {
+        math::Vec3 motor{0.0f};
+        float twistLimit = 0.0f, swingLimit = 0.0f;
+        math::Vec3 range{0.0f};
+    };
+    bool ragdollJointState(RagdollId id, int part, float dt, RagdollJointState& out) const;
 
     // A soft hold of body `b` by body `a` (Jolt SixDOF, every axis free, each
     // driven by a spring motor toward its target): `linear` for position
