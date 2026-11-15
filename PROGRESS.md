@@ -24,6 +24,11 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   hips target; the decider steps by the capture point (any direction, bigger push = bigger
   or more steps); `human_joints.json` "decider.balanceStep". Measure:
   `agents_tests --no-skip -tc="measure: balance steps*"`. Space no longer jumps.
+  The decider makes the step itself (it owns the StepPlanner: start, re-aim, the foot's
+  path, timing by the gait); Human only gives the hips target and keeps a landed foot's
+  spot (`BodyQueue::landedFoot`). Numbers unchanged by that move.
+  With the hips driven the hips do not adjust to the steps yet (no sway to the stance
+  foot, even speed): that comes with B2.
   Known, not fixed yet:
   - the real (physics) swing foot lags the plan at landing by 18-49 cm in forward walking
     at 0.9 m/s (0.45 m steps: the swing foot travels ~0.9 m in 0.4 s); the stepping

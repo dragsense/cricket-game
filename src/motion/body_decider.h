@@ -34,7 +34,9 @@
 
 #include "ik/limb_ik.h"
 #include "math/math.h"
+#include "motion/step_planner.h"
 #include "motion/target_set.h"
+#include "motion/walk_controller.h"
 #include "rig/rig.h"
 
 #include <array>
@@ -74,8 +76,8 @@ struct ReachReport {
 // The balance step (the capture point): where the body's motion takes its
 // centre of mass, a foot steps there. Whatever moved the body (a hips
 // target, a push, a reach) the same rule: more motion, a bigger step or
-// more steps, any direction. The planner makes the step (a foot moves only
-// by a step, never slides).
+// more steps, any direction. The decider makes the step itself (its own
+// StepPlanner: a foot moves only by a step, never slides).
 struct StepAdvice {
     bool wanted = false;             // a step is needed (a step under way: its spot now)
     int foot = -1;                   // 0 left, 1 right
@@ -100,6 +102,10 @@ struct BodyQueue {
     bool heightClamped = false;             // a grounded leg holds the hips lower than wanted
     ReachReport reach[4];                   // hand L, hand R, foot L, foot R
     StepAdvice step;                        // the balance step (none: wanted false)
+    // A step landed this tick: its foot (-1: none) and where (ankle,
+    // character space); the planner keeps the foot there from now on.
+    int landedFoot = -1;
+    math::Vec3 landedSpot{0.0f};
 };
 
 struct BodyDeciderJoints {
@@ -168,9 +174,14 @@ struct BodyDeciderSettings {
     float landingBehind = 0.05f;    // m
     float minFootGap = 0.1f;        // m
     float maxStep = 0.9f;           // m
-    // The planner's step timing (locomotion.json "step"): the XCoM is
-    // carried on by the motion until the foot lands.
-    float stepDuration = 0.6f, stepLiftAt = 0.25f;
+    // The decider's own step: its shape (locomotion.json "step": height,
+    // apex, toe-off, ball of the foot; duration and liftAt without a gait),
+    // its timing from the body's speed by the gait (motion::gaitTiming,
+    // locomotion.json "walk"; none: the shape's), and the parts' passive
+    // shares while it runs ("step.passive", unless the action gives its own).
+    StepPlannerSettings stepShape;
+    const WalkSettings* gait = nullptr;
+    PassiveShares stepPassive;
 };
 
 class BodyDecider {
@@ -195,6 +206,10 @@ public:
     // One tick: from the targets and the plan so far, fills `out`. No
     // allocations.
     void decide(const TargetSet& targets, const BodyDeciderSettings& s, BodyQueue& out);
+
+    // The decider's step under way: its foot (-1: none) and its clock share.
+    int stepFoot() const { return step_.running() ? step_.foot() : -1; }
+    float stepShare() const { return step_.share(); }
 
     // The output pose (character space), valid after decide().
     const rig::Pose& outputPose() const { return output_.pose; }
@@ -223,6 +238,8 @@ private:
     void report(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     // The balance step on the output pose (StepAdvice).
     void balanceStep(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
+    // The next step's timing (stepNow_) for the body's level velocity.
+    void timeStep(math::Vec3 velocity, const BodyDeciderSettings& s);
     // How far a ground point (character space) is out of the outline of
     // feet with their ankles at `ankles` (n of them; 0: inside).
     static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
@@ -331,6 +348,11 @@ private:
     // foot was on a timed swing last decide.
     int lastStepped_ = -1;
     bool wasSwinging_[2] = {false, false};
+    // The decider's own step (the balance step's foot over time), its
+    // timing now, and this tick's targets with the stepping foot's in place.
+    StepPlanner step_;
+    StepPlannerSettings stepNow_;
+    TargetSet work_;
 };
 
 } // namespace motion

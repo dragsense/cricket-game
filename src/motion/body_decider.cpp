@@ -110,6 +110,7 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
     rig_ = &rig;
     limits_ = limits;
     joints_ = joints;
+    step_ = StepPlanner{};
     if (joints.pelvis < 0 || rig.numJoints() > BodyQueue::kMaxJoints) return false;
     const size_t n = static_cast<size_t>(rig.numJoints());
     output_.pose = rig.restPose();
@@ -193,6 +194,7 @@ void BodyDecider::seed(const rig::Pose& pose) {
     armAngle_[0] = armAngle_[1] = 0.0f;
     lastStepped_ = -1;
     wasSwinging_[0] = wasSwinging_[1] = false;
+    step_ = StepPlanner{};
     seeded_ = true;
 }
 
@@ -211,6 +213,7 @@ void BodyDecider::rebase(const math::Transform& toNew) {
     hipsRefVel_ = toNew.rotation * hipsRefVel_;
     hipsVel_ = toNew.rotation * hipsVel_;
     for (math::Vec3& p : lastCentre_) p = toNew.transformPoint(p);
+    step_.rebase(toNew);
     if (!seeded_) return;
     placePelvis(output_, toNew * pelvisOf(output_));
     refresh(output_, joints_.pelvis);
@@ -335,16 +338,33 @@ float BodyDecider::lowestHeight(const Plan& p, const BodyDeciderSettings& s, boo
 
 // ---- the tick -----------------------------------------------------------------
 
-void BodyDecider::decide(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {
+void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, BodyQueue& out) {
     out.count = 0;
     out.plan = nullptr;
     out.planned.fill(0);
     out.heightClamped = false;
+    out.landedFoot = -1;
     for (ReachReport& r : out.reach) r = {};
     if (!rig_) return;
     if (!seeded_) seed(rig_->restPose());
     out.plan = &output_.models;
     for (int e = 0; e < kEnds; ++e) trunkFirst_[e] = trunkEnd_[e] = -1;
+
+    // The decider's own step: the stepping foot's target over time (Start:
+    // the weight shifts off it, Up: the swing, Land: pinned on its spot) in
+    // place of the one given; the parts follow by the step's passive shares
+    // unless the action gives its own.
+    work_ = given;  // no allocation (a plain struct)
+    const TargetSet& t = work_;
+    if (step_.running()) {
+        step_.tick(t.dt, stepNow_, work_);
+        const PassiveShares& p = given.passive;
+        if (p.head < 0.0f && p.hands < 0.0f && p.hips < 0.0f && p.chest < 0.0f) work_.passive = s.stepPassive;
+        if (step_.landed()) {
+            out.landedFoot = step_.foot();
+            out.landedSpot = step_.landing();
+        }
+    }
 
     blendWeights(t, s);
     pinFeet(t);
@@ -353,6 +373,30 @@ void BodyDecider::decide(const TargetSet& t, const BodyDeciderSettings& s, BodyQ
     limitOutput(t, s, out);
     report(t, s, out);
     balanceStep(t, s, out);
+
+    // The balance step's advice: a step starts (from the foot's pinned spot)
+    // or the one under way re-aims; it runs from the next tick.
+    const StepAdvice& a = out.step;
+    if (a.wanted && a.foot >= 0 && given.balanceSteps) {
+        if (!step_.running()) {
+            timeStep(a.velocity, s);
+            step_.start(a.foot, anchor_[a.foot], a.spot, anchorNormal_[a.foot]);
+        } else if (a.foot == step_.foot()) {
+            step_.retarget(a.spot);
+        }
+    }
+}
+
+void BodyDecider::timeStep(math::Vec3 velocity, const BodyDeciderSettings& s) {
+    // The gait's step time and double support for the body's speed
+    // (motion::gaitTiming, BIOMECHANICS 4: step = k H (v / v_ref)^0.42; slow
+    // or standing, the longest swing): the step's length is the speed times
+    // its time.
+    stepNow_ = s.stepShape;
+    if (!s.gait || !rig_) return;
+    const GaitTiming g = gaitTiming(std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z), rig_->height(), *s.gait);
+    stepNow_.duration = g.period;
+    if (g.period > 1e-3f) stepNow_.liftAt = std::clamp(1.0f - g.swing / g.period, 0.0f, 0.9f);
 }
 
 void BodyDecider::blendWeights(const TargetSet& t, const BodyDeciderSettings& s) {
@@ -940,8 +984,9 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     out.step.capturePoint = xcom;
     out.step.velocity = vGoal;
     out.step.outside = outsideFeet(xcom, standing, n, s);
-    const float lift = std::clamp(s.stepLiftAt, 0.0f, 0.9f);
-    const float lead = s.stepDuration * lift, swingTime = s.stepDuration * (1.0f - lift);
+    if (swing < 0) timeStep(vGoal, s);  // the next step's timing (a step under way keeps its own)
+    const float lift = std::clamp(stepNow_.liftAt, 0.0f, 0.9f);
+    const float lead = stepNow_.duration * lift, swingTime = stepNow_.duration * (1.0f - lift);
     float miss = 0.0f;
     if (swing >= 0) {
         // A step under way: its spot follows the capture point to the landing.

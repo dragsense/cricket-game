@@ -14,7 +14,6 @@
 #include "math/math.h"
 #include "motion/foot_stepper.h"
 #include "motion/jump_planner.h"
-#include "motion/step_planner.h"
 #include "motion/target_set.h"
 #include "motion/body_decider.h"
 #include "motion/walk_controller.h"
@@ -99,8 +98,8 @@ public:
     // The capsule holds the body (not let go after a lean).
     bool supported() const { return supportOn_; }
     // The step under way: its foot (-1: none) and its clock share [0, 1].
-    int stepFoot() const { return stepPlanner_.running() ? stepPlanner_.foot() : -1; }
-    float stepPhase() const { return stepPlanner_.share(); }
+    int stepFoot() const { return decider_.stepFoot(); }
+    float stepPhase() const { return decider_.stepShare(); }
     // The whole body's strength (0..1): scales every muscle and the capsule's
     // hold (a hit, a fall, a get-up).
     float strength() const { return strength_; }
@@ -204,9 +203,6 @@ private:
     void solveIk();
     math::Vec3 modelCentreOfMass();  // uses models_, which must be current
     motion::GaitStyle gaitStyle() const;
-    // The next step's timing (stepPlan_ and the decider's) for the body's
-    // level velocity (character space).
-    void timeStep(math::Vec3 velocity);
 
     struct Joints {
         int pelvis = -1, chest = -1, head = -1, toeL = -1, toeR = -1, clavicleL = -1, clavicleR = -1;
@@ -296,11 +292,6 @@ private:
     motion::FootStepper stepper_;
     bool face_ = false;
     float faceYaw_ = 0.0f;
-    // A step with the physics body: the stepper decides it (foot, spot); the
-    // step planner places the foot's target over time (Start, Up, Land); the
-    // decider does the body.
-    motion::StepPlanner stepPlanner_;
-    motion::StepPlannerSettings stepPlan_;
     // A standing jump with the physics body (JumpPlanner); the decider's
     // bounds while it runs.
     motion::JumpPlanner jumpPlanner_;

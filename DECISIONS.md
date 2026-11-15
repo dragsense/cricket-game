@@ -683,8 +683,9 @@ Dated log. Format: decision, reason, alternatives rejected.
   out of the feet's outline by the time a step could land, asks for a step
   (`BodyQueue::step`): the foot whose step leaves it best inside the new support (feet
   never cross, at most `maxStep` from the other), the two taking turns on a tie; the heel
-  lands `landingBehind` short of where the XCoM will be, under its own hip. The step
-  planner makes the step; a foot moves only by a step, never slides. The step's time is
+  lands `landingBehind` short of where the XCoM will be, under its own hip. The decider
+  makes the step itself (the user's call: it owns the StepPlanner, which shapes the foot's
+  path); a foot moves only by a step, never slides. The step's time is
   the gait's for the body's speed (`motion::gaitTiming`), so its length is the speed times
   its time. Stopped, the hips target holds until the last step has landed.
 - **Measured (W, 0.9 m/s):** steady steps 45.9 cm in 0.52 s (gaitTiming: 0.45 m, 0.5 s);

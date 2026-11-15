@@ -56,6 +56,9 @@ struct TargetSet {
     float dt = 0.0f;        // s, this tick (the fixed physics step)
     float strength = 1.0f;  // 0..1, the whole body's: hits, falls, get-up (scales motors and the pin)
     PassiveShares passive;  // the action's own passive shares (each negative: the decider's)
+    // The decider may take balance steps (false: a foot is placed by hand,
+    // the limb test; a step under way finishes).
+    bool balanceSteps = true;
 };
 
 } // namespace motion
