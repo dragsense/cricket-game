@@ -1536,3 +1536,156 @@ TEST_CASE("measure: foot held up, put down ahead, it steps down" * doctest::skip
                 100.0f * worst, worstAt, 100.0f * math::dot(a - a0, fwd), 100.0f * (a.y - a0.y), 100.0f * math::dot(r - a0, fwd),
                 100.0f * (r.y - a0.y), h.supported() ? "no" : "yes");
 }
+
+// Measurement (on demand): the user's report (2026-11-15): walking after the
+// limb test. The left hand (or foot: CRICKET_FOOT) pressed forward 3 times,
+// then R (clearPose + resetPhysicsBody, as the game), then W for 3 s.
+TEST_CASE("measure: walk after the limb test" * doctest::skip()) {
+    const bool foot = std::getenv("CRICKET_FOOT") != nullptr;
+    const bool reset = std::getenv("CRICKET_NORESET") == nullptr;
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    math::Vec3 goal = foot ? h.ankle(true, *h.bodyQueue().plan, h.root()) : h.wrist(true, *h.bodyQueue().plan, h.root());
+    for (int i = 0; i < 180; ++i) {
+        if (i % 60 == 0) goal += fwd * 0.1f;
+        if (foot) h.setPoseFoot(motion::Foot::Left, goal);
+        else h.setPoseHand(true, goal);
+        h.tick(kDt);
+        world.step(kDt);
+    }
+    if (reset) {
+        h.clearPose();
+        h.resetPhysicsBody();
+    }
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    Range speed, chest;
+    int steps = 0;
+    math::Vec3 last = h.root().position;
+    const int chestJ = h.rig().findJoint("chest");
+    for (int i = 0; i < 360; ++i) {
+        h.setStepInput(math::Vec2(0.0f, 1.0f));
+        h.tick(kDt);
+        world.step(kDt);
+        for (int f = 0; f < 2; ++f) steps += h.bodyQueue().landed[f] ? 1 : 0;
+        if (!h.physicalModels(world, 1.0f, real)) continue;
+        const math::Vec3 hips = h.root().transformPoint(math::Vec3(real[0][3]));
+        if (i > 120) speed.add(math::dot(hips - last, fwd) / kDt);
+        last = hips;
+        const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(chestJ)][1]));
+        if (i > 60) chest.add(math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f))));
+    }
+    std::printf("walk after the limb test (%s, %s): %d steps in 3 s, real speed %.2f .. %.2f m/s, chest lean %.1f .. %.1f deg, "
+                "dropped %s\n",
+                foot ? "foot" : "hand", reset ? "R pressed" : "no R", steps, speed.lo, speed.hi, chest.lo, chest.hi,
+                h.supported() ? "no" : "yes");
+}
+
+// Measurement (on demand): every pace from the same body mechanism (the sync
+// formula in the decider): walk (presses x speedStep), jog (pace 1), run
+// (pace 2). Steady part 2.5-5 s: cadence from the landings' times, step
+// length between landings, real mean speed, contact, flight, bob (plan and
+// real), chest lean, the widest real foot slide while its plan stands.
+TEST_CASE("measure: gaits by speed" * doctest::skip()) {
+    struct Case {
+        const char* name;
+        int presses, pace;
+    };
+    for (const Case& c : {Case{"walk", 0, 0}, Case{"walk +3", 3, 0}, Case{"walk +6", 6, 0}, Case{"jog", 0, 1},
+                          Case{"run", 0, 2}}) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        for (int i = 0; i < c.presses; ++i) h.changeWalkSpeed(1);
+        h.setPace(c.pace);
+        const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+        std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+        const int chestJ = h.rig().findJoint("chest");
+        const int ankleL = h.rig().findJoint("foot_l"), ankleR = h.rig().findJoint("foot_r");
+        const float standAnkle = std::min((*h.bodyQueue().plan)[static_cast<size_t>(ankleL)][3].y,
+                                          (*h.bodyQueue().plan)[static_cast<size_t>(ankleR)][3].y);
+        Range bobPlan, bobReal;
+        float firstLand = -1.0f, lastLand = -1.0f, stepSum = 0.0f, chest = 0.0f, slide = 0.0f, contactSum = 0.0f;
+        int lands = 0, ticks = 0, flight = 0, contacts = 0;
+        float landedAt[2] = {-1.0f, -1.0f};
+        bool wasStepping[2] = {false, false};
+        math::Vec3 lastSpot(0.0f), hipsStart(0.0f), still[2], lastPlan[2];
+        bool haveSpot = false, haveStart = false, holding[2] = {false, false}, havePlan = false, dropped = false;
+        float tStart = 0.0f, tEnd = 0.0f;
+        math::Vec3 hipsEnd(0.0f);
+        for (int i = 0; i < 600; ++i) {
+            const float time = i * kDt;
+            h.setStepInput(math::Vec2(0.0f, 1.0f));
+            h.tick(kDt);
+            world.step(kDt);
+            if (!h.supported()) dropped = true;
+            const bool steady = time > 2.5f;
+            for (int f = 0; f < 2; ++f) {
+                const bool stepping = h.decider().step(f).running();
+                if (steady && stepping && !wasStepping[f] && landedAt[f] >= 0.0f) {
+                    contactSum += time - landedAt[f];
+                    ++contacts;
+                }
+                wasStepping[f] = stepping;
+                if (!h.bodyQueue().landed[f]) continue;
+                landedAt[f] = time;
+                const math::Vec3 spot = h.root().transformPoint(h.bodyQueue().landedSpot[f]);
+                if (steady) {
+                    if (firstLand < 0.0f) firstLand = time;
+                    else if (haveSpot) stepSum += math::dot(spot - lastSpot, fwd);
+                    lastLand = time;
+                    ++lands;
+                }
+                lastSpot = spot;
+                haveSpot = true;
+            }
+            if (!h.bodyQueue().plan || !h.physicalModels(world, 1.0f, real)) continue;
+            const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+            const math::Vec3 hips = h.root().transformPoint(math::Vec3(real[0][3]));
+            for (int f = 0; f < 2; ++f) {
+                const math::Vec3 p = h.ankle(f == 0, plan, h.root()), a = h.ankle(f == 0, real, h.root());
+                const bool stands = havePlan && math::length(p - lastPlan[f]) / kDt < 0.05f;
+                if (stands && !holding[f]) still[f] = a;
+                holding[f] = stands;
+                if (stands && steady) slide = std::max(slide, math::length(math::Vec3(a.x - still[f].x, 0.0f, a.z - still[f].z)));
+                lastPlan[f] = p;
+            }
+            havePlan = true;
+            if (!steady) continue;
+            if (!haveStart) {
+                hipsStart = hips;
+                tStart = time;
+                haveStart = true;
+            }
+            hipsEnd = hips;
+            tEnd = time;
+            ++ticks;
+            const float ground = std::min(plan[static_cast<size_t>(ankleL)][3].y, plan[static_cast<size_t>(ankleR)][3].y);
+            if (ground > standAnkle + 0.03f) ++flight;
+            bobPlan.add(plan[0][3].y);
+            bobReal.add(hips.y);
+            const math::Vec3 up = math::normalize(math::Vec3(real[static_cast<size_t>(chestJ)][1]));
+            chest = std::max(chest, math::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f))));
+        }
+        const float speed = tEnd > tStart ? math::dot(hipsEnd - hipsStart, fwd) / (tEnd - tStart) : 0.0f;
+        const float cadence = lands > 1 && lastLand > firstLand ? 60.0f * (lands - 1) / (lastLand - firstLand) : 0.0f;
+        std::printf("%-8s speed %.2f m/s | %3.0f steps/min, step %.2f m | contact %.2f s | flight %2.0f %% | bob plan %.1f real "
+                    "%.1f cm | chest lean %.1f deg | foot slide %.1f cm | run share %.2f | dropped %s\n",
+                    c.name, speed, cadence, lands > 1 ? stepSum / (lands - 1) : 0.0f, contacts ? contactSum / contacts : 0.0f,
+                    ticks ? 100.0f * flight / ticks : 0.0f, 100.0f * bobPlan.span(), 100.0f * bobReal.span(), chest,
+                    100.0f * slide, h.runShare(), dropped ? "yes" : "no");
+    }
+}
