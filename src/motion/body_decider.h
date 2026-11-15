@@ -123,6 +123,10 @@ struct BodyDeciderJoints {
 // human_joints.json "decider" (see the file for the sources).
 struct BodyDeciderSettings {
     math::Vec3 kneePole{0.0f, 0.0f, 1.0f};    // knees point this way (pelvis frame)
+    // A lifted knee turns toward its foot's way, the way counted from this
+    // share of the leg ahead of the hip (a foot right under the hip: the knee
+    // forward). Design value.
+    float kneeForwardBias = 0.25f;
     // Each next part in a reach queue carries this times the share of the
     // part before it.
     float queueShare = 0.5f;
@@ -360,6 +364,13 @@ private:
     // A lifted foot out of reach: the stance leg lowers the hips, the pelvis
     // tilts on the stance hip.
     void footTrunk(int i, math::Vec3 target, math::Vec3 velocity, const BodyDeciderSettings& s, BodyQueue& out);
+    // A lifted foot further out to the side than the hip abducts: the pelvis
+    // hikes on that side about the standing hip by the rest (its range).
+    void footHike(int i, math::Vec3 target, const BodyDeciderSettings& s);
+    // Leg i's knee reaching from `hip` to `target`, bent toward `pole`; the
+    // thigh's abduction (rad, out +) in the pelvis's frame.
+    math::Vec3 kneeToward(int i, math::Vec3 hip, math::Vec3 target, math::Vec3 pole) const;
+    float thighAbduction(int i, math::Quat pelvisRot, math::Vec3 hip, math::Vec3 knee) const;
     int endRoot(int e) const;
     float endReach(int e) const;
     // How far end e (hand L, R, foot L, R) reaches from its root: its span

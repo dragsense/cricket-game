@@ -701,6 +701,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.pelvisTurnShare = dv("decider.pelvisTurnShare", deciderSettings_.pelvisTurnShare);
         deciderSettings_.pelvisList =
             math::radians(dv("decider.pelvisListDeg", math::degrees(deciderSettings_.pelvisList)));
+        deciderSettings_.kneeForwardBias = dv("decider.kneeForwardBias", deciderSettings_.kneeForwardBias);
         deciderSettings_.trunkTurnFrequency = dv("decider.trunkTurn.frequency", deciderSettings_.trunkTurnFrequency);
         deciderSettings_.trunkTurnDamping = dv("decider.trunkTurn.damping", deciderSettings_.trunkTurnDamping);
         deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));

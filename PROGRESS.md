@@ -184,6 +184,17 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   reach's lean): now only where a hips target sets the place; and the foot-left-behind
   rule took a deliberate crouch for a leg at its reach: it now measures at the plan's hip
   height when that is lower.
+- [x] **B2d-4 A foot held up to the side** (2026-11-15, the user's report: the leg went
+  forward). The physics leg followed the plan (1 cm); the plan bent the knee forward. Now a
+  foot held up (no step's timing) turns its knee toward the foot's way
+  (`decider.kneeForwardBias` 0.25 of the leg ahead), as far as the thigh stays within the
+  hip's abduction range (45 deg); a foot further out is held at that range (its height
+  kept, its way out cut), and the pelvis hikes about the standing hip for what the hip
+  cannot give (`footHike`, within pelvisMaxDeg). A step's swing keeps the knee forward
+  (walking unchanged: the first try turned walking knees out, the user saw it). Measure
+  `measure: foot out to the side, plan against real`: 20 cm out, 15 up: real 18.7 / 13.9
+  cm, thigh at the range. Open: 60 cm out (past the range) ends with the thigh 81 deg
+  forward and out, the foot 28 cm up: to look at.
 - [ ] **B2e Sync formula, the rest:** 3: a hand's trunk within reach by research shares,
   derived hips step; 4: the head's small share; 5: clavicle bodies and muscles; 6: free
   arms relaxed (physics). Plan agreed with the user 2026-11-15.

@@ -116,6 +116,11 @@
     // weight on one leg, by the weight's share. Real: about 4 deg each way
     // walking (BIOMECHANICS 4.3), ~4 in one-leg stance (0-15).
     "pelvisListDeg": 4.0,
+    // A lifted knee turns toward its foot's way (the hip turns the thigh out
+    // or in within its twist range); the way counted from this share of the
+    // leg ahead of the hip, so a foot right under the hip keeps the knee
+    // forward. [E] design value.
+    "kneeForwardBias": 0.25,
     // The chest's turn follows the pelvis's through the trunk's axial
     // spring-damper (Prins et al. 2019): natural frequency (rad/s) and damping
     // ratio. Quick steps drive it faster than its frequency: the chest lags,

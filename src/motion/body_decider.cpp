@@ -931,6 +931,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         const float k = act_[FootLW + i] * std::clamp(foot.weightPosition, 0.0f, 1.0f);
         endTarget[2 + i] = anchor_[i] + drivenPart(foot, foot.position - anchor_[i]) * k;
         endOn[2 + i] = true;
+        footHike(i, endTarget[2 + i], s);
         footTrunk(i, endTarget[2 + i], foot.velocity, s, out);
     }
     auto shortOf = [&] {
@@ -1139,7 +1140,66 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
             pole = anchorRot_[i] * footToPelvis_[i] * s.kneePole;
             footRot = anchorRot_[i];
         } else {
-            pole = planRot(p, joints_.pelvis) * s.kneePole;
+            // A foot held up (no step's timing): its knee points the way the
+            // foot goes, the hip turning the thigh out or in (within its twist
+            // range), so a foot out to the side lifts with the knee out. A
+            // foot right under the hip or behind it keeps the knee forward (it
+            // bends one way): the foot's way counts from kneeForwardBias of
+            // the leg ahead. A step's swing (walking, running, a side step)
+            // keeps the knee forward. As far as the thigh stays within the
+            // hip's abduction range; a foot further out than the hip and the
+            // pelvis's hike (footHike) reach is held at that range, short of
+            // its target (reported).
+            const math::Quat pelvisRot = planRot(p, joints_.pelvis);
+            const math::Quat turned = pelvisRot * math::inverse(restPelvis_.rotation);  // from standing
+            const float side = i == 0 ? 1.0f : -1.0f;  // +X is the left leg's outside
+            auto poleAt = [&](float a) {
+                return math::fromAxisAngle(turned * math::kUp, side * a) * (pelvisRot * s.kneePole);
+            };
+            float turn = 0.0f;
+            if (limits_ && joints_.legs[0].start >= 0) {
+                const ik::JointLimit& hipLimit = limits_->limit(joints_.legs[0].start);  // left: + external, + abduction
+                // Held at the range: the target's way out to the side cut
+                // (its height and fore-aft kept) until the thigh, knee
+                // forward, is within it.
+                auto inRange = [&](math::Vec3 at) {
+                    const float abd = thighAbduction(i, pelvisRot, hip, kneeToward(i, hip, at, poleAt(0.0f)));
+                    return abd >= hipLimit.swing2Min - 1e-3f && abd <= hipLimit.swing2Max + 1e-3f;
+                };
+                if (!inRange(target)) {
+                    const math::Vec3 v = math::inverse(turned) * (target - hip);
+                    auto cut = [&](float share) {
+                        return hip + turned * math::Vec3(v.x * share, v.y, v.z);
+                    };
+                    float lo = 0.0f, hi = 1.0f;
+                    constexpr int kHalvings = 8;
+                    for (int n = 0; n < kHalvings; ++n) {
+                        const float mid = 0.5f * (lo + hi);
+                        (inRange(cut(mid)) ? lo : hi) = mid;
+                    }
+                    target = cut(lo);
+                }
+                if (t.foot[i].swing < 0.0f) {
+                    const math::Vec3 v = math::inverse(turned) * (target - hip);
+                    turn = std::clamp(std::atan2(side * v.x, std::max(v.z, 0.0f) + s.kneeForwardBias * legLength_[i]),
+                                      hipLimit.twistMin, hipLimit.twistMax);
+                    auto within = [&](float a) {
+                        const float abd = thighAbduction(i, pelvisRot, hip, kneeToward(i, hip, target, poleAt(a)));
+                        return abd >= hipLimit.swing2Min - 1e-3f && abd <= hipLimit.swing2Max + 1e-3f;
+                    };
+                    if (!within(turn)) {
+                        // The largest turn (from forward toward it) that keeps it.
+                        float lo = 0.0f, hi = turn;
+                        constexpr int kHalvings = 8;
+                        for (int n = 0; n < kHalvings; ++n) {
+                            const float mid = 0.5f * (lo + hi);
+                            (within(mid) ? lo : hi) = mid;
+                        }
+                        turn = lo;
+                    }
+                }
+            }
+            pole = poleAt(turn);
             footRot = math::normalize(math::slerp(anchorRot_[i], foot.rotation, kr));
         }
         // A foot let go: its pose blends from where it was (the last target,
@@ -1714,6 +1774,54 @@ void BodyDecider::footTrunk(int i, math::Vec3 target, math::Vec3 velocity, const
     trunkFirst_[e] = first;
     trunkEnd_[e] = out.count;
     planTrunk(e, target, first, out.count, s, out);
+}
+
+math::Vec3 BodyDecider::kneeToward(int i, math::Vec3 hip, math::Vec3 target, math::Vec3 pole) const {
+    // The two bones from the hip to the target: the knee on the circle where
+    // they meet, on the pole's side of the hip-target line.
+    const float a = thighLength_[i], b = shinLength_[i];
+    const math::Vec3 axis = math::safeNormalize(target - hip, -math::kUp);
+    const float d = std::clamp(math::distance(hip, target), 1e-4f, a + b - 1e-4f);
+    const float x = (a * a - b * b + d * d) / (2.0f * d);
+    const float r = std::sqrt(std::max(a * a - x * x, 0.0f));
+    const math::Vec3 perp = math::safeNormalize(pole - axis * math::dot(pole, axis), math::kForward);
+    return hip + axis * x + perp * r;
+}
+
+float BodyDecider::thighAbduction(int i, math::Quat pelvisRot, math::Vec3 hip, math::Vec3 knee) const {
+    // The thigh's angle out of the pelvis's forward-up plane to its own side
+    // (the pelvis's turn from standing taken out; character axes: +X left):
+    // a thigh lifted forward has none, one swung out to the side all of it.
+    const math::Vec3 v = math::inverse(pelvisRot * math::inverse(restPelvis_.rotation)) * (knee - hip);
+    const float side = i == 0 ? 1.0f : -1.0f;  // +X is the left leg's outside
+    return std::asin(std::clamp(side * math::safeNormalize(v, -math::kUp).x, -1.0f, 1.0f));
+}
+
+void BodyDecider::footHike(int i, math::Vec3 target, const BodyDeciderSettings& s) {
+    // A lifted foot out to the side further than the hip abducts (its range):
+    // the pelvis hikes on that side, about the standing hip, by what the hip
+    // cannot give, within the pelvis's range (pelvisMin / pelvisMax).
+    const ik::TwoBoneChain& leg = joints_.legs[i];
+    if (!limits_ || leg.start < 0 || joints_.legs[0].start < 0 || joints_.legs[1 - i].start < 0) return;
+    Plan& d = desired_;
+    math::Transform p = pelvisOf(d);
+    const float side = i == 0 ? 1.0f : -1.0f;  // +X is the left leg's outside
+    // The thigh with the knee forward (the least abduction a lift asks for).
+    const math::Vec3 hip = planPos(d, leg.start);
+    const math::Vec3 reached = clampToReach(hip, target, limbReach(2 + i, s));
+    const float abduction =
+        thighAbduction(i, p.rotation, hip, kneeToward(i, hip, reached, p.rotation * s.kneePole));
+    const float excess = abduction - limits_->limit(joints_.legs[0].start).swing2Max;  // left: + abduction
+    if (excess <= 0.0f) return;
+    const math::Vec3 pivot = planPos(d, joints_.legs[1 - i].start);
+    const math::Vec3 forward = p.rotation * (math::inverse(restPelvis_.rotation) * math::kForward);
+    const math::Quat want = math::normalize(math::fromAxisAngle(forward, side * excess) * p.rotation);
+    const math::Quat rel =
+        clampRotationVector(math::normalize(want * math::inverse(restPelvis_.rotation)), s.pelvisMin, s.pelvisMax);
+    const math::Quat turn = math::normalize(rel * restPelvis_.rotation * math::inverse(p.rotation));
+    p.rotation = math::normalize(turn * p.rotation);
+    p.position = pivot + turn * (p.position - pivot);
+    placePelvis(d, p);
 }
 
 int BodyDecider::endRoot(int e) const { return e < 2 ? joints_.arms[e].start : joints_.legs[e - 2].start; }

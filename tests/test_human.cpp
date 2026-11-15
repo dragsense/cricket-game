@@ -1400,3 +1400,52 @@ TEST_CASE("measure: hand down then forward, the steps" * doctest::skip()) {
     }
     std::printf("dropped %s\n", h.supported() ? "no" : "yes");
 }
+
+// Measurement (on demand): the user's report (2026-11-15): the left foot sent
+// out to the side, the real leg goes forward. The plan's and the real ankle,
+// and the thigh's angles in the pelvis's frame (flexion forward +, abduction
+// out +), plan against real.
+TEST_CASE("measure: foot out to the side, plan against real" * doctest::skip()) {
+    for (float out : {0.2f, 0.35f, 0.6f}) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        const math::Vec3 a0 = h.ankle(true, *h.bodyQueue().plan, h.root());
+        const math::Vec3 goal = a0 + h.root().transformDirection(math::Vec3(out, 0.15f, 0.0f));
+        const int thigh = h.rig().findJoint("thigh_l"), shin = h.rig().findJoint("shin_l");
+        std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+        std::printf("--- foot L out %.2f, up 0.15 (character space: x left, z forward, from the ankle's start)\n", out);
+        for (int i = 0; i < 240; ++i) {
+            h.setPoseFoot(motion::Foot::Left, goal);
+            h.tick(kDt);
+            world.step(kDt);
+            if (i % 30 != 29 || !h.physicalModels(world, 1.0f, real)) continue;
+            const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+            auto angles = [&](const std::vector<math::Mat4>& m, float& flex, float& abd) {
+                const math::Vec3 hip(m[static_cast<size_t>(thigh)][3]), knee(m[static_cast<size_t>(shin)][3]);
+                const math::Mat4& pel = m[0];
+                const math::Vec3 x = math::normalize(math::Vec3(pel[0])), y = math::normalize(math::Vec3(pel[1])),
+                                 z = math::normalize(math::Vec3(pel[2]));
+                const math::Vec3 d = math::normalize(knee - hip);
+                flex = math::degrees(std::atan2(math::dot(d, z), -math::dot(d, y)));
+                abd = math::degrees(std::atan2(math::dot(d, x), -math::dot(d, y)));
+            };
+            float pf, pa, rf, ra;
+            angles(p, pf, pa);
+            angles(real, rf, ra);
+            const math::Vec3 pl = math::inverse(h.root()).transformPoint(h.ankle(true, p, h.root())) -
+                                  math::inverse(h.root()).transformPoint(a0);
+            const math::Vec3 rl = math::inverse(h.root()).transformPoint(h.ankle(true, real, h.root())) -
+                                  math::inverse(h.root()).transformPoint(a0);
+            std::printf("  %.2f s ankle plan x %5.1f z %5.1f y %5.1f | real x %5.1f z %5.1f y %5.1f cm | thigh plan flex %5.1f abd "
+                        "%5.1f | real flex %5.1f abd %5.1f deg\n",
+                        (i + 1) * kDt, 100 * pl.x, 100 * pl.z, 100 * pl.y, 100 * rl.x, 100 * rl.z, 100 * rl.y, pf, pa, rf, ra);
+        }
+    }
+}
