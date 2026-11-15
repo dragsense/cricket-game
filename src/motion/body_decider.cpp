@@ -220,8 +220,10 @@ void BodyDecider::rebase(const math::Transform& toNew) {
         l.position = toNew.transformPoint(l.position);
         l.rotation = toNew.rotation * l.rotation;
         l.velocity = toNew.rotation * l.velocity;
+        l.pathEnd = toNew.transformPoint(l.pathEnd);
         for (math::Vec3& d : l.directions) d = toNew.rotation * d;
     }
+    lastPathEnd_ = toNew.transformPoint(lastPathEnd_);
     hipsRef_ = toNew.transformPoint(hipsRef_);
     hipsRefVel_ = toNew.rotation * hipsRefVel_;
     hipsVel_ = toNew.rotation * hipsVel_;
@@ -414,6 +416,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
         if (!steps_[0].running() && !steps_[1].running()) {
             timeStep(a.velocity, s);
             stepNow_[a.foot] = nextStep_;
+            if (a.time > 0.0f) stepNow_[a.foot].duration = a.time;  // on the hips' path: lands as they arrive
             steps_[a.foot].start(a.foot, anchor_[a.foot], a.spot, anchorNormal_[a.foot]);
             lastStarted_ = a.foot;
             footEvent_ = true;
@@ -602,17 +605,31 @@ void BodyDecider::timeSwings(const TargetSet& t, const BodyDeciderSettings& s) {
     // time if sooner); a flight (running), the end of that stance and a
     // flight. Both in the air: the one that lifted first lands when the hips
     // come down to it (now if they are). A swing keeps its progress.
-    const math::Vec3 goal = given(t, HipsW).velocity;
+    // On the hips target's path (the sync formula) a swing lands as the hips
+    // get to its end; a new path or one whose end moved is an event too.
+    const Target& hips = given(t, HipsW);
+    const math::Vec3 goal = hips.velocity;
     const bool changed = math::length(goal - lastGoalVelocity_) > 1e-4f;
     lastGoalVelocity_ = goal;
-    if (!footEvent_ && !changed) return;
+    const bool onPath = act_[HipsW] > 0.0f && hips.pathLeft >= 0.0f;
+    constexpr float kPathMoved = 0.01f;  // m
+    const bool pathEvent = onPath && (lastPathLeft_ < 0.0f || math::distance(hips.pathEnd, lastPathEnd_) > kPathMoved);
+    if (onPath && (pathEvent || lastPathLeft_ < 0.0f)) lastPathEnd_ = hips.pathEnd;
+    lastPathLeft_ = onPath ? hips.pathLeft : -1.0f;
+    if (!footEvent_ && !changed && !pathEvent) return;
     footEvent_ = false;
     const bool running = runShare_ >= 0.5f && s.gravity > 0.0f;
     for (int f = 0; f < 2; ++f) {
         const int o = 1 - f;
         if (!steps_[f].running()) continue;
         float left;
-        if (steps_[o].running()) {
+        if (onPath && !running) {
+            // The rest of the swing from where the foot is (lifted: no
+            // weight shift left), shared as when it started.
+            const bool lifted = steps_[f].phase() == StepPlanner::Phase::Up;
+            left = pathStepTime(t, f, steps_[f].target(), steps_[f].landing(), pathSteps_[f],
+                                lifted ? 0.0f : stepNow_[f].liftAt, s);
+        } else if (steps_[o].running()) {
             if (!running || f != (lastStarted_ >= 0 ? 1 - lastStarted_ : 0)) continue;
             left = touchdownTime(f, s);
         } else if (grounded_[o] && t.foot[o].mode == TargetMode::Pinned) {
@@ -1308,17 +1325,50 @@ float BodyDecider::outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, co
     return best;
 }
 
-math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, const BodyDeciderSettings& s,
-                                 float& miss) const {
+float BodyDecider::pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps, float liftAt,
+                                const BodyDeciderSettings& s) const {
+    // The sync formula: a step on the hips' path lands as the hips get to its
+    // end: the path's time left, no shorter than the hips take at their
+    // most speed; a way longer than a step is shared by `steps` steps (each
+    // landing plans the next). No shorter than the leg swings there (the
+    // swing at rest at both ends peaks at 1.875 D / T, the foot at most
+    // legMaxRate x the leg's length).
+    const Target& hips = given(t, HipsW);
+    const float kw = std::clamp(hips.weightPosition, 0.0f, 1.0f);
+    if (act_[HipsW] <= 0.0f || kw <= 0.0f || hips.pathLeft < 0.0f) return -1.0f;
+    math::Vec3 lag = drivenPart(hips, hips.pathEnd - pelvisOf(output_).position) * kw;
+    lag.y = 0.0f;
+    const float hipsTime = math::length(lag) / std::max(s.hipsMaxSpeed, 1e-3f);
+    const float time = std::max(hips.pathLeft, hipsTime) / static_cast<float>(std::max(steps, 1));
+    const float d = std::sqrt((spot.x - from.x) * (spot.x - from.x) + (spot.z - from.z) * (spot.z - from.z));
+    const float swing = 1.875f * d / std::max(s.legMaxRate * legLength_[i], 1e-3f);
+    return std::max(time, swing / (1.0f - std::clamp(liftAt, 0.0f, 0.9f)));
+}
+
+math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd,
+                                 const BodyDeciderSettings& s, float& miss, math::Vec3* idealOut,
+                                 bool* beyondReach) const {
+    if (beyondReach) *beyondReach = false;
     // The heel (the ankle over it: the foot lands heel first, its pressure
     // there) where the capture point will be, landingBehind short of it along
     // the motion, under its own hip to the side.
     const math::Vec3 dir = math::safeNormalize(math::Vec3(velocity.x, 0.0f, velocity.z));
     math::Vec3 ideal = xcom - dir * s.landingBehind + math::Vec3(hipOffset_[i].x, 0.0f, 0.0f);
-    ideal.y = anchor_[i].y;
-    math::Vec3 spot = ideal;
     const int o = 1 - i;
-    if (grounded_[o] && joints_.legs[o].end >= 0) {
+    const bool otherDown = grounded_[o] && joints_.legs[o].end >= 0;
+    if (otherDown) {
+        // The hips stopping there: the foot lands so they end between the
+        // feet (the other foot mirrored about them: a normal stance), by how
+        // slowly they get there (moving on: the capture point's).
+        const float speed = std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        const float stop = 1.0f - std::clamp(speed / std::max(s.stopBlendSpeed, 1e-3f), 0.0f, 1.0f);
+        ideal.x = math::lerp(ideal.x, 2.0f * hipsEnd.x - anchor_[o].x, stop);
+        ideal.z = math::lerp(ideal.z, 2.0f * hipsEnd.z - anchor_[o].z, stop);
+    }
+    ideal.y = anchor_[i].y;
+    if (idealOut) *idealOut = ideal;
+    math::Vec3 spot = ideal;
+    if (otherDown) {
         // Never across the other foot, never further from it than a step
         // reaches (an ellipse: further fore-aft than across).
         const math::Vec3 other = anchor_[o];
@@ -1331,6 +1381,7 @@ math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, co
             d /= over;
             spot.x = other.x + d.x;
             spot.z = other.z + d.z;
+            if (beyondReach) *beyondReach = true;
         }
     }
     miss = std::sqrt((spot.x - ideal.x) * (spot.x - ideal.x) + (spot.z - ideal.z) * (spot.z - ideal.z));
@@ -1379,13 +1430,21 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     // hips settle over the support (between the feet: no motion of their
     // own), so only the drive carries the body on, never the plan's speed
     // now (that stops at its reference).
+    // A driven hips target on a path (the sync formula) goes to the path's
+    // end and stops there: the body goes there, with no speed on (planned
+    // from the whole path, not from the drive still blending in).
     const Target& hipsGoal = given(t, HipsW);
     const float kh = act_[HipsW] * std::clamp(hipsGoal.weightPosition, 0.0f, 1.0f);
-    math::Vec3 lag = drivenPart(hipsGoal, hipsGoal.position - pelvisOf(output_).position) * kh;
+    const bool onPath = kh > 0.0f && hipsGoal.pathLeft >= 0.0f;
+    math::Vec3 lag = onPath ? drivenPart(hipsGoal, hipsGoal.pathEnd - pelvisOf(output_).position) *
+                                  std::clamp(hipsGoal.weightPosition, 0.0f, 1.0f)
+                            : drivenPart(hipsGoal, hipsGoal.position - pelvisOf(output_).position) * kh;
     lag.y = 0.0f;
-    math::Vec3 vGoal = drivenPart(hipsGoal, hipsGoal.velocity) * kh;
+    math::Vec3 vGoal = onPath ? math::Vec3(0.0f) : drivenPart(hipsGoal, hipsGoal.velocity) * kh;
     vGoal.y = 0.0f;
-    auto future = [&](float time) { return math::Vec3(com.x, groundY, com.z) + lag + vGoal * time + vGoal / w0; };
+    // The centre of mass (on the ground) `time` from now, and its capture point then.
+    auto hipsAt = [&](float time) { return math::Vec3(com.x, groundY, com.z) + lag + vGoal * time; };
+    auto future = [&](float time) { return hipsAt(time) + vGoal / w0; };
     out.step.capturePoint = xcom;
     out.step.velocity = vGoal;
     out.step.outside = outsideFeet(xcom, standing, n, s);
@@ -1401,7 +1460,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
         const float left = swingTime * (1.0f - u) + (u <= 0.0f ? lead : 0.0f);
         out.step.wanted = true;
         out.step.foot = swing;
-        out.step.spot = stepSpot(swing, future(left), vGoal, s, miss);
+        out.step.spot = stepSpot(swing, future(left), vGoal, hipsAt(left), s, miss);
         if (runShare_ > 0.0f)
             out.step.spot = math::lerp(out.step.spot, runSpot(swing, steps_[swing].timeLeft(stepNow_[swing]), s), runShare_);
         return;
@@ -1409,7 +1468,25 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     // A step takes its time: it starts once the capture point will be out of
     // the support by the time a step could land (standing still: once it is
     // out), so a moving body steps on without a pause.
-    const math::Vec3 at = future(lead + swingTime);
+    const math::Vec3 at = future(lead + swingTime), hipsEnd = hipsAt(lead + swingTime);
+    // On the hips' path the step lands as the hips arrive; a way longer than
+    // a step reaches (the ideal spot past the reached one) is shared by more
+    // steps, each landing planning the next.
+    auto timed = [&](int foot, math::Vec3 spot, math::Vec3 ideal, bool beyondReach) {
+        const float need = std::sqrt((ideal.x - anchor_[foot].x) * (ideal.x - anchor_[foot].x) +
+                                     (ideal.z - anchor_[foot].z) * (ideal.z - anchor_[foot].z));
+        const float got = std::sqrt((spot.x - anchor_[foot].x) * (spot.x - anchor_[foot].x) +
+                                    (spot.z - anchor_[foot].z) * (spot.z - anchor_[foot].z));
+        constexpr int kMostSteps = 4;
+        const int steps = beyondReach && got > 1e-3f
+                              ? std::clamp(static_cast<int>(std::ceil(need / got - 1e-3f)), 1, kMostSteps)
+                              : 1;
+        out.step.wanted = true;
+        out.step.foot = foot;
+        out.step.spot = spot;
+        out.step.time = pathStepTime(t, foot, anchor_[foot], spot, steps, timing.liftAt, s);
+        pathSteps_[foot] = steps;
+    };
     // A foot left behind: by the time a step could land the hips will be so
     // far from it that its leg, at its reach, would hold them more than
     // reachDrop below standing; it steps (a leg's reach ends its stance:
@@ -1442,11 +1519,11 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     };
     if (outsideFeet(at, standing, n, s) <= s.stepMargin) {
         if (behind < 0) return;
-        const math::Vec3 spot = stepSpot(behind, at, vGoal, s, miss);
+        math::Vec3 ideal;
+        bool beyond = false;
+        const math::Vec3 spot = stepSpot(behind, at, vGoal, hipsEnd, s, miss, &ideal, &beyond);
         if (!moves(behind, spot)) return;
-        out.step.wanted = true;
-        out.step.foot = behind;
-        out.step.spot = spot;
+        timed(behind, spot, ideal, beyond);
         return;
     }
     // The foot whose step leaves the capture point (where it will be by the
@@ -1454,10 +1531,11 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     // tie, or neither reaching it (each step makes room for the next): the
     // feet take turns (gait alternates), the first step the one with further
     // to go.
-    math::Vec3 spot[2];
+    math::Vec3 spot[2], ideal[2];
+    bool beyond[2] = {false, false};
     float after[2], travel[2];
     for (int i = 0; i < 2; ++i) {
-        spot[i] = stepSpot(i, at, vGoal, s, miss);
+        spot[i] = stepSpot(i, at, vGoal, hipsEnd, s, miss, &ideal[i], &beyond[i]);
         const math::Vec3 feet[2] = {spot[i], anchor_[1 - i]};
         after[i] = outsideFeet(at, feet, 2, s);
         const math::Vec3 d = spot[i] - anchor_[i];
@@ -1470,9 +1548,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     else if (lastStepped_ >= 0) foot = 1 - lastStepped_;
     else foot = travel[0] >= travel[1] ? 0 : 1;
     if (!moves(foot, spot[foot])) return;
-    out.step.wanted = true;
-    out.step.foot = foot;
-    out.step.spot = spot[foot];
+    timed(foot, spot[foot], ideal[foot], beyond[foot]);
 }
 
 // ---- reach queues (the desired pose) ----------------------------------------------------

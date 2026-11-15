@@ -1050,3 +1050,75 @@ TEST_CASE("measure: hand far ahead, the steps settle" * doctest::skip()) {
     std::printf("hand far ahead: steps in the last 3 s (goal held) %d | plan hips along %.2f .. %.2f m | dropped %s\n", held,
                 hipsHeld.lo, hipsHeld.hi, h.supported() ? "no" : "yes");
 }
+
+// Measurement (on demand): the limb test's hips moved once (one press) by a
+// set way; the sync formula: the step's foot lands when the hips arrive, the
+// hips end between the feet. Prints when the plan's hips reach the goal and
+// when each step starts and lands, and how far the foot and the hips went.
+TEST_CASE("measure: hips pressed once, the step with the hips" * doctest::skip()) {
+    struct Case {
+        const char* name;
+        math::Vec3 way;  // character space: +Z forward, +X left
+    };
+    for (const Case& c : {Case{"fwd 0.10", {0.0f, 0.0f, 0.10f}}, Case{"fwd 0.20", {0.0f, 0.0f, 0.20f}},
+                          Case{"fwd 0.40", {0.0f, 0.0f, 0.40f}}, Case{"back 0.20", {0.0f, 0.0f, -0.20f}},
+                          Case{"left 0.15", {0.15f, 0.0f, 0.0f}}}) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        const math::Vec3 hips0 = h.root().transformPoint(math::Vec3((*h.bodyQueue().plan)[0][3]));
+        const math::Vec3 goal = hips0 + h.root().transformDirection(c.way);
+        const math::Vec3 dir = math::normalize(h.root().transformDirection(c.way));
+        math::Vec3 ankle0[2];
+        for (int f = 0; f < 2; ++f) ankle0[f] = h.ankle(f == 0, *h.bodyQueue().plan, h.root());
+        std::printf("--- hips %s\n", c.name);
+        float arrived = -1.0f;
+        int lastFoot = -1;
+        for (int i = 0; i < 360; ++i) {
+            const float time = i * kDt;
+            h.setPoseGoal(motion::Goal::Hips, goal, math::identityQuat(), false);
+            h.tick(kDt);
+            world.step(kDt);
+            const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+            const math::Vec3 hips = h.root().transformPoint(math::Vec3(p[0][3]));
+            const math::Vec3 flat(hips.x - goal.x, 0.0f, hips.z - goal.z);
+            if (arrived < 0.0f && math::length(flat) < 0.01f) {
+                arrived = time;
+                std::printf("  %.2f s plan hips within 1 cm of the goal\n", time);
+            }
+            const int foot = h.stepFoot();
+            if (foot >= 0 && std::getenv("CRICKET_TRACE"))
+                std::printf("    %.3f s foot %d share %.3f duration %.3f time left %.3f\n", time, foot,
+                            h.decider().step(foot).share(), h.decider().stepTiming(foot).duration,
+                            h.decider().step(foot).timeLeft(h.decider().stepTiming(foot)));
+            if (foot >= 0 && foot != lastFoot) std::printf("  %.2f s step %s starts\n", time, foot == 0 ? "L" : "R");
+            lastFoot = foot;
+            for (int f = 0; f < 2; ++f) {
+                if (!h.bodyQueue().landed[f]) continue;
+                const math::Vec3 spot = h.root().transformPoint(h.bodyQueue().landedSpot[f]);
+                std::printf("  %.2f s step %s lands: foot went %.1f cm along, hips %.1f cm along so far\n", time,
+                            f == 0 ? "L" : "R", 100.0f * math::dot(spot - ankle0[f], dir),
+                            100.0f * math::dot(hips - hips0, dir));
+            }
+        }
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        const math::Vec3 hips = h.root().transformPoint(math::Vec3(p[0][3]));
+        const math::Vec3 l = h.ankle(true, p, h.root()), r = h.ankle(false, p, h.root());
+        const math::Vec3 mid = 0.5f * (l + r);
+        std::printf("  end: hips %.1f cm along; hips from the feet's middle: along %.1f cm, across %.1f cm | dropped %s\n",
+                    100.0f * math::dot(hips - hips0, dir), 100.0f * math::dot(hips - mid, dir),
+                    100.0f * math::dot(hips - mid, math::cross(math::kUp, dir)), h.supported() ? "no" : "yes");
+        const motion::StepAdvice& a = h.bodyQueue().step;
+        const math::Vec3 cp = h.root().transformPoint(a.capturePoint);
+        std::printf("  end: capture point from the feet's middle along %.1f cm, outside the feet %.1f cm | ankles from "
+                    "the start along L %.1f R %.1f cm\n",
+                    100.0f * math::dot(cp - mid, dir), 100.0f * a.outside, 100.0f * math::dot(l - ankle0[0], dir),
+                    100.0f * math::dot(r - ankle0[1], dir));
+    }
+}

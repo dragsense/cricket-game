@@ -128,6 +128,30 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
     5-6 steps while held -> 0. Walking, limb test, reach shape unchanged.
   - Found: the run measure is chaotic (normalizing one quaternion moved the 5 m/s plan bob
     7.0 -> 11.1 cm): the running loop is not robust yet.
+- [x] **B2c Sync formula, part 1: the hips' path plans the step** (2026-11-15, the user's
+  design, DECISIONS "The sync formula"; awaiting the user's check in the game). A target
+  carries its path (`Target::pathEnd`, `pathLeft`; the limb test fills it for hips, hands,
+  feet). On a driven hips path the decider plans the step at the path's start from its end:
+  a step when the centre of mass there is out of the support; the foot lands as the hips
+  arrive (`pathStepTime`: the path's time left, no shorter than the hips' most speed or the
+  leg's swing); where the hips stop they end between the feet (`stopBlendSpeed` 0.3 m/s:
+  moving on, the capture point as before); a way past a step's reach is shared by more
+  steps. Measure `measure: hips pressed once*` (limb test hips, one press):
+  - fwd 0.20: foot lands 0.30 s, hips arrive 0.28 s (was no step); foot 42 cm, hips end
+    1.8 cm from the feet's middle (was 19.3);
+  - fwd 0.40: two steps, the last lands 0.40 s with the hips 0.40 s (was 0.62 vs 0.41);
+  - back 0.20: lands 0.31 s, hips 0.31 s (was 0.48 vs 0.31); foot 39 cm (was 17), hips
+    0.9 cm from the middle (was 12.3).
+  W, jog, run, limb test arrows, hand far ahead: unchanged (W bob 3.1 cm, pelvis turn 15.8
+  deg; jog 180/min, run 210/min). W's widest foot slide 5.5 cm at the stop (was 3.2):
+  the stopping step now ends with the hips between the feet.
+  Open: fwd 0.10 and left 0.15 take no step: the centre of mass stays inside the whole
+  foot's outline (toes 16 cm ahead of the ankle): the user's call (the usable support
+  may be smaller than the foot, limits of stability).
+- [ ] **B2d Sync formula, part 2: an active foot moves the hips** on its path (shift, side
+  drop, turn); 3: a hand's trunk within reach by research shares, derived hips step;
+  4: the head's small share; 5: clavicle bodies and muscles; 6: free arms relaxed
+  (physics). Plan agreed with the user 2026-11-15.
 - [ ] **B3 Reach**: how far the ball is decides step, hop / jump or dive (one push).
 
 - [x] **6.1 Action point and release** (the user: "feels better"; commit dbcbde0 has the

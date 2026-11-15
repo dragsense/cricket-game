@@ -734,6 +734,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.footHalfLength = dv("decider.balanceStep.footHalfLength", deciderSettings_.footHalfLength);
         deciderSettings_.footCentreAhead = dv("decider.balanceStep.footCentreAhead", deciderSettings_.footCentreAhead);
         deciderSettings_.landingBehind = dv("decider.balanceStep.landingBehind", deciderSettings_.landingBehind);
+        deciderSettings_.stopBlendSpeed = dv("decider.balanceStep.stopBlendSpeed", deciderSettings_.stopBlendSpeed);
         deciderSettings_.minFootGap = dv("decider.balanceStep.minFootGap", deciderSettings_.minFootGap);
         deciderSettings_.maxStepForward = dv("decider.balanceStep.maxStepForward", deciderSettings_.maxStepForward);
         deciderSettings_.maxStepSide = dv("decider.balanceStep.maxStepSide", deciderSettings_.maxStepSide);
@@ -870,6 +871,8 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         hand.mode = motion::TargetMode::Driven;
         hand.position = travel(handPath_, math::inverse(root_).transformPoint(posePosition_[g]),
                                left ? joints_.armL.end : joints_.armR.end);
+        hand.pathEnd = handPath_.to;
+        hand.pathLeft = std::max(0.0f, handPath_.duration - handPath_.time);
         turn(hand);
     } else {
         handPath_.on = false;
@@ -878,6 +881,8 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         // The hips go there (every direction) and turn, within the pelvis's range.
         t.hips.mode = motion::TargetMode::Driven;
         t.hips.position = travel(hipsPath_, math::inverse(root_).transformPoint(posePosition_[g]), joints_.pelvis);
+        t.hips.pathEnd = hipsPath_.to;
+        t.hips.pathLeft = std::max(0.0f, hipsPath_.duration - hipsPath_.time);
         t.hips.weightRotation = 0.0f;
         turn(t.hips);
     } else {
@@ -961,6 +966,8 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             // Above the ground: the foot is held up there (no weight on it).
             t.foot[f].mode = motion::TargetMode::Driven;
             t.foot[f].position = travel(footPath_, goal, ankle);
+            t.foot[f].pathEnd = footPath_.to;
+            t.foot[f].pathLeft = std::max(0.0f, footPath_.duration - footPath_.time);
             turn(t.foot[f]);
         }
     } else {

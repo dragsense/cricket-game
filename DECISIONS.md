@@ -745,3 +745,21 @@ Dated log. Format: decision, reason, alternatives rejected.
   showed the planned version stable (3 m/s 171/min, bob 8 cm; 5 m/s 189/min).
 - **Rejected:** per-tick swing timing (`runSwingTiming`) and its quintic re-plan; time floors;
   a run-only stride planner (the user: nothing specific in the decider).
+
+## 2026-11-15: The sync formula: every part follows an active target's path in its time
+- **Decision (the user's design):** an active target has a path (A to B, its time). Every
+  part that follows it gets its own A to B in the same time: same start, same end, its own
+  shape inside (a foot: the weight shift, then the swing's arc). One rule for every part;
+  several active targets: each gives its share on its own clock, the shares add up, the
+  balance correction runs on the combined pose. Active always wins.
+- **Steps:** a step happens when the hips' path (driven, derived from another target, or a
+  push) takes the centre of mass out of the support. Planned at the path's start (an
+  event), not each tick: the foot lands as the hips arrive. Where the hips stop they end
+  between the feet; moving on, the capture point (Hof 2005) as before, blended by the
+  hips' speed there (`stopBlendSpeed`; the mid-stance rule alone made steps alternate
+  long and short while walking). Part 1 built (PROGRESS B2c).
+- **Agreed for the next parts:** a hand within the arm's reach brings the trunk in by
+  research shares (from ~0.8-0.9 of the reach, smoothly); a clavicle body with muscles;
+  parts no target needs relaxed (passive joint stiffness only), physics moving them.
+- **Rejected:** the step on its own gait clock (it landed 0.2 s after the hips arrived);
+  stepping on every hips move (replaced by the centre of mass rule, the user's call).

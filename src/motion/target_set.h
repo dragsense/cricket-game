@@ -45,6 +45,12 @@ struct Target {
     static constexpr int kMaxDirections = 3;
     math::Vec3 directions[kMaxDirections]{};
     int directionCount = 0;
+    // Its path (the sync formula, the user's design 2026-11-15): where the
+    // planner takes it (it stops there) and the time left until it gets
+    // there; the body's parts that follow it get there in that time too.
+    // pathLeft negative: no path, the target goes on at its velocity.
+    math::Vec3 pathEnd{0.0f};
+    float pathLeft = -1.0f;
 };
 
 // The part of `v` (a way to the target, or its velocity) that the target

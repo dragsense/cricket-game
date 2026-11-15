@@ -85,6 +85,9 @@ struct StepAdvice {
     math::Vec3 capturePoint{0.0f};   // the extrapolated centre of mass now, on the ground
     math::Vec3 velocity{0.0f};       // m/s, the body's level motion it comes from
     float outside = 0.0f;            // m the capture point is out of the support (0: inside)
+    // s the step takes to land: the hips' path's time (the sync formula: the
+    // foot lands as the hips arrive); negative: the gait's for the speed.
+    float time = -1.0f;
 };
 
 struct BodyQueue {
@@ -189,6 +192,11 @@ struct BodyDeciderSettings {
     float landingBehind = 0.05f;    // m
     float minFootGap = 0.1f;        // m
     float maxStepForward = 0.6f, maxStepSide = 0.5f;  // m
+    // Where the hips stop (no speed there) the foot lands so they end between
+    // the feet (the user's rule: a normal stance); moving on, by the capture
+    // point. Blended by the hips' speed there, all the capture point's from
+    // this speed (m/s).
+    float stopBlendSpeed = 0.3f;
     // A foot left behind steps too: once, by the time a step could land, its
     // leg at its reach would hold the hips more than this below standing (m).
     float reachDrop = 0.04f;
@@ -326,9 +334,17 @@ private:
     // How far a ground point (character space) is out of the outline of
     // feet with their ankles at `ankles` (n of them; 0: inside).
     static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
-    // Where foot i lands for capture point `xcom` moving with `velocity`;
-    // `miss`: how far it stays from the ideal spot (crossing, reach).
-    math::Vec3 stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, const BodyDeciderSettings& s, float& miss) const;
+    // Where foot i lands for capture point `xcom` moving with `velocity`, the
+    // hips (centre of mass, on the ground) ending at `hipsEnd`; `miss`: how
+    // far it stays from the ideal spot (crossing, reach), `ideal` that spot,
+    // `beyondReach` whether a step's reach cut it short (more steps go on).
+    math::Vec3 stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd, const BodyDeciderSettings& s,
+                        float& miss, math::Vec3* ideal = nullptr, bool* beyondReach = nullptr) const;
+    // A step of foot i from `from` to `spot` on the hips target's path: the
+    // time it takes (the sync formula), `steps` steps sharing the way, the
+    // foot down for the share `liftAt` first; negative: no path.
+    float pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps, float liftAt,
+                       const BodyDeciderSettings& s) const;
     math::Vec3 centreOfMass(const Plan& p) const;
 
     // A hand's trunk: out of reach, the queue (by where the target is) and
@@ -459,6 +475,12 @@ private:
     bool springLeg_[2] = {false, false};
     bool footEvent_ = false;
     math::Vec3 lastGoalVelocity_{0.0f};
+    // The hips target's path last tick (its end, time left; negative: none):
+    // a new or moved path is an event (the swings are timed again).
+    math::Vec3 lastPathEnd_{0.0f};
+    float lastPathLeft_ = -1.0f;
+    // How many steps share the hips' path, for each foot's step under way.
+    int pathSteps_[2] = {1, 1};
     // The trunk's spring-damper: the pelvis's turn and its rate last tick,
     // the chest's turn against the pelvis and its rate (rad, rad/s).
     float lastPelvisYaw_ = 0.0f, lastPelvisRate_ = 0.0f;

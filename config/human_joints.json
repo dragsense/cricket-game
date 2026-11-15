@@ -234,6 +234,10 @@
       "footHalfLength": 0.11,
       "footCentreAhead": 0.05,
       "landingBehind": 0.05,
+      // Where the hips stop, the foot lands so they end between the feet (the
+      // user's rule, 2026-11-15); moving on, by the capture point. Blended by
+      // the hips' speed there: all the capture point's from this (m/s). [E]
+      "stopBlendSpeed": 0.3,
       "minFootGap": 0.1,
       "maxStepForward": 0.6,
       "maxStepSide": 0.5,
