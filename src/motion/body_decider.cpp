@@ -1377,18 +1377,16 @@ void BodyDecider::passiveHands(const bool free[2], float share, BodyQueue& out) 
 }
 
 void BodyDecider::levelHead(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {
-    // The head keeps the gaze level in the world, facing the chest's heading
-    // (head stabilisation, Pozzo et al. 1990), pulled by its passive share
-    // toward its own target (standing, facing the root's way); a driven head
-    // turns the given way by its blended weight (head, then neck).
+    // The head is stabilised in space (Pozzo et al. 1990, BIOMECHANICS 4):
+    // level in the world and facing the heading (the root's way: where the
+    // player looks), whatever the trunk below does (its turn, sway, lean);
+    // the neck takes the difference within its range. A driven head turns
+    // the given way by its blended weight (head, then neck).
     Plan& d = desired_;
     if (joints_.head < 0) return;
     const int parent = rig_->parent(joints_.head);
-    const int below = joints_.spine[2] >= 0 ? joints_.spine[2] : parent;
-    if (parent < 0 || below < 0) return;
-    const math::Vec3 f = planRot(d, below) * math::kForward;
-    math::Quat want = math::slerp(math::fromAxisAngle(math::kUp, std::atan2(f.x, f.z)) * restHead_, restHead_,
-                                  passiveShare(t.passive.head, s.passiveHead));
+    if (parent < 0) return;
+    math::Quat want = restHead_;
     if (act_[HeadW] > 0.0f) {
         const Target& head = given(t, HeadW);
         const float k = act_[HeadW] * std::clamp(head.weightRotation, 0.0f, 1.0f);

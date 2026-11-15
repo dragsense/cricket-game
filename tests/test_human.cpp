@@ -553,7 +553,7 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
         std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
         int lastFoot = -1, steps = 0;
         float lastPhase = 0.0f, slideAt = 0.0f;
-        Range sway, pelvisYawPlan, pelvisYawReal, chestYawReal;
+        Range sway, pelvisYawPlan, pelvisYawReal, chestYawReal, armPlan, armReal;
         double sumPC = 0.0, sumPP = 0.0, sumCC = 0.0;
         // A bone's turn about the vertical (deg) from its lateral axis, against
         // the same axis standing (character space: the facing stays fixed).
@@ -637,6 +637,15 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
                 pelvisYawPlan.add(pp);
                 pelvisYawReal.add(pr);
                 chestYawReal.add(cr);
+                // The left shoulder's swing fore-aft (deg, forward +): the upper arm from straight down.
+                auto swing = [&](const std::vector<math::Mat4>& m) {
+                    const math::Vec3 a(m[static_cast<size_t>(h.rig().findJoint("upper_arm_l"))][3]);
+                    const math::Vec3 b(m[static_cast<size_t>(h.rig().findJoint("forearm_l"))][3]);
+                    const math::Vec3 d = b - a;
+                    return math::degrees(std::atan2(math::dot(d, math::kForward), -d.y));
+                };
+                armPlan.add(swing(plan));
+                armReal.add(swing(real));
                 sumPC += pr * cr;
                 sumPP += pr * pr;
                 sumCC += cr * cr;
@@ -669,6 +678,7 @@ TEST_CASE("measure: balance steps for W A S D" * doctest::skip()) {
         std::printf("  turn (peak to peak): pelvis plan %.1f deg, real %.1f deg | chest real %.1f deg | chest with pelvis "
                     "%+.2f\n",
                     pelvisYawPlan.span(), pelvisYawReal.span(), chestYawReal.span(), corr);
+        std::printf("  left shoulder swing (peak to peak): plan %.1f deg, real %.1f deg\n", armPlan.span(), armReal.span());
     }
 }
 

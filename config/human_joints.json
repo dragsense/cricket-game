@@ -123,14 +123,12 @@
     // about the vertical: arm swing cuts the vertical ground reaction moment
     // by ~63 % in walking (Collins, Adamczyk & Kuo 2009).
     "armCancel": 0.63,
-    // Every one of the seven targets is always there (standing, moving with
-    // the root); one with a goal pulls fully, the others by their share here,
-    // the body's own motion (arm swing, level head, hips between the feet)
-    // the rest (the user's design 2026-11-09/10). Head: held firmly (the head
-    // is stabilised in space in walking, pitch only ~2-5 deg, Pozzo et al.
-    // 1990); hands: looser (the arms swing freely, ~15-30 deg at the
-    // shoulder, Collins et al. 2009). Feet on the ground stay put (100 %).
-    "passiveInfluence": { "head": 0.9, "hands": 0.5, "hips": 0.0, "chest": 0.5 },
+    // Parts without a goal (2026-11-15, the user's design): no fixed pull;
+    // the decider's own mechanics move them (arms: pendulum + cancelling the
+    // body's turn; chest: upright, turned through the trunk's spring-damper;
+    // head: level, facing the heading, a reflex, Pozzo et al. 1990; hips over
+    // the support). An action may still give its own shares (0..1).
+    "passiveInfluence": { "hands": 0.0, "hips": 0.0, "chest": 0.0 },
     // Where research measured the split, it replaces the place share: in a
     // forward bend the lumbar spine (spine_01) and the hips (pelvis tilt) move
     // together, lumbar : hip ratio per band of trunk flexion (upper bound,

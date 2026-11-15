@@ -4,7 +4,7 @@
   "walk": {
     "speed": 0.9,           // m/s at full input (calm walk: ~0.45 m steps at ~120 steps/min)
     "backSpeed": 0.9,       // m/s walking backward (S)
-    "sideSpeed": 0.8,       // m/s sidestepping (A/D)
+    "sideSpeed": 0.55,      // m/s sidestepping (A/D); the side shuffle keeps up to about (maxStep - minFootGap) / (2 x step time) ~0.62 m/s (was 0.8: the hips ran ahead)
     "acceleration": 5.0,    // m/s^2; full speed within the first step (full-size steps at once)
     "deceleration": 5.0,    // m/s^2; stops within about one step
     "turnRateDeg": 180,     // per second
@@ -56,10 +56,9 @@
     "stepHeight": 0.1,       // m ankle apex: the knee bends, the heel rises (was 0.2, the user: the foot lifts too high)
     "toeClearance": 0.012,   // m, a lifted foot's lowest point above the ground at least (minimum toe clearance 1.1-1.3 cm, Winter; BIOMECHANICS 4.5)
     "swingPeakAt": 0.35,     // apex early in the swing (heel up first, toes low at landing)
-    // The walk's passive shares (0..1): how far each part without a goal goes
-    // back to its own target while stepping (were human_joints.json
-    // decider.passiveInfluence, which stays for standing).
-    "passive": { "head": 0.9, "hands": 0.5, "hips": 0.0, "chest": 0.5 },
+    // A step's passive shares (0..1): none (2026-11-15): the decider's own
+    // mechanics move the parts without a goal (human_joints.json decider).
+    "passive": { "hands": 0.0, "hips": 0.0, "chest": 0.0 },
     // E / Q change the pace by this factor per press (within speedMin..speedMax
     // times the steps above). Faster walking takes both longer and quicker
     // steps (step length and cadence each grow with about the square root of

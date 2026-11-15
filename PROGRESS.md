@@ -49,6 +49,15 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   +1.00 locked to the pelvis). Real: chest 12 deg slow to 6 fast, timing -20 to -150 deg.
   Also seen over 4.5 s: A/D at 0.8 m/s the hips run 52 cm ahead, chest lean 19 deg (the
   side shuffle's limit, see B1).
+- [x] **B1c-3 No fixed passive shares** (the user's design): `passiveInfluence` and
+  `step.passive` hands, chest, hips 0; the head is a reflex (level, facing the heading,
+  Pozzo 1990), no share. The arms swing by their pendulum and the turn-cancel alone:
+  left shoulder 36 deg peak to peak walking at 0.9 m/s (was 18; real 30-40). Limb test:
+  feet unchanged, hands within ~1 cm of before. `walk.sideSpeed` 0.8 -> 0.55 (the side
+  shuffle's limit): over 4.5 s of A the hips 39 cm ahead (was 52), chest lean 8 deg (was
+  19). Still open: the stepping test's chest lean 10.4 deg (was 2.9) in its W-then-A run;
+  the lean comes in the side shuffle; not yet split between the shuffle's lag and the
+  bigger arm swing.
 - [ ] **B1c Shares from the targets** (the rest): passive config shares to 0;
   a stepping foot turns the pelvis (not pushing it on: the hips target already does), the
   pelvis's turn turns the chest back, the arms cancel; posture (chest upright, head level)
