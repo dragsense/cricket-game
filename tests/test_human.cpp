@@ -879,7 +879,7 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                                           (*h.bodyQueue().plan)[static_cast<size_t>(ankleR)][3].y);
         int steps = 0, lastFoot = -1, flight = 0, ticks = 0, contacts = 0;
         float lastPhase = 0.0f, stepLen = 0.0f, contactTime = 0.0f, landedAt[2] = {-1.0f, -1.0f};
-        Range bob, lead, planLead, speed, runShare, realY, realAll;
+        Range bob, lead, planLead, speed, realY, realAll;
         math::Vec3 lastHips(0.0f), lastLanding(0.0f);
         bool have = false, dropped = false, landedOnce = false;
         for (int i = 0; i < 540; ++i) {
@@ -950,10 +950,10 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                 auto at = [&](const char* j) { return math::Vec3(plan[static_cast<size_t>(h.rig().findJoint(j))][3]); };
                 const float lenL = math::distance(at("thigh_l"), at("foot_l")), lenR = math::distance(at("thigh_r"), at("foot_r"));
                 std::printf("  t %.3f pelvis %.3f | ankle L %.3f R %.3f | leg L %.3f R %.3f | ankle z L %+.2f R %+.2f hips z "
-                            "%+.2f | step foot %d %.2f | landed %d%d | run %.2f\n",
+                            "%+.2f | step foot %d %.2f | landed %d%d\n",
                             time, plan[0][3].y, at("foot_l").y, at("foot_r").y, lenL, lenR, at("foot_l").z, at("foot_r").z,
                             plan[0][3].z, h.stepFoot(), h.stepPhase(), h.bodyQueue().landed[0] ? 1 : 0,
-                            h.bodyQueue().landed[1] ? 1 : 0, h.runShare());
+                            h.bodyQueue().landed[1] ? 1 : 0);
                 const math::Vec3 hp(plan[0][3]);
                 for (int f = 0; f < 2; ++f) {
                     const motion::StepPlanner& sp = h.decider().step(f);
@@ -966,7 +966,6 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
                 }
             }
             if (!steady) continue;
-            runShare.add(h.runShare());
             ++ticks;
             const float ground = std::min(plan[static_cast<size_t>(ankleL)][3].y, plan[static_cast<size_t>(ankleR)][3].y);
             if (ground > standAnkle + 0.03f) ++flight;  // both ankles off the ground (3 cm above standing)
@@ -985,10 +984,10 @@ TEST_CASE("measure: jog and run" * doctest::skip()) {
             have = true;
         }
         const float seconds = ticks * kDt;
-        std::printf("pace %d (run share %.2f..%.2f): %d steps in %.1f s = %.0f steps/min, step %.2f m | contact %.3f s | "
+        std::printf("pace %d: %d steps in %.1f s = %.0f steps/min, step %.2f m | contact %.3f s | "
                     "flight %.0f %% | plan hips bob %.1f cm | hips ahead of the feet %.0f .. %.0f cm | real speed %.2f .. "
                     "%.2f m/s | dropped %s\n",
-                    pace, runShare.lo, runShare.hi, steps, seconds, seconds > 0 ? 60.0f * steps / seconds : 0.0f,
+                    pace, steps, seconds, seconds > 0 ? 60.0f * steps / seconds : 0.0f,
                     steps ? stepLen / steps : 0.0f, contacts ? contactTime / contacts : 0.0f,
                     ticks ? 100.0f * flight / ticks : 0.0f, 100.0f * bob.span(), 100.0f * lead.lo, 100.0f * lead.hi, speed.lo,
                     speed.hi, dropped ? "yes" : "no");
@@ -1685,10 +1684,10 @@ TEST_CASE("measure: gaits by speed" * doctest::skip()) {
         const float speed = tEnd > tStart ? math::dot(hipsEnd - hipsStart, fwd) / (tEnd - tStart) : 0.0f;
         const float cadence = lands > 1 && lastLand > firstLand ? 60.0f * (lands - 1) / (lastLand - firstLand) : 0.0f;
         std::printf("%-8s speed %.2f m/s | %3.0f steps/min, step %.2f m | contact %.2f s | flight %2.0f %% | bob plan %.1f real "
-                    "%.1f cm | chest lean %.1f deg | foot slide %.1f cm | run share %.2f | dropped %s\n",
+                    "%.1f cm | chest lean %.1f deg | foot slide %.1f cm | dropped %s\n",
                     c.name, speed, cadence, lands > 1 ? stepSum / (lands - 1) : 0.0f, contacts ? contactSum / contacts : 0.0f,
                     ticks ? 100.0f * flight / ticks : 0.0f, 100.0f * bobPlan.span(), 100.0f * bobReal.span(), chest,
-                    100.0f * slide, h.runShare(), dropped ? "yes" : "no");
+                    100.0f * slide, dropped ? "yes" : "no");
     }
 }
 
