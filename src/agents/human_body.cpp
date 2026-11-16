@@ -11,13 +11,6 @@ namespace {
 
 math::Vec3 axisVec(int axis) { return axis == 0 ? math::kRight : axis == 1 ? math::kUp : math::kForward; }
 
-// The two swing axes beside the twist axis, in x, y, z order (as
-// ik::clampRotation reads swing1 / swing2).
-void swingAxes(int twist, int& first, int& second) {
-    first = twist == 0 ? 1 : 0;
-    second = twist == 2 ? 1 : 2;
-}
-
 // The bone's shape on its body: Jolt description (shape, size, mass) and its
 // pose in the bone's frame (character axes at rest), metres.
 physics::BodyDesc shapeFor(const rig::BoneVisual& v, float h, math::Transform& local) {
@@ -57,8 +50,11 @@ float valueOf(const std::vector<std::pair<std::string, float>>& list, const std:
     return 0.0f;
 }
 
-// Jolt's swing limits are symmetric (half cones) and at most a half turn.
-float halfRange(float lo, float hi) { return std::clamp(0.5f * (hi - lo), 0.0f, math::kPi); }
+// A rotation given in a joint's frame (columns x, y, z) in the bone's frame.
+math::Quat fromFrame(math::Quat q, math::Vec3 x, math::Vec3 y, math::Vec3 z) {
+    const math::Vec3 v = q.x * x + q.y * y + q.z * z;
+    return math::Quat(q.w, v.x, v.y, v.z);
+}
 
 } // namespace
 
@@ -105,53 +101,28 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         p.halfExtents = r.body.halfExtents;
         if (parentPart >= 0) {
             // Its joint, in the world as built (at rest every bone frame has
-            // the character's axes). Jolt's joint frame: X twist, Y normal,
-            // Z plane; the part's frame is the joint's rest frame, the
-            // parent's is turned to the middle of each swing range.
+            // the character's axes): Jolt SixDOF in the plan's own frame and
+            // ranges (ik::limitFrame, the joint's rest frame on both bodies),
+            // so Jolt's clamp is the plan's (ik::clampRotation).
             r.pivot = root.transformPoint(math::Vec3(models[static_cast<size_t>(j)][3]));
             const ik::JointLimit& lim = limits.limit(j);
-            math::Vec3 x = math::kRight, y = math::kUp;
-            math::Quat centre = math::identityQuat();
-            if (lim.type == ik::LimitType::Hinge) {
-                x = axisVec(lim.axis);
-                y = axisVec((lim.axis + 1) % 3);
-                r.twistMin = lim.twistMin;
-                r.twistMax = lim.twistMax;
-                p.hinge = true;  // both swings locked (0)
-            } else if (lim.type == ik::LimitType::SwingTwist) {
-                int a1 = 0, a2 = 0;
-                swingAxes(lim.axis, a1, a2);
-                x = axisVec(lim.axis);
-                y = axisVec(a1);
-                // Z = X x Y: the second swing axis or its opposite (then its range flips).
-                const bool flip = math::dot(math::cross(x, y), axisVec(a2)) < 0.0f;
-                const float zMin = flip ? -lim.swing2Max : lim.swing2Min, zMax = flip ? -lim.swing2Min : lim.swing2Max;
-                r.twistMin = lim.twistMin;
-                r.twistMax = lim.twistMax;
-                r.planeHalfCone = halfRange(lim.swing1Min, lim.swing1Max);  // swing about Y
-                r.normalHalfCone = halfRange(zMin, zMax);                   // swing about Z
-                centre = math::fromAxisAngle(y, 0.5f * (lim.swing1Min + lim.swing1Max)) *
-                         math::fromAxisAngle(math::cross(x, y), 0.5f * (zMin + zMax));
-            } else {  // free
-                r.twistMin = -math::kPi;
-                r.twistMax = math::kPi;
-                r.planeHalfCone = r.normalHalfCone = math::kPi;
-            }
-            const math::Vec3 z = math::cross(x, y);
-            r.twistAxis2 = root.transformDirection(x);
-            r.planeAxis2 = root.transformDirection(z);
-            r.twistAxis1 = root.transformDirection(centre * x);
-            r.planeAxis1 = root.transformDirection(centre * z);
-            p.frameX = x;
-            p.frameY = y;
-            p.frameZ = z;
+            const ik::LimitFrame f = ik::limitFrame(lim);
+            r.axisX = root.transformDirection(f.x);
+            r.axisY = root.transformDirection(f.y);
+            r.minAngles = f.min;
+            r.maxAngles = f.max;
+            p.hinge = lim.type == ik::LimitType::Hinge;
+            p.frameX = f.x;
+            p.frameY = f.y;
+            p.frameZ = f.z;
+            const math::Vec3 x = f.x, y = f.y, z = f.z;
             const float strength = valueOf(muscles.maxTorque, bone.name);
             r.motor.frequency = frequency;
             r.motor.damping = muscles.damping;
             r.motor.maxTorque = strength;  // 0: no muscle (the joint hangs free)
             p.muscle = strength > 0.0f;
-            // Two muscles about one axis: which Jolt axis it is (twist X,
-            // normal Y, plane Z of the part's frame) and which way is +.
+            // Two muscles about one axis: which axis of the joint's frame it
+            // is (X, Y, Z) and which way is +.
             const std::string base = baseName(bone.name);
             for (const MuscleSettings::Directional& d : muscles.directional) {
                 if (d.bone != base || !p.muscle) continue;
@@ -174,6 +145,19 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         ragdoll.push_back(r);
         totalMass_ += p.mass;
     }
+    // A range set by another joint's angle (ik::LimitCoupling): the part
+    // whose joint is that one, read from the physics body each tick.
+    for (Part& p : parts_) {
+        const int cj = p.parent >= 0 ? limits.limit(p.joint).coupling.joint : -1;
+        if (cj < 0) continue;
+        const int cp = partOf_[static_cast<size_t>(cj)];
+        if (cp < 0 || rig.parent(cj) < 0 || partOf_[static_cast<size_t>(rig.parent(cj))] != parts_[static_cast<size_t>(cp)].parent) {
+            LOG_WARN("human body: {}'s range follows {}, which has no joint of its own", rig.jointName(p.joint),
+                     rig.jointName(cj));
+            continue;
+        }
+        p.coupledPart = cp;
+    }
     // Each muscle's stiffness from what it moves: the inertia of every part
     // beyond its joint, about the joint (each part as a point mass at its
     // centre, as built), at the activation frequency: K = I (2 pi f)^2,
@@ -191,6 +175,7 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         ragdoll[i].motor.damping = 2.0f * std::sqrt(ragdoll[i].motor.stiffness * inertia[i]) * muscles.damping;
     }
     std::vector<physics::BodyId> bodies;
+    limits_ = &limits;
     ragdoll_ = world.createRagdoll(ragdoll, group, bodies);
     if (ragdoll_ == physics::kInvalidRagdoll || bodies.size() != parts_.size()) {
         parts_.clear();
@@ -235,15 +220,36 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
     world.setRagdollHold(ragdoll_, hold_.data(), static_cast<int>(hold_.size()));
 }
 
+ik::JointLimit HumanBody::limitNow(const physics::PhysicsWorld& world, int part) const {
+    const Part& p = parts_[static_cast<size_t>(part)];
+    const ik::JointLimit& lim = limits_->limit(p.joint);
+    if (p.coupledPart < 0) return lim;
+    // The coupled joint's angle in the real body (its rotation in its joint's
+    // frame, back in its bone's frame), mapped as JointLimits::limitIn.
+    const Part& c = parts_[static_cast<size_t>(p.coupledPart)];
+    const math::Quat local = fromFrame(world.ragdollJointRotation(ragdoll_, p.coupledPart), c.frameX, c.frameY, c.frameZ);
+    return ik::coupledLimit(lim, ik::hingeAngle(local, limits_->limit(c.joint)));
+}
+
 void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
                           int headJoint) const {
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         if (p.parent < 0) continue;
+        if (p.coupledPart >= 0) {
+            const ik::LimitFrame f = ik::limitFrame(limitNow(world, static_cast<int>(i)));
+            world.setRagdollJointLimits(ragdoll_, static_cast<int>(i), f.min, f.max);
+        }
         const math::Quat child = partPose(static_cast<int>(i), models).rotation;
         if (p.joint == headJoint) {
-            const math::Quat realParent = world.transform(parts_[static_cast<size_t>(p.parent)].body).rotation;
-            rotations_[i] = math::normalize(math::inverse(realParent) * (root.rotation * child));
+            // Held in space from the real body below, within the head's range
+            // (the same clamp the plan's head has).
+            const Part& up = parts_[static_cast<size_t>(p.parent)];
+            const math::Quat realParent = world.transform(up.body).rotation;
+            const math::Quat rel = math::normalize(math::inverse(realParent) * (root.rotation * child));
+            const math::Quat local = ik::clampRotation(up.shape.rotation * rel * math::inverse(p.shape.rotation),
+                                                       limitNow(world, static_cast<int>(i)));
+            rotations_[i] = math::normalize(math::inverse(up.shape.rotation) * local * p.shape.rotation);
         } else {
             rotations_[i] = math::inverse(partPose(p.parent, models).rotation) * child;
         }

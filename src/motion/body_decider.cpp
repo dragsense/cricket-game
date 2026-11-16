@@ -291,6 +291,25 @@ void BodyDecider::limitJoint(int j, float rate, float dt) {
     if (j < 0) return;
     math::Quat& o = output_.pose.locals[static_cast<size_t>(j)].rotation;
     o = limitTurn(o, desired_.pose.locals[static_cast<size_t>(j)].rotation, rate, dt);
+    clampJoint(output_, j);
+}
+
+bool BodyDecider::clampJoint(Plan& p, int j) const {
+    if (!limits_ || j < 0) return false;
+    math::Quat& local = p.pose.locals[static_cast<size_t>(j)].rotation;
+    const math::Quat held = ik::clampRotation(math::normalize(local), limits_->limitIn(j, p.pose));
+    const bool moved = math::angleBetween(held, local) > kMinAngle;
+    local = held;
+    return moved;
+}
+
+void BodyDecider::clampLimb(Plan& p, int e, const int* joints, int count, math::Vec3 aim) {
+    bool moved = false;
+    for (int k = 0; k < count; ++k) moved = clampJoint(p, joints[k]) || moved;
+    refresh(p, joints[0]);
+    if (&p != &output_) return;
+    const int end = e < 2 ? joints_.arms[e].end : joints_.legs[e - 2].end;
+    rangeMiss_[e] = moved && end >= 0 ? math::distance(planPos(p, end), aim) : 0.0f;
 }
 
 math::Vec3 BodyDecider::planCentreOfMass() const { return centreOfMass(desired_); }
@@ -361,7 +380,10 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
     if (!rig_) return;
     if (!seeded_) seed(rig_->restPose());
     out.plan = &output_.models;
-    for (int e = 0; e < kEnds; ++e) trunkFirst_[e] = trunkEnd_[e] = -1;
+    for (int e = 0; e < kEnds; ++e) {
+        trunkFirst_[e] = trunkEnd_[e] = -1;
+        rangeMiss_[e] = 0.0f;
+    }
 
     // The decider's own steps: each stepping foot's target over time (Start:
     // the weight shifts off it, Up: the swing, Land: pinned on its spot) in
@@ -1049,7 +1071,13 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
                 thigh = limitTurn(prevThigh, thigh, s.legMaxRate, t.dt);
                 shin = limitTurn(prevShin, shin, s.legMaxRate, t.dt);
             }
-            refresh(p, leg.start);
+            // A lifted leg within its ranges (short of its target if they
+            // stop it). A grounded one keeps its foot pinned (a foot never
+            // slides): its hip and knee are the pelvis's and the anchor's,
+            // which the hips' bounds keep within reach and the knee's bend.
+            const int chain[2] = {leg.start, leg.mid};
+            if (grounded_[i]) refresh(p, leg.start);
+            else clampLimb(p, 2 + i, chain, 2, target);
         }
         // The foot: flat on its ground, or as given, within the ankle's range.
         math::Quat footLocal = math::normalize(math::inverse(planRot(p, leg.mid)) * footRot);
@@ -1086,8 +1114,10 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
                     if (j < 0) continue;
                     math::Quat& o = p.pose.locals[static_cast<size_t>(j)].rotation;
                     o = limitTurn(o, desired_.pose.locals[static_cast<size_t>(j)].rotation, s.limbMaxRate, t.dt);
+                    clampJoint(p, j);
                 }
                 refresh(p, joints_.clavicles[h] >= 0 ? joints_.clavicles[h] : arm.start);
+                rangeMiss_[h] = 0.0f;
             }
             continue;
         }
@@ -1120,7 +1150,8 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
                 upper = limitTurn(prevUpper, upper, s.limbMaxRate, t.dt);
                 fore = limitTurn(prevFore, fore, s.limbMaxRate, t.dt);
             }
-            refresh(p, arm.start);
+            const int chain[2] = {arm.start, arm.mid};
+            clampLimb(p, h, chain, 2, target);
         }
         // The hand's rotation, as given, within the wrist's range.
         if (arm.end >= 0) {
@@ -1205,7 +1236,7 @@ void BodyDecider::report(const TargetSet& t, const BodyDeciderSettings& s, BodyQ
         }
         const math::Vec3 from = planPos(output_, root);
         const float reach = limbReach(e, s);
-        r.shortfall = std::max(0.0f, math::distance(from, target) - reach);
+        r.shortfall = std::max({0.0f, math::distance(from, target) - reach, rangeMiss_[e]});
         r.reached = r.shortfall <= 1e-3f;
         r.direction = math::safeNormalize(target - planPos(output_, end));
     }
@@ -1851,8 +1882,16 @@ void BodyDecider::freeArms(const TargetSet& t, const BodyDeciderSettings& s, Bod
         for (int j : {joints_.clavicles[h], c.mid, c.end})
             if (j >= 0) d.pose.locals[static_cast<size_t>(j)].rotation = rest.locals[static_cast<size_t>(j)].rotation;
         math::Quat& shoulder = d.pose.locals[static_cast<size_t>(c.start)].rotation;
-        shoulder = rest.locals[static_cast<size_t>(c.start)].rotation * math::fromAxisAngle(math::kRight, -armAngle_[h]);
-        if (limits_) shoulder = ik::clampRotation(math::normalize(shoulder), limits_->limitIn(c.start, d.pose));
+        const math::Quat restShoulder = rest.locals[static_cast<size_t>(c.start)].rotation;
+        shoulder = restShoulder * math::fromAxisAngle(math::kRight, -armAngle_[h]);
+        if (limits_) {
+            // At its range the arm stops (its swing is the angle it has, so
+            // it never winds on past the range and comes round the other way).
+            shoulder = ik::clampRotation(math::normalize(shoulder), limits_->limitIn(c.start, d.pose));
+            math::Quat swing = math::normalize(math::inverse(restShoulder) * shoulder);
+            if (swing.w < 0.0f) swing = -swing;
+            armAngle_[h] = -2.0f * std::atan2(swing.x, swing.w);
+        }
         refresh(d, joints_.clavicles[h] >= 0 ? joints_.clavicles[h] : c.start);
         markPlanned(c.start, out);
         markPlanned(c.mid, out);

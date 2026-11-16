@@ -150,7 +150,7 @@ if(CRICKET_BUILD_TESTS)
     target_compile_definitions(motion_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")
     add_test(NAME motion_tests COMMAND motion_tests)
 
-    add_executable(agents_tests tests/test_main.cpp tests/test_human.cpp
+    add_executable(agents_tests tests/test_main.cpp tests/test_human.cpp tests/test_joint_clamp.cpp
         src/agents/human.cpp src/agents/human_body.cpp)
     target_link_libraries(agents_tests PRIVATE cricket_ik cricket_motion cricket_physics doctest::doctest)
     target_include_directories(agents_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

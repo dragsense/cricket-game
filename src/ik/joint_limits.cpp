@@ -110,60 +110,177 @@ JointLimit coupledLimit(const JointLimit& limit, float angle) {
     return out;
 }
 
+LimitFrame limitFrame(const JointLimit& lim) {
+    LimitFrame f;
+    if (lim.type == LimitType::Free) {
+        f.min = math::Vec3(-math::kPi);
+        f.max = math::Vec3(math::kPi);
+        return f;
+    }
+    f.x = unitAxis(lim.axis);
+    if (lim.type == LimitType::Hinge) {
+        f.y = unitAxis((lim.axis + 1) % 3);
+        f.z = math::cross(f.x, f.y);
+        f.min = math::Vec3(lim.twistMin, 0.0f, 0.0f);
+        f.max = math::Vec3(lim.twistMax, 0.0f, 0.0f);
+    } else {
+        f.y = unitAxis(swingAxis1(lim.axis));
+        f.z = math::cross(f.x, f.y);
+        const bool flip = math::dot(f.z, unitAxis(swingAxis2(lim.axis))) < 0.0f;
+        f.min = math::Vec3(lim.twistMin, lim.swing1Min, flip ? -lim.swing2Max : lim.swing2Min);
+        f.max = math::Vec3(lim.twistMax, lim.swing1Max, flip ? -lim.swing2Min : lim.swing2Max);
+    }
+    for (int a = 0; a < 3; ++a) {
+        f.min[a] = std::clamp(f.min[a], -math::kPi, math::kPi);
+        f.max[a] = std::clamp(f.max[a], -math::kPi, math::kPi);
+    }
+    return f;
+}
+
+namespace {
+
+// One axis's range as Jolt's SwingTwistConstraintPart::SetLimits keeps it:
+// locked within half a degree of 0, free past 179.5 deg each way, else the
+// sine and cosine of its half angles.
+struct AxisRange {
+    bool locked = false;
+    float halfMin = 0.0f, halfMax = 0.0f;  // half angles
+    float sinMin = 0.0f, sinMax = 0.0f, cosMin = 1.0f, cosMax = 1.0f;
+};
+
+AxisRange axisRange(float lo, float hi) {
+    const float kLocked = math::radians(0.5f), kFree = math::radians(179.5f);
+    AxisRange r;
+    r.halfMin = 0.5f * lo;
+    r.halfMax = 0.5f * hi;
+    if (lo > -kLocked && hi < kLocked) {
+        r.locked = true;
+    } else if (lo < -kFree && hi > kFree) {
+        r.sinMin = -1.0f;
+        r.sinMax = 1.0f;
+        r.cosMin = r.cosMax = 0.0f;
+    } else {
+        r.sinMin = std::sin(r.halfMin);
+        r.sinMax = std::sin(r.halfMax);
+        r.cosMin = std::cos(r.halfMin);
+        r.cosMax = std::cos(r.halfMax);
+    }
+    return r;
+}
+
+// Jolt's sDistanceToMinShorter: outside the range, the nearer side by the
+// sine of the half angle (a full turn apart: the other way round).
+bool minIsNearer(float dMin, float dMax) {
+    dMin = std::abs(dMin);
+    if (dMin > 1.0f) dMin = 2.0f - dMin;
+    dMax = std::abs(dMax);
+    if (dMax > 1.0f) dMax = 2.0f - dMax;
+    return dMin < dMax;
+}
+
+// A one-axis part (the twist's x, or a swing's y or z with the other swing
+// axis locked) held to its range; true if it moved. `c` is the part's w.
+bool clampOne(const AxisRange& r, float& s, float& c) {
+    const float dMin = r.sinMin - s, dMax = s - r.sinMax;
+    if (dMin <= 0.0f && dMax <= 0.0f) return false;
+    if (minIsNearer(dMin, dMax)) {
+        s = r.sinMin;
+        c = r.cosMin;
+    } else {
+        s = r.sinMax;
+        c = r.cosMax;
+    }
+    return true;
+}
+
+} // namespace
+
 math::Quat clampRotation(math::Quat q, const JointLimit& lim) {
     if (lim.type == LimitType::Free) return q;
     q = math::normalize(q);
-    if (q.w < 0.0f) q = -q;
-
-    const math::Vec3 axis = unitAxis(lim.axis);
-    math::Quat swing, twist;
-    math::swingTwist(q, axis, swing, twist);
-
-    float t = std::clamp(twistAngle(twist, axis), lim.twistMin, lim.twistMax);
-    math::Quat clampedTwist = math::fromAxisAngle(axis, t);
-    if (lim.type == LimitType::Hinge) return clampedTwist;
-
-    // Swing-twist: measured and clamped the way Jolt's SixDOF joint does
-    // (pyramid swing; the physics body uses the same ranges, so both read
-    // them alike). Joint frame: X = the twist axis, Y = the first swing axis,
-    // Z = X x Y (the second swing axis, or its opposite: then its range flips).
-    const math::Vec3 fx = axis, fy = unitAxis(swingAxis1(lim.axis)), fz = math::cross(fx, fy);
-    const bool flip = math::dot(fz, unitAxis(swingAxis2(lim.axis))) < 0.0f;
-    const float zMin = flip ? -lim.swing2Max : lim.swing2Min, zMax = flip ? -lim.swing2Min : lim.swing2Max;
+    const LimitFrame f = limitFrame(lim);
     const math::Vec3 v(q.x, q.y, q.z);
-    const float w = q.w, x = math::dot(v, fx), y = math::dot(v, fy), z = math::dot(v, fz);
+    const float w = q.w, x = math::dot(v, f.x), y = math::dot(v, f.y), z = math::dot(v, f.z);
 
     // q = swing * twist, twist about X (Jolt's Quat::GetSwingTwist).
+    float tx = 0.0f, tw = 1.0f, sy = y, sz = z, sw = w;
     const float s = std::sqrt(w * w + x * x);
-    float tx = 0.0f, tw = 1.0f, sy = y, sz = z, sw = 0.0f;
-    if (s > 1e-7f) {
+    if (s != 0.0f) {
         tx = x / s;
         tw = w / s;
         sy = (w * y - x * z) / s;
         sz = (w * z + x * y) / s;
         sw = s;
     }
-    // Twist: its angle clamped to its range.
-    const float twistHalf = std::clamp(std::atan2(tx, tw), 0.5f * lim.twistMin, 0.5f * lim.twistMax);
-    tx = std::sin(twistHalf);
-    tw = std::cos(twistHalf);
-    // Swing (pyramid): the angle about Y then Z, each clamped to its range,
-    // and the swing rebuilt from them (Jolt's ClampSwingTwist).
-    const float hy = std::atan2(sy, sw), hz = std::atan2(sz, sw);
-    const float cy = std::clamp(hy, 0.5f * lim.swing1Min, 0.5f * lim.swing1Max);
-    const float cz = std::clamp(hz, 0.5f * zMin, 0.5f * zMax);
-    if (cy != hy || cz != hz) {
-        sy = std::sin(cy) * std::cos(cz);
-        sz = std::cos(cy) * std::sin(cz);
-        sw = std::cos(cy) * std::cos(cz);
-        const float n = std::sqrt(sy * sy + sz * sz + sw * sw);
-        sy /= n;
-        sz /= n;
-        sw /= n;
+    // Jolt's ClampSwingTwist, both parts with w >= 0.
+    const bool negSwing = sw < 0.0f, negTwist = tw < 0.0f;
+    if (negSwing) {
+        sy = -sy;
+        sz = -sz;
+        sw = -sw;
+    }
+    if (negTwist) {
+        tx = -tx;
+        tw = -tw;
+    }
+    const AxisRange rx = axisRange(f.min.x, f.max.x), ry = axisRange(f.min.y, f.max.y), rz = axisRange(f.min.z, f.max.z);
+    bool clamped = false;
+    if (rx.locked) {
+        clamped = tx != 0.0f;
+        tx = 0.0f;
+        tw = 1.0f;
+    } else {
+        clamped = clampOne(rx, tx, tw);
+    }
+    if (ry.locked && rz.locked) {
+        clamped = clamped || sy != 0.0f || sz != 0.0f;
+        sy = sz = 0.0f;
+        sw = 1.0f;
+    } else if (ry.locked || rz.locked) {
+        // One swing axis: the locked one's part goes, the other keeps its
+        // range (a clamped part is set to its bound, else kept as it is).
+        float& off = ry.locked ? sy : sz;
+        float& on = ry.locked ? sz : sy;
+        const bool offClamped = off != 0.0f;
+        float c = sw;
+        if (clampOne(ry.locked ? rz : ry, on, c)) {
+            off = 0.0f;
+            sw = c;
+            clamped = true;
+        } else if (offClamped) {
+            off = 0.0f;
+            sw = std::sqrt(std::max(0.0f, 1.0f - on * on));
+            clamped = true;
+        }
+    } else {
+        // Pyramid: the half angle about Y and about Z, each to its range,
+        // the swing rebuilt from them without a twist part.
+        const float hy = std::atan2(sy, sw), hz = std::atan2(sz, sw);
+        const float cy = std::clamp(hy, ry.halfMin, ry.halfMax), cz = std::clamp(hz, rz.halfMin, rz.halfMax);
+        if (cy != hy || cz != hz) {
+            sy = std::sin(cy) * std::cos(cz);
+            sz = std::cos(cy) * std::sin(cz);
+            sw = std::cos(cy) * std::cos(cz);
+            const float n = std::sqrt(sy * sy + sz * sz + sw * sw);
+            sy /= n;
+            sz /= n;
+            sw /= n;
+            clamped = true;
+        }
+    }
+    if (!clamped) return q;
+    if (negSwing) {
+        sy = -sy;
+        sz = -sz;
+        sw = -sw;
+    }
+    if (negTwist) {
+        tx = -tx;
+        tw = -tw;
     }
     // swing * twist, back from the joint frame.
-    const float rw = sw * tw, rx = sw * tx, ry = sy * tw + sz * tx, rz = sz * tw - sy * tx;
-    const math::Vec3 r = rx * fx + ry * fy + rz * fz;
+    const float rw = sw * tw, qx = sw * tx, qy = sy * tw + sz * tx, qz = sz * tw - sy * tx;
+    const math::Vec3 r = qx * f.x + qy * f.y + qz * f.z;
     return math::normalize(math::Quat(rw, r.x, r.y, r.z));
 }
 

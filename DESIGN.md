@@ -323,8 +323,11 @@ Decider (`motion::BodyDecider`; knows no action; never reads the physics body pe
      last tick; hard constraint: pelvis below every
      grounded leg's reach; grounded legs solved last on the output pelvis
         ▼
-Muscles (`agents::HumanBody`): holdWeight x strength, Jolt Ragdoll::DriveToPoseUsingMotors
-   toward the output pose (head world-stabilised from the real chest), torque limits x strength
+Muscles (`agents::HumanBody`): Jolt SixDOF joints with the plan's own ranges in the rest
+   frame (ik::limitFrame; Jolt's target clamp = ik::clampRotation; a coupled range follows the
+   real coupled joint each tick); a position motor per free axis toward the output pose (head
+   world-stabilised from the real chest, within its range); holdWeight per axis within the
+   strength, the motor gets the rest; torque limits x strength
         ▼
 Capsule + pin (`agents::Human::followCapsule` / `physicsTick`): the capsule LEADS: it moves by
    the planner's intent (+ a slow re-centre toward the support while both feet are planted,

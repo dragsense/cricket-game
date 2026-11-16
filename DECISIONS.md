@@ -863,3 +863,25 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Why:** measured: the physics body cannot follow the plan (Jolt clamps targets into
   limits that are not the plan's; a moving target lags by the damper; the ankle is limp),
   so no body-mechanism piece could show right until the drive does.
+
+## 2026-11-17: Ragdoll joints are Jolt SixDOF with the plan's own ranges (muscle plan P1)
+- **Decision:** every ragdoll joint is a `JPH::SixDOFConstraint` (pyramid swing,
+  translation fixed) in the joint's rest frame from `ik::limitFrame` (X = twist or hinge
+  axis, Y = first swing axis, Z = X x Y, the second swing's range flipped when Z is its
+  opposite), with the plan's asymmetric ranges per axis (no centring, no half cones). A
+  locked axis has no motor. `ik::clampRotation` copies Jolt's `ClampSwingTwist` (twist,
+  pyramid, locked and single-swing paths, the side Jolt picks outside a range), so the plan
+  and the physics hold one set (unit test `joint clamp`). Each free axis has a position
+  motor (stiffness and damping as before) with its own torque limits: the directional pair
+  on its axis, `maxTorque` on the others, the gravity hold applied within them and the
+  motor given the rest. A coupled range (the ankle by the knee) is set each tick from the
+  real coupled joint (`HumanBody::limitNow`, the same mapping as `limitIn`). The drive is
+  ours (`SetTargetOrientationBS`), not `Ragdoll::DriveToPoseUsingMotors` (SwingTwist only).
+  The decider clamps every limb joint it writes except a grounded leg's (the pinned foot
+  wins); a clamped limb is reported short; a free arm's swing stops at its range.
+- **Why:** measured (PROGRESS D1): Jolt clamps a motor's target into its limits, and the
+  centred symmetric cones were not the plan's pyramid: the shoulder was clamped 31 deg,
+  the free arm's target 126 deg (it flipped), the squat's ankle sat on a wrong limit.
+- **Rejected:** keeping SwingTwist with centred half cones (a different set for large
+  ranges); clamping grounded legs too (the plan's feet slid up to 44 cm in deep reaches);
+  clamping every drive target in HumanBody (it would hide plan joints outside their range).

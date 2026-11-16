@@ -156,23 +156,19 @@ struct MotorDesc {
 struct RagdollPart {
     BodyDesc body;    // its shape, mass and pose (world, as built); made dynamic
     int parent = -1;  // the part it hangs from (-1: the root part)
-    // Its joint to the parent (Jolt SwingTwist), world space as built: the
-    // pivot, the parent's joint frame and the part's (twist axis and plane
-    // axis each; the normal axis is plane x twist). Swing about the normal
-    // axis within +-planeHalfCone, about the plane axis within
-    // +-normalHalfCone (0: locked), twist within [twistMin, twistMax]; rad.
+    // Its joint to the parent (Jolt SixDOF, pyramid swing; translation
+    // fixed), world space as built: the pivot and the joint's X and Y axes
+    // (Z = X x Y), the same frame on both bodies. It turns about X, Y and Z
+    // each within [minAngles, maxAngles] (rad, within [-pi, pi]; min == max:
+    // locked, that axis has no motor).
     math::Vec3 pivot{0.0f};
-    math::Vec3 twistAxis1{1.0f, 0.0f, 0.0f}, planeAxis1{0.0f, 0.0f, 1.0f};
-    math::Vec3 twistAxis2{1.0f, 0.0f, 0.0f}, planeAxis2{0.0f, 0.0f, 1.0f};
-    float twistMin = 0.0f, twistMax = 0.0f;
-    float normalHalfCone = 0.0f, planeHalfCone = 0.0f;
-    MotorDesc motor;  // its muscle for the pose drive; maxTorque 0: none
+    math::Vec3 axisX{1.0f, 0.0f, 0.0f}, axisY{0.0f, 1.0f, 0.0f};
+    math::Vec3 minAngles{0.0f}, maxAngles{0.0f};
+    MotorDesc motor;  // its muscle for the pose drive, one motor per free axis; maxTorque 0: none
     // A strength per direction about one joint axis (two muscles pulling
     // opposite ways): its motor never pushes harder than plusTorque toward +
     // rotation of the part about that axis, minusTorque toward - (N m).
-    // Axis: 0 twist, 1 normal, 2 plane (a swing axis); -1: maxTorque on every
-    // axis. On a swing axis (both swings share one Jolt limit) the limit
-    // follows the way the motor pulls about it each tick.
+    // Axis: 0 X, 1 Y, 2 Z of the joint's frame; -1: maxTorque on every axis.
     int directionalAxis = -1;
     float plusTorque = 0.0f, minusTorque = 0.0f;
 };
@@ -253,6 +249,9 @@ public:
     // frame as created (clamped by the limits); current rotation.
     void setSixDofTarget(JointId id, math::Quat rotation);
     math::Quat sixDofRotation(JointId id) const;
+    // SixDOF: the target its motors drive to (setSixDofTarget's, after
+    // Jolt's clamp into the ranges).
+    math::Quat sixDofTarget(JointId id) const;
     // SixDOF: its rotation ranges (rad, per axis of its frame as created),
     // changed while it runs (a range set by another joint's angle).
     void setSixDofLimits(JointId id, math::Vec3 minAngles, math::Vec3 maxAngles);
@@ -305,37 +304,43 @@ public:
     float characterHeight(CharacterId id) const;  // m, of the shape in use
 
     // A ragdoll (Jolt Ragdoll): one dynamic body per part, joined to its
-    // parent by a SwingTwist joint with its motor; its parts never collide
+    // parent by a SixDOF joint with a motor per axis; its parts never collide
     // with each other (`group` > 0). `bodies` gets each part's body (the
     // usual body calls work on them). Load time; kInvalidRagdoll when full.
     RagdollId createRagdoll(const std::vector<RagdollPart>& parts, uint32_t group, std::vector<BodyId>& bodies);
-    // Jolt Ragdoll::DriveToPoseUsingMotors: every joint's motor pulls its part
-    // toward `rotations[i]`, the part body's rotation relative to its parent's
-    // body (body space; [0], the root, unused), as strong as its MotorDesc
-    // (a directional joint: as strong as the muscle pulling that way), less
-    // the gravity hold (setRagdollHold), which it applies.
-    // `count`: the ragdoll's parts. No allocations.
+    // Every joint's motors pull its part toward `rotations[i]`, the part
+    // body's rotation relative to its parent's body (body space; [0], the
+    // root, unused; Jolt clamps it into the joint's ranges), each axis as
+    // strong as its MotorDesc (a directional axis: as strong as the muscle
+    // pulling that way), less the gravity hold (setRagdollHold), which it
+    // applies. `count`: the ragdoll's parts. No allocations.
     void driveRagdollToPose(RagdollId id, const math::Quat* rotations, int count);
     // The gravity hold for the next driveRagdollToPose: per part (as built,
     // [0] unused), the torque (world) it needs about its joint. The drive
-    // gives it at the body's strength within the joint's muscles and the
-    // motor gets what is left of them. No allocations.
+    // gives it at the body's strength within the joint's muscles, axis by
+    // axis, and the motor gets what is left of them. No allocations.
     void setRagdollHold(RagdollId id, const math::Vec3* torques, int count);
     // Every motor's torque limit at `scale` of its MotorDesc's: the body's
     // strength (below 1: hits, falls, get-up; above 1, up to 10: more of the
     // muscles recruited for a faster pace). No allocations.
     void setRagdollStrength(RagdollId id, float scale);
+    // The joint moving part `part` (as built): its rotation ranges (rad,
+    // about its frame's X, Y, Z as RagdollPart), changed while it runs (a
+    // range set by another joint's angle). No allocations.
+    void setRagdollJointLimits(RagdollId id, int part, math::Vec3 minAngles, math::Vec3 maxAngles);
+    // The joint moving part `part`: the part's rotation now in the joint's
+    // frame (identity: as built). Identity if there is no such joint.
+    math::Quat ragdollJointRotation(RagdollId id, int part) const;
     // A ragdoll joint's last step, for measuring (the joint moving part
-    // `part`, as built): its motor's torque (N m, about the joint's twist X,
-    // swing Y and Z axes), the motor's torque limits now (twist, swing), and
-    // the torque its range's limits took (twist, swing Y, swing Z; 0: not at
-    // a limit), and how far apart (rad) the pose's target and the one Jolt
-    // drives to (Jolt clamps a motor's target into the joint's limits:
-    // `clamped`) and that one and where the joint is (`tracking`). False if
-    // there is no such joint.
+    // `part`, as built): its motors' torque (N m, about the joint's X, Y and
+    // Z axes) and their torque limits now (min, max per axis), the torque its
+    // ranges took (about X, Y, Z; 0: not at a limit), and how far apart (rad)
+    // the pose's target and the one Jolt drives to (Jolt clamps a motor's
+    // target into the joint's ranges: `clamped`) and that one and where the
+    // joint is (`tracking`). False if there is no such joint.
     struct RagdollJointState {
         math::Vec3 motor{0.0f};
-        float twistLimit = 0.0f, swingLimit = 0.0f;
+        math::Vec3 motorMin{0.0f}, motorMax{0.0f};
         math::Vec3 range{0.0f};
         float clamped = 0.0f, tracking = 0.0f;
     };

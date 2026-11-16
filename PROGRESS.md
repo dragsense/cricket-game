@@ -49,10 +49,38 @@ Pieces (pass numbers in brackets):
 - [x] P0 Measures kept (`PhysicsWorld::supportLoad`, joint clamp / tracking angles,
   `Human::supportJoint`, `HumanBody::holdTorque`, `ragdoll`); the stance-hold try
   removed (comes back in P4).
-- [ ] P1 Ragdoll joints as Jolt SixDOF with the plan's exact asymmetric pyramid limits
+- [x] P1 Ragdoll joints as Jolt SixDOF with the plan's exact asymmetric pyramid limits
   (`SetRotationLimits`), the ankle's knee coupling each tick, a motor per axis; the plan
   keeps every joint it writes in the same limits [clamp < 1 deg static and moving; squat:
-  both feet on the ground; free arm never flips].
+  both feet on the ground; free arm never flips]. Built 2026-11-17 (DECISIONS): the
+  joint frame is the rest frame (`ik::limitFrame`), `ik::clampRotation` copies Jolt's
+  `ClampSwingTwist` exactly (unit test: Jolt's clamped target = the plan's within 1e-3 rad,
+  shoulder/hip/ankle/wrist/elbow/knee/toe, 2000 random rotations each); per-axis motors
+  and torque limits (directional pair, hold within it, motor gets lo - h .. hi - h); the
+  ankle's bound from the real knee; the head reflex target within its range; the decider
+  clamps the lifted legs' and the arms' two-bone solves and the free arms (a clamped limb
+  is reported short; the free arm's swing stops at its range). Measured before -> after:
+  - Jolt clamp worst: hand across 31.3 -> 0.00 deg, overhead (wrist) 5.1 -> 0.00, at the
+    toes (ankle) 4.6 -> 0.00; moving: forward 1.4 -> 0.04, across 126 -> 0.06, up 22.2 ->
+    0.00, down 126 -> 0.06 deg.
+  - Squat (hand L at the toes): ground contacts foot_r 2 -> 4 (all four boxes flat), right
+    ankle limit torque 149 -> 0 N m; support spring 215 -> 146 N (vertical -201 -> 0 N),
+    77 -> 48 N m.
+  - Free right arm: tracking across 176.5 -> 34.2 deg, down 156.7 -> 44.6 deg (no flip;
+    still above the 10 deg pass: the plan's free arm swings at up to limbMaxRate 12 rad/s
+    by armCancel, and the drive lags it by D / K x speed, predicted 41 deg: D2, P3 / B4).
+  - Arrow-key test, real off plan: across 41.4 -> 4.5 cm, foot up 14.4 -> 5.3, others
+    within 0.4 cm; the plan now stops at the ranges: hand back final miss 0.1 -> 24.1 cm
+    (shoulder extension 60), across 1.0 -> 31.6 (adduction 40), up 0.0 -> 4.1 (elbow
+    145), reported short. Hand across held: plan off goal 0 -> 27.8 cm, real off plan
+    29.0 -> 0.1 cm.
+  - Cost (release, one human): ~196 -> ~192 us per tick (Human::tick ~54 -> ~57, Jolt
+    step ~142 -> ~136; noise ~10 %).
+  Open: a grounded leg is not clamped (its foot stays pinned); in deep ground reaches the
+  plan's pelvis can take a grounded hip past its range (measured over the whole move: hand
+  at the toes thigh 13.6 deg, ground across 26.6 deg, Jolt clamps it; the end poses are
+  inside). Needs a hips bound from the grounded hips' ranges (as the knees' bound), not
+  built.
 - [ ] P2 Clavicle body and muscle (mass, strength from research) [hand across: real off
   plan 29 -> < 5 cm].
 - [ ] P3 Drive feedforward (internal model; equilibrium point leads, Feldman, Flash 1987;

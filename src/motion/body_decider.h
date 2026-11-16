@@ -382,6 +382,14 @@ private:
     // A local rotation moved from `from` toward `to` by at most `rate` x dt.
     static math::Quat limitTurn(math::Quat from, math::Quat to, float rate, float dt);
     void limitJoint(int j, float rate, float dt);
+    // Joint j's local rotation held within its range in `p` (the physics
+    // body's joint has the same: ik::clampRotation, Jolt's clamp). True if
+    // it moved.
+    bool clampJoint(Plan& p, int j) const;
+    // A limb's joints held within their ranges after its solve (parents
+    // first); a limb end that then misses `aim` (where the solve sent it) is
+    // reported short (`rangeMiss_`, the output plan only), never snapped.
+    void clampLimb(Plan& p, int e, const int* joints, int count, math::Vec3 aim);
     math::Quat restFootLevel(int i) const;  // a foot's standing rotation on `anchorNormal_`
     // The highest the hips may be for grounded foot i (its leg at its reach).
     float reachableHeight(const Plan& p, int i, const BodyDeciderSettings& s, bool& valid) const;
@@ -430,6 +438,7 @@ private:
     bool dcmOn_ = false;
     // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
     int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};
+    float rangeMiss_[kEnds] = {0.0f, 0.0f, 0.0f, 0.0f};  // m: the output limb's end off its aim by its joints' ranges
     // How far (level) a hand beyond the standing reach takes the hips toward
     // it this decide: standing balance keeps the centre of mass over the
     // support moved on by it (the body leans out and steps after the hand).

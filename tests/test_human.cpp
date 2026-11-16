@@ -939,6 +939,13 @@ void jointGaps(int which, const char* name) {
     std::printf("--- %s: end real off plan %.1f cm, plan off goal %.1f cm\n", name,
                 100.0f * math::distance(end(real), end(plan)), 100.0f * math::distance(end(plan), goal));
     const agents::HumanBody& body = h.humanBody();
+    std::printf("    ground contacts:");
+    for (const char* bone : {"foot_l", "toe_l", "foot_r", "toe_r"}) {
+        math::Vec3 points[8];
+        const int part = body.partOf(h.rig().findJoint(bone));
+        std::printf(" %s %d", bone, world.groundContacts(body.parts()[static_cast<size_t>(part)].body, points, 8));
+    }
+    std::printf("\n");
     for (size_t i = 0; i < body.parts().size(); ++i) {
         const auto& p = body.parts()[i];
         if (p.parent < 0) continue;
@@ -951,11 +958,21 @@ void jointGaps(int which, const char* name) {
         if (gap < 3.0f) continue;
         physics::PhysicsWorld::RagdollJointState st;
         REQUIRE(world.ragdollJointState(body.ragdoll(), static_cast<int>(i), kDt, st));
-        std::printf("    %-12s off %5.1f deg (Jolt clamp %5.1f, tracking %5.1f) | motor %6.1f N m (limit twist %5.1f swing %5.1f) | "
-                    "range limits %6.1f N m | hold %6.1f\n",
+        std::printf("    %-12s off %5.1f deg (Jolt clamp %5.1f, tracking %5.1f) | motor %6.1f N m (limits X %5.1f..%5.1f "
+                    "Y %5.1f..%5.1f Z %5.1f..%5.1f) | range limits %6.1f N m | hold %6.1f\n",
                     h.rig().jointName(j).c_str(), gap, math::degrees(st.clamped), math::degrees(st.tracking), math::length(st.motor),
-                    st.twistLimit, st.swingLimit, math::length(st.range), math::length(body.holdTorque(static_cast<int>(i))));
+                    st.motorMin.x, st.motorMax.x, st.motorMin.y, st.motorMax.y, st.motorMin.z, st.motorMax.z,
+                    math::length(st.range), math::length(body.holdTorque(static_cast<int>(i))));
     }
+    float worstClamp = 0.0f;
+    std::string worstJoint = "-";
+    for (size_t i = 0; i < body.parts().size(); ++i) {
+        physics::PhysicsWorld::RagdollJointState st;
+        if (!world.ragdollJointState(body.ragdoll(), static_cast<int>(i), kDt, st) || st.clamped <= worstClamp) continue;
+        worstClamp = st.clamped;
+        worstJoint = h.rig().jointName(body.parts()[i].joint);
+    }
+    std::printf("    Jolt clamp worst over every joint %.2f deg (%s)\n", math::degrees(worstClamp), worstJoint.c_str());
 }
 } // namespace
 
@@ -1017,11 +1034,19 @@ void movingGaps(math::Vec3 dir, const char* name) {
                 worst[i] = st.tracking;
                 predicted[i] = 0.06f * speed;  // D / K = 2 zeta / w, w = 1 / 0.03 s, zeta 1
             }
-            const float m = math::length(st.motor);
-            if (m > 0.95f * std::max(st.twistLimit, st.swingLimit)) ++saturated[i];
+            bool atLimit = false;  // a motor axis at its torque limit the way it pulls
+            for (int a = 0; a < 3; ++a) {
+                const float limit = st.motor[a] >= 0.0f ? st.motorMax[a] : -st.motorMin[a];
+                atLimit = atLimit || (limit > 0.0f && std::abs(st.motor[a]) > 0.95f * limit);
+            }
+            if (atLimit) ++saturated[i];
         }
     }
-    std::printf("--- hand L %s at 0.5 m/s: wrist real off plan worst %.1f cm\n", name, 100.0f * endWorst);
+    size_t worstClamp = 0;
+    for (size_t i = 0; i < n; ++i)
+        if (clamp[i] > clamp[worstClamp]) worstClamp = i;
+    std::printf("--- hand L %s at 0.5 m/s: wrist real off plan worst %.1f cm | Jolt clamp worst over every joint %.2f deg (%s)\n",
+                name, 100.0f * endWorst, math::degrees(clamp[worstClamp]), h.rig().jointName(body.parts()[worstClamp].joint).c_str());
     for (size_t i = 0; i < n; ++i) {
         if (worst[i] < math::radians(2.0f) && clamp[i] < math::radians(2.0f)) continue;
         std::printf("    %-12s tracking worst %5.1f deg (damper predicts %5.1f) | at the torque limit %3d ticks | Jolt clamp worst %5.1f deg\n",
@@ -1036,4 +1061,38 @@ TEST_CASE("measure: the drive with a moving goal" * doctest::skip()) {
     movingGaps(math::Vec3(-1, 0, 0), "across");
     movingGaps(math::Vec3(0, 1, 0), "up");
     movingGaps(math::Vec3(0, -1, 0), "down");
+}
+
+// Measurement (on demand): the cost of one human per physics tick (release
+// build): the decider and the muscles (Human::tick) and Jolt's step, held
+// still and with the hand moving.
+#include <chrono>
+TEST_CASE("measure: cost per human per physics tick" * doctest::skip()) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    math::Vec3 goal = h.wrist(true, *h.bodyQueue().plan, h.root());
+    using Clock = std::chrono::steady_clock;
+    double human = 0.0, step = 0.0;
+    constexpr int kTicks = 2400;
+    for (int t = 0; t < kTicks; ++t) {
+        const float phase = static_cast<float>(t) * kDt;
+        goal += h.root().transformDirection(math::Vec3(0.0f, 0.0f, std::sin(phase * 2.0f))) * (0.5f * kDt);
+        h.setPoseHand(true, goal);
+        const auto a = Clock::now();
+        h.tick(kDt);
+        const auto b = Clock::now();
+        world.step(kDt);
+        const auto c = Clock::now();
+        human += std::chrono::duration<double, std::micro>(b - a).count();
+        step += std::chrono::duration<double, std::micro>(c - b).count();
+    }
+    std::printf("--- per tick (%d ticks): Human::tick %.1f us, world.step %.1f us, total %.1f us\n", kTicks, human / kTicks,
+                step / kTicks, (human + step) / kTicks);
 }

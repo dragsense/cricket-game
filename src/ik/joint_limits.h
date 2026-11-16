@@ -45,11 +45,24 @@ float hingeAngle(math::Quat local, const JointLimit& hinge);
 // `limit` with its coupled bound set for the coupled hinge at `angle` (rad).
 JointLimit coupledLimit(const JointLimit& limit, float angle);
 
-// Clamps a local rotation to the limit, measured the way Jolt's joints do
-// (hinge: the angle about its axis; swing-twist: twist about the twist axis,
-// then a pyramid swing: the angle about each swing axis clamped on its own),
-// so the pose and the physics body read the ranges alike. Returns the
-// clamped rotation.
+// The limit as the physics body's joint reads it (Jolt SixDOF, pyramid
+// swing): its frame in the rest pose (X = the twist or hinge axis, Y = the
+// first swing axis, Z = X x Y: the second swing axis or its opposite, then
+// its range flips) and the range about each of X, Y, Z (rad, within
+// [-pi, pi]; min == max: locked). A hinge's Y and Z are locked; a free
+// joint is [-pi, pi] every way.
+struct LimitFrame {
+    math::Vec3 x{1.0f, 0.0f, 0.0f}, y{0.0f, 1.0f, 0.0f}, z{0.0f, 0.0f, 1.0f};
+    math::Vec3 min{0.0f}, max{0.0f};
+};
+LimitFrame limitFrame(const JointLimit& limit);
+
+// Clamps a local rotation to the limit exactly as Jolt's SixDOF joint clamps
+// a motor's target (SwingTwistConstraintPart::ClampSwingTwist in the
+// limitFrame: twist about X, then a pyramid swing, each swing angle on its
+// own; a locked swing axis zeroed; outside a range, the side Jolt picks), so
+// the pose and the physics body hold the same set. Returns the clamped
+// rotation.
 math::Quat clampRotation(math::Quat q, const JointLimit& limit);
 
 // Limit mirrored for the opposite side (rotations about Y and Z flip sign).

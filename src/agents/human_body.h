@@ -3,15 +3,15 @@
 // DECISIONS 2026-11-09 "Full physics body on the capsule"). One dynamic body
 // per bone that has mass (shape from the skeleton's visual, mass = the bone's
 // de Leva share of the body mass), joined at each bone's joint by a Jolt
-// SwingTwist joint with the real ranges from human_joints.json (the same
-// ranges IK and BodyReposition use): a hinge joint (knee, elbow, toes) turns
-// only about its axis; an uneven range is centred on the parent's joint
-// frame so the symmetric swing limits cover it. Each joint's motor is its
-// muscle (human_joints.json "muscles": strength, activation time); Jolt's
-// Ragdoll::DriveToPoseUsingMotors pulls every joint toward the pose. A bone
-// without mass of its own (neck, clavicles, fingers) rides its parent. The
-// parts of one body do not collide with each other; they collide with the
-// ground and with everything else. Load-time allocation only.
+// SixDOF joint with the plan's own ranges from human_joints.json, in the
+// joint's rest frame (ik::limitFrame: the same set ik::clampRotation keeps
+// the pose in; a hinge turns only about its axis; a range set by another
+// joint's angle follows the real body's joint each tick). Each axis's motor
+// is its muscle (human_joints.json "muscles": strength, activation time),
+// pulling the joint toward the pose. A bone without mass of its own (neck,
+// clavicles, fingers) rides its parent. The parts of one body do not collide
+// with each other; they collide with the ground and with everything else.
+// Load-time allocation only.
 
 #include "ik/joint_limits.h"
 #include "math/math.h"
@@ -75,6 +75,7 @@ public:
         bool hinge = false;                // turns about frameX only
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame (X twist)
         bool muscle = false;               // its motor has strength
+        int coupledPart = -1;              // its range follows this part's joint angle (-1: fixed range)
     };
     const std::vector<Part>& parts() const { return parts_; }
     // Per rig joint (`numJoints`): its part's mass (kg, 0 if none of its own)
@@ -93,14 +94,19 @@ public:
     math::Vec3 holdTorque(int part) const { return hold_[static_cast<size_t>(part)]; }
     physics::RagdollId ragdoll() const { return ragdoll_; }
     // Every muscle pulls its joint toward the pose `models` (character space,
-    // the rig's joints): Jolt's Ragdoll::DriveToPoseUsingMotors; the head is
+    // the rig's joints; a range set by another joint first follows that
+    // joint in the real body, as the plan's limitIn); the head is
     // held in space: its muscle's target is the pose's head in the world
     // (`root`: character to world) seen from the real body it hangs from, not
     // from the posed one (the vestibulo-collic reflex keeps the head stable
-    // in space, Pozzo et al. 1990). `headJoint`: the rig joint of the head.
+    // in space, Pozzo et al. 1990), within its range. `headJoint`: the rig
+    // joint of the head.
     // No allocations.
     void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
                    int headJoint) const;
+    // A part's joint range now: the plan's, a coupled bound set by the real
+    // body's coupled joint (as JointLimits::limitIn reads the pose's).
+    ik::JointLimit limitNow(const physics::PhysicsWorld& world, int part) const;
     // The body (character space of `root`) a part has in the pose `models`.
     math::Transform partPose(int part, const std::vector<math::Mat4>& models) const;
     // Every part placed at its bone in `models` (character space of `root`), at rest.
@@ -124,6 +130,7 @@ private:
     std::vector<int> partOf_;  // per rig joint: its part, -1 if it rides
     float totalMass_ = 0.0f;
     physics::RagdollId ragdoll_ = physics::kInvalidRagdoll;
+    const ik::JointLimits* limits_ = nullptr;  // the ranges (owned by Human, outlives the body)
     mutable std::vector<math::Quat> rotations_;  // scratch: the pose drive's targets, sized at init
     mutable std::vector<float> beyondMass_;         // scratch per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // scratch per part: their mass x centre of mass (world)
