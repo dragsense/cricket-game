@@ -329,11 +329,15 @@ public:
     // `part`, as built): its motor's torque (N m, about the joint's twist X,
     // swing Y and Z axes), the motor's torque limits now (twist, swing), and
     // the torque its range's limits took (twist, swing Y, swing Z; 0: not at
-    // a limit). False if there is no such joint.
+    // a limit), and how far apart (rad) the pose's target and the one Jolt
+    // drives to (Jolt clamps a motor's target into the joint's limits:
+    // `clamped`) and that one and where the joint is (`tracking`). False if
+    // there is no such joint.
     struct RagdollJointState {
         math::Vec3 motor{0.0f};
         float twistLimit = 0.0f, swingLimit = 0.0f;
         math::Vec3 range{0.0f};
+        float clamped = 0.0f, tracking = 0.0f;
     };
     bool ragdollJointState(RagdollId id, int part, float dt, RagdollJointState& out) const;
 
@@ -350,6 +354,10 @@ public:
     void setSupportTarget(JointId id, math::Vec3 offset, math::Quat rotation);
     // Its force (N) and torque (N m) limits, e.g. eased in after a release.
     void setSupportLimits(JointId id, float maxForce, float maxTorque);
+    // Its last step, for measuring: the force (N) it put on b, motors and
+    // limits together, in a's frame (+: along a's axes), and its torque's
+    // size (N m). False if there is no such support.
+    bool supportLoad(JointId id, float dt, math::Vec3& force, float& torque) const;
 
 private:
     struct Impl;

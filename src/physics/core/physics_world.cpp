@@ -1101,6 +1101,16 @@ bool PhysicsWorld::ragdollJointState(RagdollId id, int part, float dt, RagdollJo
         out.twistLimit = st->GetTwistMotorSettings().mMaxTorqueLimit;
         out.swingLimit = st->GetSwingMotorSettings().mMaxTorqueLimit;
         out.range = math::Vec3(st->GetTotalLambdaTwist(), st->GetTotalLambdaSwingY(), st->GetTotalLambdaSwingZ()) / dt;
+        // The pose's target in constraint space (as SetTargetOrientationBS
+        // turns it), against Jolt's clamped target and the joint now.
+        const JPH::Quat asked = st->GetConstraintToBody1Matrix().GetQuaternion().Conjugated() *
+                                r.pose.GetJoint(part).mRotation * st->GetConstraintToBody2Matrix().GetQuaternion();
+        const JPH::Quat target = st->GetTargetOrientationCS(), now = st->GetRotationInConstraintSpace();
+        auto apart = [](JPH::QuatArg a, JPH::QuatArg b) {
+            return 2.0f * std::acos(std::clamp(std::abs(a.Dot(b)), 0.0f, 1.0f));
+        };
+        out.clamped = apart(asked, target);
+        out.tracking = apart(target, now);
         return true;
     }
     return false;
@@ -1185,6 +1195,15 @@ void PhysicsWorld::setSupportLimits(JointId id, float maxForce, float maxTorque)
         c.GetMotorSettings(axis).SetForceLimit(std::max(maxForce, 0.0f));
     for (A axis : {A::RotationX, A::RotationY, A::RotationZ})
         c.GetMotorSettings(axis).SetTorqueLimit(std::max(maxTorque, 0.0f));
+}
+
+bool PhysicsWorld::supportLoad(JointId id, float dt, math::Vec3& force, float& torque) const {
+    if (!impl_ || id >= impl_->sixDofs.size() || !impl_->sixDofs[id] || dt <= 0.0f) return false;
+    const JPH::SixDOFConstraint& c = *impl_->sixDofs[id];
+    // Jolt's translation parts push body 2 along body 1's constraint axes.
+    force = fromJolt(JPH::Vec3(c.GetTotalLambdaPosition() + c.GetTotalLambdaMotorTranslation())) / dt;
+    torque = (c.GetTotalLambdaRotation() + c.GetTotalLambdaMotorRotation()).Length() / dt;
+    return true;
 }
 
 } // namespace physics

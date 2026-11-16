@@ -851,3 +851,15 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** the hips last in the hand's trunk queue (1.6 % share, never moved: the trunk
   reached 80 cm with the hips 20 cm back); the trunk's leftover to the hips (the trunk
   reached on its own, the hips still went back); the centre of mass held over the ankles.
+
+## 2026-11-16: The muscle plan (P / B), frozen
+- **Decision (the user's OK):** the body is fixed in this order, each piece committed when
+  its measured numbers pass (PROGRESS "The muscle plan"): P1 Jolt joints with the plan's
+  exact limits (SixDOF), P2 clavicle body, P3 drive feedforward (velocity lead and inertia
+  torque), P4 stance hold, P5 research stiffness and damping (ankle by Peterka), P6 the
+  support keeps tilt and turn only; then B1 hand shares by minimum effort, B2 the pelvis
+  turn from a foot target, B3 the chest's turn from the trunk's stiffness, B4 free arms by
+  physics. Nothing for the limb test itself; no walking numbers in the checks.
+- **Why:** measured: the physics body cannot follow the plan (Jolt clamps targets into
+  limits that are not the plan's; a moving target lags by the damper; the ankle is limp),
+  so no body-mechanism piece could show right until the drive does.

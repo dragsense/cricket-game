@@ -830,3 +830,210 @@ TEST_CASE("measure: foot held up, put down ahead, it steps down" * doctest::skip
                 100.0f * worst, worstAt, 100.0f * math::dot(a - a0, fwd), 100.0f * (a.y - a0.y), 100.0f * math::dot(r - a0, fwd),
                 100.0f * (r.y - a0.y), h.supported() ? "no" : "yes");
 }
+
+// Measurement (on demand): who carries the body's weight, the stance legs or
+// the capsule's support spring (Plan A step 1). Standing, one foot held up,
+// a hand at the toes (squat); over the last second: the spring's force on the
+// pelvis (character axes: +x left, +y up, +z forward) and torque, the real
+// pelvis against the plan's, the knees real against plan, and the stance
+// legs' holds.
+namespace {
+void weightCase(int which, const char* name) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const math::Vec3 a0 = h.ankle(true, *h.bodyQueue().plan, h.root());
+    const math::Vec3 toes = h.root().transformPoint(math::Vec3(0.15f, 0.05f, 0.25f));
+    const int pelvis = h.rig().findJoint("pelvis");
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    constexpr int kTicks = 360, kLast = 120;  // 3 s, the last 1 s averaged
+    math::Vec3 force(0.0f);
+    float torque = 0.0f, dropY = 0.0f, offLevel = 0.0f;
+    for (int i = 0; i < kTicks; ++i) {
+        if (which == 1) h.setPoseFoot(motion::Foot::Left, a0 + math::Vec3(0.0f, 0.15f, 0.0f));
+        if (which == 2) h.setPoseHand(true, toes);
+        h.tick(kDt);
+        world.step(kDt);
+        if (i < kTicks - kLast) continue;
+        math::Vec3 f(0.0f);
+        float t = 0.0f;
+        REQUIRE(world.supportLoad(h.supportJoint(), kDt, f, t));
+        force += f / static_cast<float>(kLast);
+        torque += t / static_cast<float>(kLast);
+        REQUIRE(h.physicalModels(world, 1.0f, real));
+        const math::Vec3 rp(real[static_cast<size_t>(pelvis)][3]), pp((*h.bodyQueue().plan)[static_cast<size_t>(pelvis)][3]);
+        dropY += (pp.y - rp.y) / static_cast<float>(kLast);
+        offLevel += std::sqrt((rp.x - pp.x) * (rp.x - pp.x) + (rp.z - pp.z) * (rp.z - pp.z)) / static_cast<float>(kLast);
+    }
+    const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+    std::printf("--- %s: spring force x %6.1f y %6.1f z %6.1f N, torque %5.1f N m | real pelvis %4.1f cm below plan, "
+                "%4.1f cm off level | dropped %s\n",
+                name, force.x, force.y, force.z, torque, 100.0f * dropY, 100.0f * offLevel, h.supported() ? "no" : "yes");
+    std::printf("    knee L real %5.1f plan %5.1f, R real %5.1f plan %5.1f deg\n", flexionDeg(real, h, "thigh_l", "shin_l", "foot_l"),
+                flexionDeg(plan, h, "thigh_l", "shin_l", "foot_l"), flexionDeg(real, h, "thigh_r", "shin_r", "foot_r"),
+                flexionDeg(plan, h, "thigh_r", "shin_r", "foot_r"));
+    const agents::HumanBody& body = h.humanBody();
+    std::printf("    hold |N m|:");
+    for (const char* bone : {"thigh_l", "shin_l", "foot_l", "thigh_r", "shin_r", "foot_r"})
+        std::printf(" %s %5.1f", bone, math::length(body.holdTorque(body.partOf(h.rig().findJoint(bone)))));
+    std::printf("\n    motor |N m|:");
+    for (const char* bone : {"thigh_l", "shin_l", "foot_l", "thigh_r", "shin_r", "foot_r"}) {
+        physics::PhysicsWorld::RagdollJointState st;
+        REQUIRE(world.ragdollJointState(body.ragdoll(), body.partOf(h.rig().findJoint(bone)), kDt, st));
+        std::printf(" %s %5.1f", bone, math::length(st.motor));
+    }
+    std::printf("\n");
+}
+} // namespace
+
+TEST_CASE("measure: stance legs carry the weight" * doctest::skip()) {
+    weightCase(0, "standing");
+    weightCase(1, "foot L held 15 cm up");
+    weightCase(2, "hand L at the toes");
+}
+
+// Measurement (on demand): where the physics body does not follow the plan,
+// joint by joint. For a held goal: each joint's real local rotation off the
+// plan's (deg), its motor's torque and limit, and the torque its range's
+// limits take (non-zero: Jolt's joint limit blocks it). Joints off by more
+// than 3 deg.
+namespace {
+void jointGaps(int which, const char* name) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const std::vector<math::Mat4>& plan0 = *h.bodyQueue().plan;
+    const math::Vec3 shoulderL = h.root().transformPoint(math::Vec3(plan0[static_cast<size_t>(h.rig().findJoint("upper_arm_l"))][3]));
+    const math::Vec3 a0 = h.ankle(true, plan0, h.root());
+    math::Vec3 goal(0.0f);
+    bool hand = true;
+    switch (which) {
+    case 0: goal = shoulderL + h.root().transformDirection(math::Vec3(-0.45f, 0.0f, 0.3f)); break;  // across, ahead
+    case 1: goal = shoulderL + h.root().transformDirection(math::Vec3(0.05f, 0.55f, 0.1f)); break;  // up overhead
+    case 2: goal = shoulderL + h.root().transformDirection(math::Vec3(0.0f, 0.0f, 0.6f)); break;   // ahead, shoulder height
+    case 3: goal = h.root().transformPoint(math::Vec3(0.15f, 0.05f, 0.25f)); break;               // at the toes
+    default: goal = a0 + h.root().transformDirection(math::Vec3(0.0f, 0.2f, 0.3f)); hand = false; break;  // foot up ahead
+    }
+    for (int i = 0; i < 360; ++i) {
+        if (hand) h.setPoseHand(true, goal);
+        else h.setPoseFoot(motion::Foot::Left, goal);
+        h.tick(kDt);
+        world.step(kDt);
+    }
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    REQUIRE(h.physicalModels(world, 1.0f, real));
+    const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+    auto end = [&](const std::vector<math::Mat4>& m) { return hand ? h.wrist(true, m, h.root()) : h.ankle(true, m, h.root()); };
+    std::printf("--- %s: end real off plan %.1f cm, plan off goal %.1f cm\n", name,
+                100.0f * math::distance(end(real), end(plan)), 100.0f * math::distance(end(plan), goal));
+    const agents::HumanBody& body = h.humanBody();
+    for (size_t i = 0; i < body.parts().size(); ++i) {
+        const auto& p = body.parts()[i];
+        if (p.parent < 0) continue;
+        const int j = p.joint, pj = body.parts()[static_cast<size_t>(p.parent)].joint;
+        auto local = [&](const std::vector<math::Mat4>& m) {
+            return math::inverse(math::toTransform(m[static_cast<size_t>(pj)]).rotation) * math::toTransform(m[static_cast<size_t>(j)]).rotation;
+        };
+        const math::Quat d = math::inverse(local(plan)) * local(real);
+        const float gap = math::degrees(2.0f * std::acos(std::clamp(std::abs(d.w), 0.0f, 1.0f)));
+        if (gap < 3.0f) continue;
+        physics::PhysicsWorld::RagdollJointState st;
+        REQUIRE(world.ragdollJointState(body.ragdoll(), static_cast<int>(i), kDt, st));
+        std::printf("    %-12s off %5.1f deg (Jolt clamp %5.1f, tracking %5.1f) | motor %6.1f N m (limit twist %5.1f swing %5.1f) | "
+                    "range limits %6.1f N m | hold %6.1f\n",
+                    h.rig().jointName(j).c_str(), gap, math::degrees(st.clamped), math::degrees(st.tracking), math::length(st.motor),
+                    st.twistLimit, st.swingLimit, math::length(st.range), math::length(body.holdTorque(static_cast<int>(i))));
+    }
+}
+} // namespace
+
+TEST_CASE("measure: where the physics body misses the plan" * doctest::skip()) {
+    jointGaps(0, "hand L across, ahead");
+    jointGaps(1, "hand L overhead");
+    jointGaps(2, "hand L 0.6 m ahead");
+    jointGaps(3, "hand L at the toes");
+    jointGaps(4, "foot L up and ahead");
+}
+
+// Measurement (on demand): a moving goal (the hand at 0.5 m/s, 1 s, each
+// way): per joint the worst tracking gap (Jolt's target to the joint, deg),
+// the damper's predicted lag there (D / K x the plan's joint speed: a
+// position spring with a damper toward no motion trails a moving target by
+// that), whether the motor was at its torque limit, and Jolt's clamp.
+namespace {
+void movingGaps(math::Vec3 dir, const char* name) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const agents::HumanBody& body = h.humanBody();
+    const size_t n = body.parts().size();
+    std::vector<math::Quat> last(n, math::identityQuat());
+    std::vector<float> worst(n, 0.0f), predicted(n, 0.0f), clamp(n, 0.0f);
+    std::vector<int> saturated(n, 0);
+    math::Vec3 goal = h.wrist(true, *h.bodyQueue().plan, h.root());
+    const math::Vec3 step = h.root().transformDirection(dir) * (0.5f * kDt);
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    float endWorst = 0.0f;
+    for (int t = 0; t < 120; ++t) {
+        goal += step;
+        h.setPoseHand(true, goal);
+        h.tick(kDt);
+        world.step(kDt);
+        const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+        REQUIRE(h.physicalModels(world, 1.0f, real));
+        endWorst = std::max(endWorst, math::distance(h.wrist(true, real, h.root()), h.wrist(true, plan, h.root())));
+        for (size_t i = 0; i < n; ++i) {
+            const auto& p = body.parts()[i];
+            if (p.parent < 0 || !p.muscle) continue;
+            const int pj = body.parts()[static_cast<size_t>(p.parent)].joint;
+            const math::Quat local = math::inverse(math::toTransform(plan[static_cast<size_t>(pj)]).rotation) *
+                                     math::toTransform(plan[static_cast<size_t>(p.joint)]).rotation;
+            const math::Quat d = math::inverse(last[i]) * local;
+            const float speed = 2.0f * std::acos(std::clamp(std::abs(d.w), 0.0f, 1.0f)) / kDt;
+            last[i] = local;
+            if (t < 2) continue;
+            physics::PhysicsWorld::RagdollJointState st;
+            REQUIRE(world.ragdollJointState(body.ragdoll(), static_cast<int>(i), kDt, st));
+            clamp[i] = std::max(clamp[i], st.clamped);
+            if (st.tracking > worst[i]) {
+                worst[i] = st.tracking;
+                predicted[i] = 0.06f * speed;  // D / K = 2 zeta / w, w = 1 / 0.03 s, zeta 1
+            }
+            const float m = math::length(st.motor);
+            if (m > 0.95f * std::max(st.twistLimit, st.swingLimit)) ++saturated[i];
+        }
+    }
+    std::printf("--- hand L %s at 0.5 m/s: wrist real off plan worst %.1f cm\n", name, 100.0f * endWorst);
+    for (size_t i = 0; i < n; ++i) {
+        if (worst[i] < math::radians(2.0f) && clamp[i] < math::radians(2.0f)) continue;
+        std::printf("    %-12s tracking worst %5.1f deg (damper predicts %5.1f) | at the torque limit %3d ticks | Jolt clamp worst %5.1f deg\n",
+                    h.rig().jointName(body.parts()[i].joint).c_str(), math::degrees(worst[i]), math::degrees(predicted[i]),
+                    saturated[i], math::degrees(clamp[i]));
+    }
+}
+} // namespace
+
+TEST_CASE("measure: the drive with a moving goal" * doctest::skip()) {
+    movingGaps(math::Vec3(0, 0, 1), "forward");
+    movingGaps(math::Vec3(-1, 0, 0), "across");
+    movingGaps(math::Vec3(0, 1, 0), "up");
+    movingGaps(math::Vec3(0, -1, 0), "down");
+}

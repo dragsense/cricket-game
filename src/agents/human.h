@@ -45,6 +45,8 @@ public:
     bool attachPhysics(physics::PhysicsWorld& world);
     // The capsule holds the body (not let go after a lean).
     bool supported() const { return supportOn_; }
+    // The capsule's hold on the pelvis (physics; for measuring).
+    physics::JointId supportJoint() const { return support_; }
     // The step under way: its foot (-1: none).
     int stepFoot() const { return decider_.stepFoot(); }
     // The real pelvis off the hold's target (physics_world.json

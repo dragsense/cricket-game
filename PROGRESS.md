@@ -20,6 +20,64 @@ decider's reach math moved into `body_decider.cpp`; the pelvis limits are now
 **2026-11-15: branch `body-mechanism` (from milestone-6, the user's call): one body
 mechanism instead of separate walk / jump.** The hips move, the body follows by real
 balance: the decider's balance step (DECISIONS 2026-11-15).
+
+**2026-11-16: the muscle plan, P / B (frozen, the user's OK; built in this order, each
+piece committed once its numbers pass; no game checks, no limb-test-only fixes, no
+walking numbers; DECISIONS "The muscle plan").** The question every piece answers: a
+target moves from A to B, how does the body (its muscles, in physics) move.
+
+Decoded first (measured, `measure: where the physics body misses the plan`,
+`measure: the drive with a moving goal`, `measure: stance legs carry the weight`):
+- D1 Jolt clamps a motor's target into its joint limits (`SwingTwistConstraint::
+  SetTargetOrientationCS`), and Jolt's limits are not the plan's (Jolt: the parent's
+  frame turned to each range's middle, symmetric half cones; the plan: the asymmetric
+  pyramid in the rest frame; the ankle's knee-coupled dorsiflexion -25..-39 deg only in
+  the plan; the clavicle has no body, so the plan's clavicle turn lands in the shoulder).
+  Measured: shoulder 31.3 deg clamped (hand across, real hand 29 cm off), elbow 22 deg
+  (hand up), wrist 4-5 deg, the free right arm's target 126 deg outside (it flips 177
+  deg), squat right ankle on its limit (133 N m), that foot off the ground.
+- D2 A moving target lags by the motor's damper (it pulls toward no motion): tracking
+  = D / K x the plan's joint speed (shoulder 4.7 vs 5.0 deg predicted, spine 12.2 vs
+  13.7, knee 6.4 vs 6.3, hip 4.6 vs 4.5); no muscle at its strength. Hand 0.5 m/s:
+  forward 4.9 cm, across 8.3, up 10.0, down 4.6 cm behind.
+- D3 The ankle is limp (K 17 vs ~570): feet 8-13 deg off the plan, motor 1.6 N m.
+- Known: stiffness K = I (1/0.03)^2 (hip ~10x, ankle ~1/30 of research); the hold
+  pelvis-rooted (a stance leg holds only what hangs below each joint); the support spring
+  carries balance (one foot: tilt 67 N m, side 71 N; squat: 201 N down, 77 N m).
+
+Pieces (pass numbers in brackets):
+- [x] P0 Measures kept (`PhysicsWorld::supportLoad`, joint clamp / tracking angles,
+  `Human::supportJoint`, `HumanBody::holdTorque`, `ragdoll`); the stance-hold try
+  removed (comes back in P4).
+- [ ] P1 Ragdoll joints as Jolt SixDOF with the plan's exact asymmetric pyramid limits
+  (`SetRotationLimits`), the ankle's knee coupling each tick, a motor per axis; the plan
+  keeps every joint it writes in the same limits [clamp < 1 deg static and moving; squat:
+  both feet on the ground; free arm never flips].
+- [ ] P2 Clavicle body and muscle (mass, strength from research) [hand across: real off
+  plan 29 -> < 5 cm].
+- [ ] P3 Drive feedforward (internal model; equilibrium point leads, Feldman, Flash 1987;
+  Wolpert & Kawato 1998): the target led by D / K x the plan's joint velocity, plus each
+  joint's inertia torque for the plan's acceleration [moving tracking < 1.5 deg; hand lag
+  forward / across / up / down < 2 cm].
+- [ ] P4 Stance hold: the plan's statics, the ground push inside the foot's functional
+  base of support (Sloot 2025) [spring vertical ~0 in standing, one foot, squat; static
+  leg motors < 5 N m].
+- [ ] P5 Every joint's stiffness and damping from research (BIOMECHANICS 14: relaxed +
+  slope x |torque|); the ankle by Peterka 2002 (KP 18.6 N m/deg, KD 6.1 N m s/deg) [K in
+  the research ranges; feet within 2 deg of the plan; tracking <= 3 deg].
+- [ ] P6 The support spring loses up/down, then fore-aft (tilt and turn stay) [hips
+  within 1 cm of the plan; centre of mass inside the feet's functional support; no fall].
+- [ ] B1 Hand shares by minimum effort (share ~ lever^2 / inertia moved, Khatib 1987),
+  within range and strength, the rest by the same weights; the trunk joins from 0.8-0.9
+  of the arm's reach (Levin 2001); Esola's lumbar : hip and 2:1 scapulohumeral kept;
+  `queueShare` gone [trunk small within reach; Esola ratio; 2:1].
+- [ ] B2 A foot target turns the pelvis by the same share rule (hip rotators);
+  `pelvisTurnShare` gone [star excursion: trunk 1-5 deg, pelvis small].
+- [ ] B3 The chest's turn against the pelvis by the trunk's axial stiffness (research)
+  and the chest's inertia; `trunkTurn` gone [w = sqrt(K / I) from research].
+- [ ] B4 Free arms by physics (relaxed shoulder 10.8 N m/rad, Gomi & Osu 1998), not
+  driven by the plan; `armCancel` gone [a hanging arm within 2 deg of vertical, no flip].
+
 - [x] **B1 Balance step** (built; awaiting the user's check in the game): WASD moves the
   hips target; the decider steps by the capture point (any direction, bigger push = bigger
   or more steps); `human_joints.json` "decider.balanceStep". Measure:

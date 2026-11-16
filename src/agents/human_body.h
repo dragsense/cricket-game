@@ -89,6 +89,9 @@ public:
     // corrects with what is left. Call each tick before drivePose. No
     // allocations.
     void holdWeight(physics::PhysicsWorld& world) const;
+    // A part's hold from the last holdWeight (world, N m) and the ragdoll (for measuring).
+    math::Vec3 holdTorque(int part) const { return hold_[static_cast<size_t>(part)]; }
+    physics::RagdollId ragdoll() const { return ragdoll_; }
     // Every muscle pulls its joint toward the pose `models` (character space,
     // the rig's joints): Jolt's Ragdoll::DriveToPoseUsingMotors; the head is
     // held in space: its muscle's target is the pose's head in the world
