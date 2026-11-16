@@ -12,10 +12,8 @@ namespace motion {
 
 // A balance step's shape (locomotion.json "step").
 struct StepSettings {
-    float stepDuration = 0.4f;    // seconds per step
     float stepHeight = 0.08f;     // swing arc apex above the ground
     float peakAt = 0.5f;          // swing time share of the arc apex (early: knee bends, heel up)
-    float liftAt = 0.0f;          // step time share the foot stays down first (weight moves off it)
 };
 
 // Swing height share, 0 -> 1 at `peakAt` -> 0 over the swing time share t.

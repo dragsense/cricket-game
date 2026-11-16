@@ -230,6 +230,19 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   up 0 N, knee within 1 deg) but its balance is the support's (level ~158 N, ground force
   line 20-35 cm off the centre of mass); jog: plan stance knee ~60 deg, the support carried
   ~700 N; the plan's fore-aft push came from the swing leg's motion (trunk ~0).
+- [x] **A3 A step's swing by Fitts' law; no walking timing** (2026-11-16; the user checked
+  it in the game: "perfect"; DECISIONS). The swing is the foot's aimed move:
+  Fitts' law for its way with the limb test's values (`muscles.fitts*`; foot pointing and
+  pedal studies, Drury ~0.19 + 0.055 s/bit), at least the leg's swing; `math::fittsTime`
+  shared by Human and the decider. `stepDuration` 0.6 and `liftAt` 0.25 removed (config,
+  `StepSettings`, the planner's defaults): each step is timed by the decider (shift by the
+  capture point, swing by Fitts). A path keeps its time: the swing takes its own first, the
+  shift what is left. The shift's bound is `weightShiftMost` 0.5 s (natural APA), and none
+  when the capture point starts outside the feet (falling: it steps at once). The balance
+  step's decision estimates the least shift + Fitts to the capture point. Predicted swing:
+  0.1 m 0.20 s, 0.3 m 0.36 s, 0.6 m 0.46 s (was 0.45 for all). Measured: `hips fwd 0.40`
+  trailing step 0.67 s (was 0.79), `hips left 0.35` second step 0.51 s (predicted 0.49);
+  arrow-key limb test unchanged.
 - [x] **A2 A step's hips by the capture point's path** (2026-11-16; the user checked it in the
   game: "perfect"; DECISIONS). Through a step of the decider's own the hips
   follow the DCM (Englsberger 2015): on the standing foot xi = p + (xi_end - p) e^(-w0 t_left),

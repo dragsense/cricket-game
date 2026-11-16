@@ -17,8 +17,8 @@
 namespace motion {
 
 struct StepPlannerSettings {
-    float duration = 0.6f;     // s, the whole step (locomotion.json "step.stepDuration")
-    float liftAt = 0.25f;      // share of the step the foot stays down first (the weight shifts)
+    float duration = 0.0f;     // s, the whole step (the decider times each step)
+    float liftAt = 0.0f;       // share of the step the foot stays down first (the weight shifts)
     float height = 0.2f;       // m, the ankle's apex above the spot
     float peakAt = 0.5f;       // swing share of the apex
     float toeOffPitch = 0.0f;  // rad, the heel's rise at push-off (the foot rolls over its ball)

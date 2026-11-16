@@ -19,6 +19,9 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/norm.hpp>
 
+#include <algorithm>
+#include <cmath>
+
 namespace math {
 
 using Vec2 = glm::vec2;
@@ -164,6 +167,12 @@ inline const float* data(const Mat4& m) { return glm::value_ptr(m); }
 
 // Minimum-jerk share of a move at time share u in [0, 1] (Flash & Hogan 1985).
 inline float minimumJerk(float u) { return u * u * u * (10.0f + u * (6.0f * u - 15.0f)); }
+
+// Fitts' law movement time (s) to move `distance` onto a target `width`
+// wide: a + b * log2(2D / W), never below a (MacKenzie 1992; BIOMECHANICS 9.6).
+inline float fittsTime(float distance, float width, float a, float b) {
+    return a + b * std::log2(std::max(2.0f * distance / std::max(width, 1e-3f), 1.0f));
+}
 
 } // namespace math
 

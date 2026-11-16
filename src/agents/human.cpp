@@ -15,13 +15,6 @@ math::Vec3 modelPos(const std::vector<math::Mat4>& models, int joint) {
     return math::Vec3(models[static_cast<size_t>(joint)][3]);
 }
 
-// Fitts' law movement time (s) to move `distance` onto a target `width`
-// wide: a + b * log2(2D / W), never below a (MacKenzie 1992; BIOMECHANICS 9.6).
-float movementTime(float distance, float width, float a, float b) {
-    const float id = std::log2(std::max(2.0f * distance / std::max(width, 1e-3f), 1.0f));
-    return a + b * id;
-}
-
 } // namespace
 
 bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& joints, const core::Config& locomotion) {
@@ -37,20 +30,17 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
 
 void Human::loadLocomotion(const core::Config& c) {
     // Load-time only (builds path strings): the decider's balance step
-    // (locomotion.json "step": its shape and timing, its passive shares).
+    // (locomotion.json "step": its shape, its passive shares; its timing is
+    // the decider's own, per step).
     toeClearance_ = c.getFloat("step.toeClearance", toeClearance_);
-    stepSettings_.stepDuration = c.getFloat("step.stepDuration", stepSettings_.stepDuration);
     stepSettings_.stepHeight = c.getFloat("step.stepHeight", stepSettings_.stepHeight);
     stepSettings_.peakAt = c.getFloat("step.swingPeakAt", stepSettings_.peakAt);
-    stepSettings_.liftAt = c.getFloat("step.liftAt", stepSettings_.liftAt);
     toeOffPitch_ = math::radians(c.getFloat("step.toeOffPitchDeg", math::degrees(toeOffPitch_)));
     stepPassive_.head = c.getFloat("step.passive.head", stepPassive_.head);
     stepPassive_.hands = c.getFloat("step.passive.hands", stepPassive_.hands);
     stepPassive_.hips = c.getFloat("step.passive.hips", stepPassive_.hips);
     stepPassive_.chest = c.getFloat("step.passive.chest", stepPassive_.chest);
     motion::StepPlannerSettings& shape = deciderSettings_.stepShape;
-    shape.duration = stepSettings_.stepDuration;
-    shape.liftAt = stepSettings_.liftAt;
     shape.height = stepSettings_.stepHeight;
     shape.peakAt = stepSettings_.peakAt;
     shape.toeOffPitch = toeOffPitch_;
@@ -227,6 +217,10 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         muscleTiming_.fittsA = jointsConfig_->getFloat("muscles.fittsA", muscleTiming_.fittsA);
         muscleTiming_.fittsB = jointsConfig_->getFloat("muscles.fittsB", muscleTiming_.fittsB);
         muscleTiming_.fittsWidth = jointsConfig_->getFloat("muscles.fittsWidth", muscleTiming_.fittsWidth);
+        // A step's swing is a foot's aimed move too: the same Fitts' law.
+        deciderSettings_.fittsA = muscleTiming_.fittsA;
+        deciderSettings_.fittsB = muscleTiming_.fittsB;
+        deciderSettings_.fittsWidth = muscleTiming_.fittsWidth;
         deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
         deciderSettings_.armCancel = jointsConfig_->getFloat("decider.armCancel", deciderSettings_.armCancel);
         deciderSettings_.passiveHead = jointsConfig_->getFloat("decider.passiveInfluence.head", deciderSettings_.passiveHead);
@@ -271,6 +265,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.maxStepForward = dv("decider.balanceStep.maxStepForward", deciderSettings_.maxStepForward);
         deciderSettings_.maxStepSide = dv("decider.balanceStep.maxStepSide", deciderSettings_.maxStepSide);
         deciderSettings_.reachDrop = dv("decider.balanceStep.reachDrop", deciderSettings_.reachDrop);
+        deciderSettings_.weightShiftMost = dv("decider.balanceStep.weightShiftMost", deciderSettings_.weightShiftMost);
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
@@ -360,7 +355,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
                                                    : root_.transformPoint(math::Vec3(physicsModels_[static_cast<size_t>(end)][3]));
             path.end = end;
             path.time = 0.0f;
-            path.duration = movementTime(math::distance(path.from, goalWorld), muscleTiming_.fittsWidth,
+            path.duration = math::fittsTime(math::distance(path.from, goalWorld), muscleTiming_.fittsWidth,
                                          muscleTiming_.fittsA, muscleTiming_.fittsB);
             path.on = true;
         }
@@ -441,7 +436,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             const float way = math::distance(stepper_.foot(static_cast<motion::Foot>(f)), spot);
             t.foot[f].pathEnd = spot;
             t.foot[f].pathLeft =
-                movementTime(way, muscleTiming_.fittsWidth, muscleTiming_.fittsA, muscleTiming_.fittsB);
+                math::fittsTime(way, muscleTiming_.fittsWidth, muscleTiming_.fittsA, muscleTiming_.fittsB);
             stepper_.place(static_cast<motion::Foot>(f), spot);
             t.foot[f].mode = motion::TargetMode::Pinned;
             t.foot[f].position = spot;

@@ -208,7 +208,11 @@
       // A foot left behind steps too (a leg's reach ends its stance): once, by
       // the time a step could land, its leg at its reach would hold the hips
       // more than this (m) below standing. [E] walking's hips bob ~4-5 cm.
-      "reachDrop": 0.04
+      "reachDrop": 0.04,
+      // The longest weight shift before a lift (s): needing longer, the body
+      // steps anyway. Gait initiation's APA: ~0.5 s at natural speed, ~0.3 s
+      // at the fastest.
+      "weightShiftMost": 0.5
     }
   },
 

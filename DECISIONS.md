@@ -717,6 +717,18 @@ Dated log. Format: decision, reason, alternatives rejected.
   the ground, dives.
 - **Rejected:** separate walk / run controllers or modes.
 
+## 2026-11-16: A step's swing by Fitts' law; the walking step timing removed
+- **Decision (the user's call: no walking values):** every step's swing is the foot's aimed
+  move, Fitts' law a + b log2(2D / W) with the same values as the limb test's hand and foot
+  goals (`muscles.fitts*`), at least the leg's swing; the weight shift by the capture point
+  (entry below), bounded by `weightShiftMost` 0.5 s (natural APA) and none when the capture
+  point starts outside the feet (the body falls: the step goes at once). `stepDuration` and
+  `liftAt` are gone; a path's time stays the target's (the swing first, the shift the rest).
+- **Why:** one swing time (0.45 s) for every step was a walking value; foot movements follow
+  Fitts' law (foot pointing; pedal studies, Drury: ~0.19 + 0.055 s/bit, close to ours).
+- **Rejected:** separate foot Fitts values (no stepping regression found; ours lie within
+  ~0.05 s of Drury's over 0.1-0.6 m); the walking pendulum swing (steps here are aimed).
+
 ## 2026-11-16: A step's hips follow the capture point's path (DCM); the weight shift from it
 - **Decision (the user's call: general, no walking values):** through a step the hips
   follow the divergent component of motion (Englsberger 2015; capture point, Hof 2005)

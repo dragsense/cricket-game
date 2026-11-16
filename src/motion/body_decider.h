@@ -207,10 +207,16 @@ struct BodyDeciderSettings {
     // A foot left behind steps too: once, by the time a step could land, its
     // leg at its reach would hold the hips more than this below standing (m).
     float reachDrop = 0.04f;
-    // The decider's own step: its shape and timing (locomotion.json "step":
-    // duration, liftAt, height, apex, toe-off, ball of the foot), and the
-    // parts' passive shares while it runs ("step.passive", unless the action
-    // gives its own).
+    // The longest weight shift before a lift (s): a body that needs longer
+    // steps anyway (gait initiation's APA lasts ~0.5 s at natural speed).
+    float weightShiftMost = 0.5f;
+    // A step's swing is an aimed foot move: Fitts' law, a + b log2(2D / W)
+    // (the limb test's goals' values, human_joints.json "muscles").
+    float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
+    // The decider's own step: its shape (locomotion.json "step": height,
+    // apex, toe-off, ball of the foot; its timing is decided per step), and
+    // the parts' passive shares while it runs ("step.passive", unless the
+    // action gives its own).
     StepPlannerSettings stepShape;
     PassiveShares stepPassive;
 };
@@ -296,10 +302,13 @@ private:
                         const BodyDeciderSettings& s, float& miss, math::Vec3* ideal = nullptr,
                         bool* beyondReach = nullptr) const;
     // A step of foot i from `from` to `spot` on the hips target's path: the
-    // time it takes (the sync formula), `steps` steps sharing the way, the
-    // foot down for the share `liftAt` first; negative: no path.
-    float pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps, float liftAt,
+    // time it takes (the sync formula), `steps` steps sharing the way, at
+    // least the leg's swing; negative: no path.
+    float pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps,
                        const BodyDeciderSettings& s) const;
+    // A step's swing of foot i from `from` to `spot` (s): Fitts' law for the
+    // way, at least the leg's swing (swingTimeAtLeast).
+    float swingTime(int i, math::Vec3 from, math::Vec3 spot, const BodyDeciderSettings& s) const;
     // The shortest swing of leg i from `from` to `spot` (s): at rest at both
     // ends it peaks at 1.875 D / T, the foot at most legMaxRate x the leg.
     float swingTimeAtLeast(int i, math::Vec3 from, math::Vec3 spot, const BodyDeciderSettings& s) const;

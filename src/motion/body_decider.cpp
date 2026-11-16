@@ -471,11 +471,9 @@ void BodyDecider::timeSwings(const TargetSet& t, const BodyDeciderSettings& s) {
         if (!steps_[f].running()) continue;
         float left;
         if (onPath) {
-            // The rest of the swing from where the foot is (lifted: no
-            // weight shift left), shared as when it started.
-            const bool lifted = steps_[f].phase() == StepPlanner::Phase::Up;
-            left = pathStepTime(t, f, steps_[f].target(), steps_[f].landing(), pathSteps_[f],
-                                lifted ? 0.0f : stepNow_[f].liftAt, s);
+            // The rest of the step from where the foot is, shared as when it
+            // started (its weight shift keeps its share of the clock).
+            left = pathStepTime(t, f, steps_[f].target(), steps_[f].landing(), pathSteps_[f], s);
             if (left < 0.0f) continue;  // the path has ended: the swing keeps its own time
         } else if (!steps_[o].running() && grounded_[o] && t.foot[o].mode == TargetMode::Pinned) {
             left = std::min(steps_[f].timeLeft(stepNow_[f]), stanceLeft(o, s));
@@ -1235,7 +1233,7 @@ float BodyDecider::outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, co
     return best;
 }
 
-float BodyDecider::pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps, float liftAt,
+float BodyDecider::pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps,
                                 const BodyDeciderSettings& s) const {
     // The sync formula: a step on the hips' path lands as the hips get to its
     // end: the path's time left, no shorter than the hips take at their
@@ -1246,13 +1244,18 @@ float BodyDecider::pathStepTime(const TargetSet& t, int i, math::Vec3 from, math
     const Target& hips = given(t, HipsW);
     const float kw = std::clamp(hips.weightPosition, 0.0f, 1.0f);
     // A path that has ended times nothing: a step after it (the foot left
-    // behind follows) takes the gait's time.
+    // behind follows) takes its own time (timeWeightShift).
     if (act_[HipsW] <= 0.0f || kw <= 0.0f || hips.pathLeft <= t.dt) return -1.0f;
     math::Vec3 lag = drivenPart(hips, hips.pathEnd - pelvisOf(output_).position) * kw;
     lag.y = 0.0f;
     const float hipsTime = math::length(lag) / std::max(s.hipsMaxSpeed, 1e-3f);
     const float time = std::max(hips.pathLeft, hipsTime) / static_cast<float>(std::max(steps, 1));
-    return std::max(time, swingTimeAtLeast(i, from, spot, s) / (1.0f - std::clamp(liftAt, 0.0f, 0.9f)));
+    return std::max(time, swingTimeAtLeast(i, from, spot, s));
+}
+
+float BodyDecider::swingTime(int i, math::Vec3 from, math::Vec3 spot, const BodyDeciderSettings& s) const {
+    const float d = std::sqrt((spot.x - from.x) * (spot.x - from.x) + (spot.z - from.z) * (spot.z - from.z));
+    return std::max(math::fittsTime(d, s.fittsWidth, s.fittsA, s.fittsB), swingTimeAtLeast(i, from, spot, s));
 }
 
 float BodyDecider::swingTimeAtLeast(int i, math::Vec3 from, math::Vec3 spot, const BodyDeciderSettings& s) const {
@@ -1275,8 +1278,11 @@ void BodyDecider::timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const
     // minimum-jerk path, fastest at the middle (1.875 D / T); the centre of
     // pressure, xi - xi' / w0, then lies 1.875 D / (w0 T) behind it: the
     // shift takes at least the time that keeps it within the feet. At least
-    // the foot's unloading time (supportBlendTime, Winter 1995); a foot
-    // already off the ground has no weight to shift.
+    // the foot's unloading time (supportBlendTime, Winter 1995), at most
+    // weightShiftMost; a foot already off the ground has no weight to shift.
+    // The swing is the foot's aimed move: Fitts' law for its way (swingTime).
+    // A path gives the whole time (the sync formula): the swing takes its
+    // own first (all of it if the path is shorter), the shift what is left.
     StepPlannerSettings& timing = stepNow_[f];
     const int o = 1 - f;
     const float w0 = pendulumRate(anchor_[o].y, s);
@@ -1285,7 +1291,8 @@ void BodyDecider::timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const
     dcmStart_ = dcmHips_ + (w0 > 0.0f ? level(hipsVel_) / w0 : math::Vec3(0.0f));
     dcmXi_ = dcmStart_;
     const float total = std::max(timing.duration, 1e-3f);
-    const float swing = total * (1.0f - std::clamp(timing.liftAt, 0.0f, 0.9f));
+    const float own = swingTime(f, anchor_[f], spot, s);
+    const float swing = fixedTotal ? std::min(own, total) : own;
     float shift = grounded_[f] ? std::max(s.supportBlendTime, 0.0f) : 0.0f;
     if (grounded_[f] && w0 > 0.0f) {
         const math::Vec3 p = anchor_[o];
@@ -1294,7 +1301,11 @@ void BodyDecider::timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const
         way.y = 0.0f;
         const float d = math::length(way);
         const math::Vec3 mid = dcmStart_ + 0.5f * way;
-        if (d > 1e-4f && outsideFeet(mid, anchor_, 2, s) <= 0.0f) {
+        // At the start the capture point is still (xi' = 0): the centre of
+        // pressure is the capture point itself. Already out of the feet,
+        // the body falls: no shift can bring it back, the step goes at once.
+        const bool held = outsideFeet(dcmStart_, anchor_, 2, s) <= 0.0f;
+        if (held && d > 1e-4f && outsideFeet(mid, anchor_, 2, s) <= 0.0f) {
             // How far behind the middle the centre of pressure may go.
             const math::Vec3 back = -way / d;
             float lo = 0.0f, hi = 1.0f;
@@ -1303,15 +1314,11 @@ void BodyDecider::timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const
                 const float a = 0.5f * (lo + hi);
                 (outsideFeet(mid + back * a, anchor_, 2, s) <= 0.0f ? lo : hi) = a;
             }
-            // A body that cannot shift its weight within a whole step's time
-            // steps on anyway (it is already falling).
-            const float most = s.stepShape.duration;
+            const float most = s.weightShiftMost;
             shift = std::clamp(1.875f * d / (w0 * std::max(lo, 1e-4f)), shift, std::max(most, shift));
         }
     }
     if (fixedTotal) {
-        // The path's time is the target's (the sync formula): the shift gets
-        // at most the step's shape's share of it, the swing keeps the rest.
         shift = std::min(shift, total - swing);
         timing.liftAt = std::clamp(shift / total, 0.0f, 0.9f);
     } else {
@@ -1450,15 +1457,27 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     out.step.capturePoint = xcom;
     out.step.velocity = vGoal;
     out.step.outside = outsideFeet(xcom, standing, n, s);
-    if (swing < 0) timeStep(s);  // the next step's timing (a step under way keeps its own)
-    const StepPlannerSettings& timing = swing >= 0 ? stepNow_[swing] : nextStep_;
-    const float lift = std::clamp(timing.liftAt, 0.0f, 0.9f);
-    const float lead = timing.duration * lift, swingTime = timing.duration * (1.0f - lift);
+    if (swing < 0) timeStep(s);  // the next step's shape (a step under way keeps its own)
+    // The weight shift and the swing: a step under way's own; one not yet
+    // decided, the least shift (the foot's unloading) and the foot's aimed
+    // move (Fitts' law) to where the capture point is now.
+    float lead = std::max(s.supportBlendTime, 0.0f), swingFor = 0.0f;
+    if (swing >= 0) {
+        const StepPlannerSettings& timing = stepNow_[swing];
+        const float lift = std::clamp(timing.liftAt, 0.0f, 0.9f);
+        lead = timing.duration * lift;
+        swingFor = timing.duration * (1.0f - lift);
+    } else {
+        math::Vec3 centre(0.0f);
+        for (int k = 0; k < n; ++k) centre += standing[k];
+        centre /= static_cast<float>(n);
+        swingFor = math::fittsTime(math::length(level(xcom - centre)), s.fittsWidth, s.fittsA, s.fittsB);
+    }
     float miss = 0.0f;
     if (swing >= 0) {
         // A step under way: its spot follows the capture point to the landing.
         const float u = std::clamp(t.foot[swing].swing, 0.0f, 1.0f);
-        const float left = swingTime * (1.0f - u) + (u <= 0.0f ? lead : 0.0f);
+        const float left = swingFor * (1.0f - u) + (u <= 0.0f ? lead : 0.0f);
         out.step.wanted = true;
         out.step.foot = swing;
         out.step.spot = stepSpot(swing, future(left), vGoal, hipsAt(left), kh > 0.0f, s, miss);
@@ -1467,7 +1486,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     // A step takes its time: it starts once the capture point will be out of
     // the support by the time a step could land (standing still: once it is
     // out), so a moving body steps on without a pause.
-    const math::Vec3 at = future(lead + swingTime), hipsEnd = hipsAt(lead + swingTime);
+    const math::Vec3 at = future(lead + swingFor), hipsEnd = hipsAt(lead + swingFor);
     // On the hips' path the step lands as the hips arrive; a way longer than
     // a step reaches (the ideal spot past the reached one) is shared by more
     // steps, each landing planning the next.
@@ -1488,7 +1507,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
         out.step.wanted = true;
         out.step.foot = foot;
         out.step.spot = spot;
-        out.step.time = pathStepTime(t, foot, anchor_[foot], spot, steps, timing.liftAt, s);
+        out.step.time = pathStepTime(t, foot, anchor_[foot], spot, steps, s);
         pathSteps_[foot] = steps;
     };
     // A foot left behind: by the time a step could land the hips will be so
@@ -1499,7 +1518,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     int behind = -1;
     if (n == 2 && s.reachDrop > 0.0f) {
         const math::Transform pelvisNow = pelvisOf(output_);
-        const math::Vec3 hipsThen = pelvisNow.position + lag + vGoal * (lead + swingTime);
+        const math::Vec3 hipsThen = pelvisNow.position + lag + vGoal * (lead + swingFor);
         float worst = 0.0f;
         for (int i = 0; i < 2; ++i) {
             const math::Vec3 hip = hipsThen + pelvisNow.rotation * hipOffset_[i];
