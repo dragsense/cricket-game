@@ -230,6 +230,20 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   up 0 N, knee within 1 deg) but its balance is the support's (level ~158 N, ground force
   line 20-35 cm off the centre of mass); jog: plan stance knee ~60 deg, the support carried
   ~700 N; the plan's fore-aft push came from the swing leg's motion (trunk ~0).
+- [x] **A2 A step's hips by the capture point's path** (2026-11-16; the user checked it in the
+  game: "perfect"; DECISIONS). Through a step of the decider's own the hips
+  follow the DCM (Englsberger 2015): on the standing foot xi = p + (xi_end - p) e^(-w0 t_left),
+  xi_end the new stance's centre; the hips x' = -w0 (x - xi), and settle the same way after
+  the landing. The weight shift before the lift takes the shortest time that keeps the centre
+  of pressure within the feet (at least supportBlendTime 0.12 s; at most a step's 0.6 s; a
+  path step keeps its shape's share of the path's time). Gone: `hipsSway` and the hips going
+  "half the foot's way". Predicted (sim): forward 0.3 m shift 0.27 s, hips 4.6 cm toward the
+  stance foot; side out 0.3 m 0.14 s, 1.5 cm (real APA ~0.3 s fastest, ~0.5 s natural).
+  Measured: `hips fwd 0.40` trailing step 0.79 s (0.34 shift + 0.45 swing); arrow-key limb test
+  unchanged; nothing dropped. The decider test "hips never exceed their bounds" now runs with
+  the body's masses and gravity (`Fixture::giveMassesAndGravity`), its landing its own.
+  Next: step timing (`stepDuration` 0.6, `liftAt` 0.25 still estimate the balance step's
+  decision and the gait swing), then the pelvis/chest turn values fitted to walking.
 - [ ] **A1 Muscle stiffness from research** (2026-11-16, measured, design awaiting the user's
   answers). `measure: muscle stiffness, built against research`: the built K (inertia
   beyond x (1 / 0.03 s)^2, w 33 rad/s) against BIOMECHANICS 14 at the hold's torque:

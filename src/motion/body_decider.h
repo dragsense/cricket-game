@@ -145,10 +145,6 @@ struct BodyDeciderSettings {
     // pulls by its weight, the others by these shares, the body's own motion
     // the rest (the user's design 2026-11-09).
     float passiveHead = 0.7f, passiveHands = 0.5f, passiveHips = 0.5f, passiveChest = 0.5f;
-    // m: through a foot's timed swing the hips, between the feet, go this
-    // far toward the standing foot at mid-swing and back (centre of mass
-    // side to side 3.9-7 cm over a stride, Orendurff et al. 2004).
-    float hipsSway = 0.027f;
     // The pelvis turns about the vertical with the legs: a share of the turn
     // of the line between the feet (a foot ahead turns its hip forward), so
     // longer steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at
@@ -304,6 +300,22 @@ private:
     // foot down for the share `liftAt` first; negative: no path.
     float pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps, float liftAt,
                        const BodyDeciderSettings& s) const;
+    // The shortest swing of leg i from `from` to `spot` (s): at rest at both
+    // ends it peaks at 1.875 D / T, the foot at most legMaxRate x the leg.
+    float swingTimeAtLeast(int i, math::Vec3 from, math::Vec3 spot, const BodyDeciderSettings& s) const;
+    // The body as a linear inverted pendulum over ground at `groundY`: its
+    // rate w0 = sqrt(g / l), l the plan's centre of mass height (0: no gravity).
+    float pendulumRate(float groundY, const BodyDeciderSettings& s) const;
+    // Foot f's step just set up (stepNow_[f], to `spot`): its weight shift
+    // takes the shortest time that keeps the centre of pressure within the
+    // feet as the capture point moves to where the swing needs it (DCM,
+    // Englsberger 2015); `fixedTotal`: the step's whole time is given (a
+    // path), the swing keeps at least its leg's time.
+    void timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const BodyDeciderSettings& s);
+    // The hips' level place on a step of the decider's own (foot `timed`,
+    // the other standing): the capture point's path (DCM) and the hips
+    // following it, x' = -w0 (x - xi).
+    math::Vec3 stepHips(int timed, float dt, const BodyDeciderSettings& s);
     math::Vec3 centreOfMass(const Plan& p) const;
 
     // A hand's trunk: out of reach, the queue (by where the target is) and
@@ -402,6 +414,11 @@ private:
     // The hips' reference (support) and the output hips' motion state.
     math::Vec3 hipsRef_{0.0f}, hipsRefVel_{0.0f};
     math::Vec3 hipsVel_{0.0f};
+    // Through a step and its settling (dcmOn_): the hips' level place, which
+    // follows the capture point (dcmXi_), and the capture point where the
+    // step began (dcmStart_). Off: the hips are where the support puts them.
+    math::Vec3 dcmHips_{0.0f}, dcmXi_{0.0f}, dcmStart_{0.0f};
+    bool dcmOn_ = false;
     // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
     int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};
     // How far (level) a hand beyond the standing reach takes the hips toward

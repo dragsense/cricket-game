@@ -54,6 +54,24 @@ struct Fixture {
         REQUIRE(rig.localToModel(rig.restPose(), models));
     }
     Vec3 pos(int joint) const { return Vec3(models[static_cast<size_t>(joint)][3]); }
+    // The body's masses as the game gives them (agents::HumanBody: each
+    // bone's share of the body's mass at its shape's centre) and gravity:
+    // the plan's pendulum (balance, a step's hips) works as in the game.
+    void giveMassesAndGravity() {
+        std::vector<float> mass(static_cast<size_t>(rig.numJoints()), 0.0f);
+        std::vector<Vec3> centre(mass.size(), Vec3(0.0f));
+        const float h = rig.height();
+        for (int j = 0; j < rig.numJoints(); ++j) {
+            const rig::BoneDef& bone = def.bones[static_cast<size_t>(rig.boneDefIndex(j))];
+            mass[static_cast<size_t>(j)] = bone.massPercent * 0.01f * def.bodyMass;
+            if (bone.visual.shape == rig::VisualShape::Capsule)
+                centre[static_cast<size_t>(j)] = 0.5f * (bone.visual.from + bone.visual.to) * h;
+            else if (bone.visual.shape == rig::VisualShape::Box)
+                centre[static_cast<size_t>(j)] = bone.visual.center * h;
+        }
+        decider.setMasses(mass, centre);
+        settings.gravity = 9.81f;
+    }
     // Standing targets: both feet pinned where they stand, the rest free.
     motion::TargetSet standing() const {
         motion::TargetSet t;
@@ -165,7 +183,9 @@ TEST_CASE("body decider: activation and support weights blend, never switch") {
 TEST_CASE("body decider: the hips never exceed their speed and acceleration bounds, whatever the targets do") {
     Fixture f;
     f.settings.passiveHips = 0.0f;  // the hips go fully over the support
+    f.giveMassesAndGravity();       // a step's hips ride the body's pendulum (DCM), as in the game
     motion::TargetSet t = f.standing();
+    t.balanceSteps = false;         // the landing is the test's own (no balance step re-aims it)
     // Two ticks of history (the hips already move as they settle to the
     // legs' reach), so the first measured change is a real one.
     f.decider.decide(t, f.settings, f.queue);

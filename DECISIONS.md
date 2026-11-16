@@ -717,6 +717,34 @@ Dated log. Format: decision, reason, alternatives rejected.
   the ground, dives.
 - **Rejected:** separate walk / run controllers or modes.
 
+## 2026-11-16: A step's hips follow the capture point's path (DCM); the weight shift from it
+- **Decision (the user's call: general, no walking values):** through a step the hips
+  follow the divergent component of motion (Englsberger 2015; capture point, Hof 2005)
+  over the standing foot to the new stance's centre, x' = -w0 (x - xi), w0 = sqrt(g / l) of
+  the plan's centre of mass. The weight shift before the lift lasts the shortest time that
+  keeps the centre of pressure within the feet (minimum-jerk DCM: 1.875 D / (w0 T)), at
+  least the foot's unloading time, at most a whole step's; a hips path keeps its time (sync
+  formula) and gives the shift at most the step shape's share.
+- **Why:** `hipsSway` (2.7 cm, Orendurff walking) and "the hips travel half the foot's way"
+  were walking fits; the pendulum gives every step its own sway (a walking-like step: 2.5
+  cm each way, as measured) and the old 0.15 s shift needed the centre of pressure 11.5 cm
+  outside the feet.
+- **Rejected:** fixed sway values per step type; keeping 0.15 s (physically impossible).
+
+## 2026-11-16: The support keeps the body upright only; weight and push from the legs (chosen, not built)
+- **Decision (the user's call):** the capsule's support spring (physics_world.json
+  "character.support") is to keep only the body's tilt and turn (it never tips). Its
+  up/down and fore-aft pull goes: the stance legs carry the weight (the gravity hold must
+  hold the whole body above a stance leg, not only the leg below each joint), and the push
+  for steps, runs and jumps comes from the legs. Built one piece at a time, each checked in
+  the game; the first piece: a stance leg holds the body's weight.
+- **Why:** today the spring carries the body (jog: ~700 N, the legs almost nothing), its
+  upward stop (anchor never above standing, an uncapped limit spring) blocks a jump, and it
+  pulls the physics back onto the plan. A self-balancing body without it failed
+  2026-11-06..08.
+- **Rejected:** the capsule driving the hips' path (jump height from the plan, not the
+  legs); no support at all (fell, 2026-11-06..08).
+
 ## 2026-11-16: The limb test only (walk, jog/run, jump removed)
 - **Decision (the user's call):** the fielder keeps only the limb test. Removed: WASD
   walking (the hips target at the walker's velocity), E/Q pace, Ctrl/Shift jog and run,
