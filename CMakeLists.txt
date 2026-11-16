@@ -61,9 +61,7 @@ cricket_warnings(cricket_ik)
 add_library(cricket_motion STATIC
     src/motion/body_decider.cpp
     src/motion/foot_stepper.cpp
-    src/motion/jump_planner.cpp
     src/motion/step_planner.cpp
-    src/motion/move_controller.cpp
 )
 target_link_libraries(cricket_motion PUBLIC cricket_ik)
 cricket_warnings(cricket_motion)
@@ -146,7 +144,7 @@ if(CRICKET_BUILD_TESTS)
     cricket_warnings(ik_tests)
     add_test(NAME ik_tests COMMAND ik_tests)
 
-    add_executable(motion_tests tests/test_main.cpp tests/test_body_decider.cpp tests/test_stepping.cpp tests/test_move.cpp)
+    add_executable(motion_tests tests/test_main.cpp tests/test_body_decider.cpp)
     target_link_libraries(motion_tests PRIVATE cricket_motion doctest::doctest)
     cricket_warnings(motion_tests)
     target_compile_definitions(motion_tests PRIVATE CRICKET_CONFIG_DIR="${CMAKE_SOURCE_DIR}/config")

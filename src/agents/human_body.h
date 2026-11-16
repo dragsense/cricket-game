@@ -44,10 +44,6 @@ struct MuscleSettings {
         float plus = 0.0f, minus = 0.0f;
     };
     std::vector<Directional> directional;
-    // Measured joint stiffness (N m/rad) and damping (N m s/rad) by bone
-    // name (BIOMECHANICS 14.2): such a joint's muscle is a spring that stiff;
-    // a joint not listed pulls by activationTime instead.
-    std::vector<std::pair<std::string, float>> stiffness, jointDamping;
 };
 
 // How fast a muscle closes its target's gap: Fitts' law movement time
@@ -66,7 +62,6 @@ public:
               const ik::JointLimits& limits, const MuscleSettings& muscles, const math::Transform& root,
               uint32_t group);
     bool ready() const { return !parts_.empty(); }
-    physics::RagdollId ragdoll() const { return ragdoll_; }  // its Jolt ragdoll (measuring)
 
     struct Part {
         int joint = -1;                    // rig joint the body belongs to
@@ -80,7 +75,6 @@ public:
         bool hinge = false;                // turns about frameX only
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame (X twist)
         bool muscle = false;               // its motor has strength
-        float strength = 0.0f;             // N m, its muscle's strongest torque
     };
     const std::vector<Part>& parts() const { return parts_; }
     // Per rig joint (`numJoints`): its part's mass (kg, 0 if none of its own)
@@ -91,20 +85,17 @@ public:
     // Every muscle carries the weight of the parts beyond it (away from the
     // pelvis), as real muscles hold posture: a torque on the part and the
     // opposite on its parent. The hold and Jolt's motor (drivePose) share
-    // the muscle's strength: drivePose gives the hold within it, at the
-    // body's strength (setStrength), and the motor corrects with what is
-    // left. Call each tick before drivePose. No allocations.
+    // the muscle's strength: drivePose gives the hold within it and the motor
+    // corrects with what is left. Call each tick before drivePose. No
+    // allocations.
     void holdWeight(physics::PhysicsWorld& world) const;
-    // Every muscle's torque limit at `strength` (0..1) of its real one.
-    void setStrength(physics::PhysicsWorld& world, float strength) const;
     // Every muscle pulls its joint toward the pose `models` (character space,
-    // the rig's joints): Jolt's Ragdoll::DriveToPoseUsingMotors. No allocations.
-    void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const;
-    // The same, with the head held in space: its muscle's target is the
-    // pose's head in the world (`root`: character to world) seen from the
-    // real body it hangs from, not from the posed one (the vestibulo-collic
-    // reflex keeps the head stable in space, Pozzo et al. 1990). `headJoint`:
-    // the rig joint of the head.
+    // the rig's joints): Jolt's Ragdoll::DriveToPoseUsingMotors; the head is
+    // held in space: its muscle's target is the pose's head in the world
+    // (`root`: character to world) seen from the real body it hangs from, not
+    // from the posed one (the vestibulo-collic reflex keeps the head stable
+    // in space, Pozzo et al. 1990). `headJoint`: the rig joint of the head.
+    // No allocations.
     void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
                    int headJoint) const;
     // The body (character space of `root`) a part has in the pose `models`.
@@ -118,8 +109,6 @@ public:
     void boneModels(const physics::PhysicsWorld& world, float alpha, const rig::Rig& rig, const rig::Pose& pose,
                     const math::Transform& root, std::vector<math::Mat4>& models) const;
 
-    // Centre of mass of all parts (world) after the last step.
-    math::Vec3 centreOfMass(const physics::PhysicsWorld& world) const;
     // Velocity of the centre of mass (world, m/s) after the last step.
     math::Vec3 centreOfMassVelocity(const physics::PhysicsWorld& world) const;
     // A part's bone (its joint) in the world after the last step.

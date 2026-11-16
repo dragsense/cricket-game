@@ -71,23 +71,10 @@
   },
 
   "ik": {
-    // Pole directions in character space: knees point forward, elbows back and out.
-    "kneePole": [0.0, 0.0, 1.0],
-    "elbowPole": [0.3, 0.0, -1.0],
-    // ozz two-bone "soften" (1 = none). Only the last 0.1 % eases in, so standing legs
-    // are straight (BIOMECHANICS 3.1) and the knee still does not snap.
-    "soften": 0.999,
-    // Aim IK: share of the look rotation taken by the chest before the head.
-    "chestAimWeight": 0.3,
-    "headAimWeight": 1.0
+    // Knees point forward (character space): the decider's legs.
+    "kneePole": [0.0, 0.0, 1.0]
   },
 
-  // Body repositioning (runs every tick after the foot targets are set;
-  // BIOMECHANICS 3.1). The deepest crouch comes from the knee's joint limit.
-  // Reaches are hip-to-ankle distances as a fraction of leg length (thigh + shin).
-  // Body from the feet (motion::BodyReposition): the moving leg reaches with its
-  // own joints; past the hip's range the pelvis tilts (decider.pelvis*Deg limits),
-  // past the leg's length it moves toward the foot. No weights.
   // The body's decider (motion::BodyDecider, DECISIONS 2026-11-06): the parts a
   // target needs move together from the start, each with a share by its place
   // in the queue (the user's rule): each next part carries queueShare times the
@@ -272,71 +259,6 @@
       "forearm":   { "axis": "x", "plus": 48, "minus": 77 },
       // Wrist: + extension (isometric not found: 11-13 isokinetic, Harbo 2012), - flexion (Harbo 2012 isometric 25).
       "hand":      { "axis": "z", "plus": 12, "minus": 25 }
-    },
-    // A limb following its IK target pose (DECISIONS 2026-11-07): each joint's
-    // muscle is a spring toward the target angle (Jolt's position motor,
-    // stiffness mode; torque capped at maxTorque; gravity held separately).
-    // Measured (BIOMECHANICS 14.2): a joint's stiffness rises linearly with
-    // the torque it holds, K = stiffness + stiffnessPerTorque |torque|
-    // (torque: its gravity hold, plus the balancer's on the stance legs).
-    //  - shoulder 10.80 + 3.18 |t|, elbow 8.67 + 6.18 |t| (Gomi & Osu 1998,
-    //    J Neurosci 18, Table 2 means, no co-contraction) [P];
-    //  - hip 169.4 N m/rad relaxed + 5.15 N m/rad per N at the ankle over a
-    //    0.87 m mean leg = 5.95 per N m (Huang et al. 2020, IEEE TNSRE,
-    //    Table III; straight leg) [P];
-    //  - knee 75 relaxed (cited in Huang 2020) + 6.6 per N m of extension
-    //    moment (Granata, Wilson & Padua 2002; 3.3 in flexion, not used: the
-    //    knee mostly holds extension) [P];
-    //  - trunk: effective 590 N m/rad about L4-L5 upright (Cholewicki et al.
-    //    2010: +160 N m/rad = 27%); 785 +- 580 unloaded up to 2200 under
-    //    loads (Cholewicki 2000). Our three spine joints in series: 3 x 590
-    //    each. No per-torque slope found yet (0) [P, split ours].
-    "stiffness": { "upper_arm": 10.8, "forearm": 8.67, "thigh": 169.4, "shin": 75,
-                   "spine_01": 1770, "spine_02": 1770, "chest": 1770 },
-    "stiffnessPerTorque": { "upper_arm": 3.18, "forearm": 6.18, "thigh": 5.95, "shin": 6.6 },
-    // Damping (viscosity), N m s/rad, measured: shoulder 0.63, elbow 0.76
-    // (Gomi & Osu 1998, Table 3 intercepts); knee ~2 relaxed (cited in Huang
-    // 2020); hip 2-21 relaxed (Huang 2020) and 0.5-10 (Koopman et al. 2016),
-    // no mean published: 10, inside both; trunk 33.4 in extension (Cholewicki
-    // 2010), 3 x 33.4 per joint in series.
-    "jointDamping": { "upper_arm": 0.63, "forearm": 0.76, "thigh": 10, "shin": 2,
-                      "spine_01": 100, "spine_02": 100, "chest": 100 }
-  },
-
-  // Balance by visible assists (the user's call, DECISIONS 2026-11-08 "Balance
-  // by visible assists"): outside forces that stand the physics body, scaled
-  // by one balance strength (0..1). Feel tunables, not body values. Springs as
-  // frequency (Hz) and damping ratio; forces scale with the whole body's mass,
-  // the upright torque with its tilt inertia, so they hold any body size.
-  "balance": {
-    "hoverShare": 0.7,        // of the weight the hover carries while standing (the feet press the rest: friction)
-    "hoverMaxShare": 0.95,    // the hover's most, of the weight (the feet always keep some load)
-    "hoverFrequency": 2.0,    // Hz, the hips' height spring toward the stand height
-    "hoverDamping": 1.0,
-    "uprightFrequency": 2.0,  // Hz, the pelvis's tilt back to upright (its turn about up stays free)
-    "uprightDamping": 1.0,
-    "uprightMaxTorque": 600,  // N m
-    "pullFrequency": 1.0,     // Hz, the centre of mass pulled over the support (a force on the hips, across only)
-    "pullDamping": 1.0,
-    "pullMaxForce": 250,      // N
-    "footFriction": 1.0,      // the feet's and toes' Jolt friction
-    "footRestitution": 0.0,   // no bounce (Jolt takes the larger of the two bodies')
-    "lockMinStrength": 0.5,   // a planted foot is locked to the ground while the strength is at least this
-    "shiftTime": 0.6,         // s: a foot meant to lift waits at most this for the weight to go over the other
-    "stepMargin": 0.05,       // m: a step lands this far past the capture point (Hof 2008's offset)
-    "stepMaxLength": 0.6,     // m from the stance foot
-    "stepMinWidth": 0.12,     // m: the stepping foot stays at least this far to its own side of the stance foot
-    "stepClearance": 0.08,    // m: the foot's lift while it travels
-    "recoverRate": 1.0        // 1/s: the strength climbs back to 1 after a knock
-  },
-
-  "reposition": {
-    "standReach": 0.998,      // standing: legs nearly straight (knee about 7 deg; real quiet standing 0-5 deg)
-    "maxReach": 1.0,          // a fully straight leg
-    "softBand": 0.0015,       // max reach eases in over the last 0.15 % (maxReach - softBand must stay above standReach)
-    "followRate": 10.0,       // 1/s, spring frequency: how fast the body settles over the feet
-    "damping": 1.0,           // spring damping ratio (1: settles without overshoot, < 1: sways past)
-    "stanceDropDeg": 4.0,     // unloaded side's hip drop, all weight on one leg (BIOMECHANICS 4.3)
-    "stanceBlendHeight": 0.1  // m; a foot this much higher than the other carries no weight
+    }
   }
 }

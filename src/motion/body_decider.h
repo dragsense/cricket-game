@@ -36,7 +36,6 @@
 #include "math/math.h"
 #include "motion/step_planner.h"
 #include "motion/target_set.h"
-#include "motion/move_controller.h"
 #include "rig/rig.h"
 
 #include <array>
@@ -212,13 +211,11 @@ struct BodyDeciderSettings {
     // A foot left behind steps too: once, by the time a step could land, its
     // leg at its reach would hold the hips more than this below standing (m).
     float reachDrop = 0.04f;
-    // The decider's own step: its shape (locomotion.json "step": height,
-    // apex, toe-off, ball of the foot; duration and liftAt without a gait),
-    // its timing from the body's speed by the gait (motion::gaitTiming,
-    // locomotion.json "walk"; none: the shape's), and the parts' passive
-    // shares while it runs ("step.passive", unless the action gives its own).
+    // The decider's own step: its shape and timing (locomotion.json "step":
+    // duration, liftAt, height, apex, toe-off, ball of the foot), and the
+    // parts' passive shares while it runs ("step.passive", unless the action
+    // gives its own).
     StepPlannerSettings stepShape;
-    const MoveSettings* gait = nullptr;
     PassiveShares stepPassive;
 };
 
@@ -280,8 +277,8 @@ private:
     void report(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     // The balance step on the output pose (StepAdvice).
     void balanceStep(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
-    // The next step's timing (nextStep_) for the body's level velocity.
-    void timeStep(math::Vec3 velocity, const BodyDeciderSettings& s);
+    // The next step's timing (nextStep_): the step's shape's.
+    void timeStep(const BodyDeciderSettings& s) { nextStep_ = s.stepShape; }
     // Every swing's landing time, planned (not chased each tick): on a foot's
     // event (a step starts or lands) or a change of the hips target's motion,
     // from the body's own prediction of the hips (stanceLeft), keeping the

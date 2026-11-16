@@ -53,13 +53,8 @@ struct InputState {
 
 enum class Action : uint8_t {
     ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
-    StepForward, StepBack, StepLeft, StepRight,
-    WalkFaster, WalkSlower,  // the steps' pace: longer and quicker steps, or shorter and slower
-    Jump,                    // held (Space): crouch; let go: jump straight up
-    ModShift,  // held modifier (limb test: up/down); moving: run
-    Jog,       // held (Ctrl): jog
+    ModShift,  // held modifier (limb test: up/down)
     ToggleMouseLook,
-    FreeView,    // the camera orbits freely; the player keeps their heading
     ResetPose,   // limb test: drop the targets, the body back at its standing pose
     SlowMotion,        // toggle slow motion for the whole game
     PoseLimb,          // limb test: choose the next target (feet, hands, hips, chest, head)

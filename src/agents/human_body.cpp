@@ -150,7 +150,6 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             r.motor.damping = muscles.damping;
             r.motor.maxTorque = strength;  // 0: no muscle (the joint hangs free)
             p.muscle = strength > 0.0f;
-            p.strength = strength;
             // Two muscles about one axis: which Jolt axis it is (twist X,
             // normal Y, plane Z of the part's frame) and which way is +.
             const std::string base = baseName(bone.name);
@@ -236,23 +235,6 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
     world.setRagdollHold(ragdoll_, hold_.data(), static_cast<int>(hold_.size()));
 }
 
-void HumanBody::setStrength(physics::PhysicsWorld& world, float strength) const {
-    world.setRagdollStrength(ragdoll_, strength);
-}
-
-void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models) const {
-    // Each part body's rotation relative to its parent's body (the root's
-    // turn cancels, so character space will do).
-    for (size_t i = 0; i < parts_.size(); ++i) {
-        const Part& p = parts_[i];
-        if (p.parent < 0) continue;
-        const math::Quat child = partPose(static_cast<int>(i), models).rotation;
-        const math::Quat parent = partPose(p.parent, models).rotation;
-        rotations_[i] = math::inverse(parent) * child;
-    }
-    world.driveRagdollToPose(ragdoll_, rotations_.data(), static_cast<int>(rotations_.size()));
-}
-
 void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
                           int headJoint) const {
     for (size_t i = 0; i < parts_.size(); ++i) {
@@ -301,12 +283,6 @@ void HumanBody::jointMasses(int numJoints, std::vector<float>& mass, std::vector
         mass[static_cast<size_t>(p.joint)] = p.mass;
         centre[static_cast<size_t>(p.joint)] = p.shape.position;
     }
-}
-
-math::Vec3 HumanBody::centreOfMass(const physics::PhysicsWorld& world) const {
-    math::Vec3 sum(0.0f);
-    for (const Part& p : parts_) sum += world.transform(p.body).position * p.mass;
-    return totalMass_ > 0.0f ? sum / totalMass_ : sum;
 }
 
 math::Vec3 HumanBody::centreOfMassVelocity(const physics::PhysicsWorld& world) const {

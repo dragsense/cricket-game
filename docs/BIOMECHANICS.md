@@ -1313,6 +1313,19 @@ MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6
   - **Elbow, passive:** 0.4-1.8 N m/rad (19 subjects; scales with upper-arm volume).
   - **Gaps:** wrist (only a 3×3 matrix study, values not found), neck, trunk (Watt 2022
     lumbar meta-analysis not read yet), knee and hip in stance under load.
+  - **Stiffness rising with the torque held (moved here from human_joints.json,
+    2026-11-16; not used by the code yet)** **[P]**: K = relaxed + slope × |torque|.
+    Shoulder 10.80 + 3.18 |t|, elbow 8.67 + 6.18 |t| (Gomi & Osu 1998, J Neurosci 18,
+    Table 2 means, no co-contraction); hip 169.4 N m/rad relaxed + 5.15 N m/rad per N at
+    the ankle over a 0.87 m mean leg = 5.95 per N m (Huang et al. 2020, IEEE TNSRE,
+    Table III, straight leg); knee 75 relaxed (cited in Huang 2020) + 6.6 per N m of
+    extension moment (Granata, Wilson & Padua 2002; 3.3 in flexion); trunk effective 590
+    N m/rad about L4-L5 upright (Cholewicki et al. 2010: +160 = 27 %), 785 ± 580 unloaded
+    up to 2200 under loads (Cholewicki 2000); no per-torque slope found for the trunk.
+  - **Damping (N m s/rad, measured):** shoulder 0.63, elbow 0.76 (Gomi & Osu 1998, Table
+    3 intercepts); knee ~2 relaxed (cited in Huang 2020); hip 2-21 relaxed (Huang 2020)
+    and 0.5-10 (Koopman et al. 2016), no mean published; trunk 33.4 in extension
+    (Cholewicki 2010).
   - Jolt 5.3 supports this directly: `ESpringMode::StiffnessAndDamping` (k in N m/rad,
     T = -k θ - c ω). Sources: e-space.mmu.ac.uk/13645, PMC2277155, PMC2277144,
     iris.unige.it/handle/11567/245370, arxiv.org/pdf/1908.07800, PMC2562882,

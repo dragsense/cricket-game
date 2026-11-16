@@ -1,91 +1,19 @@
-// Human locomotion. Metres, seconds; angles in degrees. Sources in
-// docs/BIOMECHANICS.md section 4 (walking gait).
+// Human locomotion: the decider's balance step (the limb test only; walking,
+// running and the jump removed, the user's call 2026-11-16). Metres, seconds;
+// angles in degrees. Sources in docs/BIOMECHANICS.md section 4.
 {
-  // The move controller (was "walk"): the hips target's speeds and the gait.
-  "move": {
-    "speed": 0.9,           // m/s at full input (calm walk: ~0.45 m steps at ~120 steps/min)
-    "backSpeed": 0.9,       // m/s walking backward (S)
-    "jogSpeed": 3.0,        // m/s forward, Ctrl held (BIOMECHANICS 5: jogging)
-    "runSpeed": 5.0,        // m/s forward, Shift held (running)
-    "sideSpeed": 0.35,      // m/s sidestepping (A/D); the side shuffle keeps up to about (maxStep - minFootGap) / (2 x step time) ~0.36 m/s (was 0.8: the hips ran ahead, the feet 90 cm apart, the real pelvis rolled 10 deg)
-    "acceleration": 5.0,    // m/s^2; full speed within the first step (full-size steps at once)
-    "deceleration": 5.0,    // m/s^2; stops within about one step
-    "turnRateDeg": 180,     // per second
-    "stepK": 0.25,          // step length = stepK * height * (v / refSpeed)^0.42 (0.45 m at 1.8 m: short, smooth steps)
-    "refSpeed": 0.9,        // the walk's own speed: 0.45 m steps there, longer when walking faster
-    "swingFraction": 0.8,   // swing time / step period; the rest is double support
-    "minSwing": 0.3,        // s
-    "maxSwing": 0.5,        // s; also used for the settling steps when stopping
-    "stepHeight": 0.18,     // ankle apex in swing: the swing knee bends and the foot clears the ground well
-    "swingPeakAt": 0.4,     // apex a little before mid-swing, so the foot stays up longer (no dragging)
-    "settleDistance": 0.12, // m; on stop, a foot closer than this to its stance spot stays put
-    "bob": 0.025,           // pelvis bob peak-to-peak at full speed, lowest in double support
-    "sway": 0.02,           // pelvis sway toward the stance foot
-    "postureLeanDeg": 5.0,  // walking posture: the trunk held slightly forward (chest target; real ~2-7 deg)
-    "leanPerSpeedDeg": 2.0, // forward lean per m/s (gait motion, bowling)
-    "leanPerAccelDeg": 3.0, // forward lean per m/s^2 (back when braking)
-    "turnLeanDeg": 3.0,     // lean into turns per (rad/s * m/s)
-    "maxLeanDeg": 10,
-    "leanRate": 6.0,        // 1/s, lean smoothing
-    // Arms swing opposite the same-side leg; full at walking speed forward,
-    // fading out for sidesteps and backing up.
-    "armSwingDeg": 35,      // shoulder swing, total range
-    "armBackBiasDeg": 5,    // swing centre behind vertical (more extension than flexion)
-    "elbowBiasDeg": 25,     // mean elbow bend
-    "elbowSwingDeg": 20,    // extra bend at the forward end of the swing
-    "armRate": 8.0,         // 1/s, arm smoothing
-    // Head stays upright and leads turns (W toward a new heading).
-    "headStabilise": 0.8,   // 0..1, share of body lean and sway the head cancels
-    "headLeadDeg": 30,      // max head turn ahead of the body
-    "headRate": 6.0,        // 1/s, head turn smoothing
-    // Foot roll: heel strike (toes up), flat, heel rise over the ball, toe-off.
-    "landPitchDeg": -10,    // toes up at heel strike
-    "toeOffPitchDeg": 18,   // plantarflexion at toe-off (15-20 deg)
-    // The swing foot leaves already moving forward (it rolls off the toes), so
-    // its path starts low and arcs up: forward speed at lift-off in shares of
-    // its average swing speed (0: straight up first; 1: about 9 deg up).
-    "liftOffSpeed": 1.0,
-    "pushTime": 0.12        // s, push-off before a foot lifts (pre-swing ~10 % of the stride): heel up, knee bends
-  },
-  // Single steps while standing (motion::StepSettings): one foot at a time;
-  // the body follows the feet (human_joints.json "reposition").
+  // A balance step (motion::StepSettings): one foot at a time; the body
+  // follows by the decider's shares.
   "step": {
-    "stepLength": 0.3,       // m forward, ahead of the planted foot (short, comfortable step; was 0.4, the user: too big)
-    "backStepLength": 0.22,  // m back
-    "sideStepLength": 0.22,  // m to the side (the foot on that side leads)
     "stepDuration": 0.6,     // s per step: weight shift, then the swing (about 0.4 s, BIOMECHANICS 4.2)
     "liftAt": 0.25,          // share of the step the foot stays down first while the hips move over the other foot
                              // (double support ~20 % of a walking cycle, BIOMECHANICS 4.2; the user's call 2026-11-09: with gravity a loaded foot cannot lift)
     "stepHeight": 0.1,       // m ankle apex: the knee bends, the heel rises (was 0.2, the user: the foot lifts too high)
     "toeClearance": 0.012,   // m, a lifted foot's lowest point above the ground at least (minimum toe clearance 1.1-1.3 cm, Winter; BIOMECHANICS 4.5)
     "swingPeakAt": 0.35,     // apex early in the swing (heel up first, toes low at landing)
+    "toeOffPitchDeg": 18,    // plantarflexion at toe-off (15-20 deg): the foot rolls over its ball before it lifts
     // A step's passive shares (0..1): none (2026-11-15): the decider's own
     // mechanics move the parts without a goal (human_joints.json decider).
-    "passive": { "hands": 0.0, "hips": 0.0, "chest": 0.0 },
-    // E / Q change the pace by this factor per press (within speedMin..speedMax
-    // times the steps above). Faster walking takes both longer and quicker
-    // steps (step length and cadence each grow with about the square root of
-    // speed, Grieve & Gear 1966): length x sqrt(k), duration / sqrt(k).
-    "speedStep": 1.2,
-    "speedMin": 0.5,
-    "speedMax": 2.5          // top pace ~1.67 m/s: 0.63 m steps in 0.38 s
-  },
-  // The standing jump (Space held: crouch; let go: jump; motion::JumpPlanner,
-  // BIOMECHANICS 6): only the hips target is active (the user's design), the
-  // rest follows by its passive share. Down, then pushed up past standing
-  // (the capsule's hold carries the hips with it), free in the air, then
-  // a sink on landing.
-  "jump": {
-    "crouchDrop": 0.4,     // m, the hips below standing at the bottom (COM drop 0.36 m self-selected, 0.47 m deep, McHugh 2024)
-    "crouchTime": 0.7,     // s, standing to the bottom (countermovement 0.70 s, McHugh 2024)
-    "pushTime": 0.3,       // s, the bottom to take-off (propulsion 0.30 s, McHugh 2024)
-    "pushLift": 0.1,       // m, the hips above standing at take-off (heels high: ankle 137 deg, McErlain-Naylor 2014) [E]
-    "landDrop": 0.15,      // m, the hips sink as the landing absorbs (peak knee 58-102 deg, Heebner 2017) [E]
-    "landTime": 0.22,      // s, touchdown to the lowest (time to peak knee flexion 0.18-0.26 s, Heebner 2017)
-    "recoverTime": 0.5,    // s, back up to standing [E]
-    "maxFlight": 1.2,      // s, at most in the air before the landing starts anyway
-    // The jump's own passive shares (0..1): the gaze stays level; the chest and
-    // the hands go back less, so they move with the body [E: tune in the game].
-    "passive": { "head": 0.9, "hands": 0.2, "hips": 0.0, "chest": 0.2 }
+    "passive": { "hands": 0.0, "hips": 0.0, "chest": 0.0 }
   }
 }

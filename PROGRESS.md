@@ -221,17 +221,25 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   1.18 m ahead at shoulder height: one step, reached (was 10 cm short); 0.8 m: no step,
   hips 0 (was 19 cm back); down then 58 cm ahead: hips 7 cm back (was 23), reached.
   Walking, the foot and hips cases unchanged (S's widest foot slide 7.9 cm, was 5.5).
-- [ ] **Running model removed from the decider** (2026-11-16, the user's call: the decider
-  is general only). Gone: `runPace`, `runSpring`, `runTakeoff`, `runAhead`, `runSpot`,
-  `touchdownTime/Height`, `springStance`, `contactTime`, `flightTime`, `paceShare`,
-  `swingTimeAtLeast`, the run share and spring legs, config `decider.run`. The hips' height
-  is the legs' bounds at every speed; steps time by the gait (`gaitTiming`) only. Build clean,
-  all tests pass; awaiting the user's check in the game (not committed). Jog/run now walk
-  fast (no flight) until running comes back as the one general mechanism by parameters.
+- [ ] **The limb test only** (2026-11-16, the user's call; DECISIONS): walking, jog/run,
+  the jump, turning to the camera and the old non-physics pose removed; the decider has
+  no running model (commit f2ff75d). Release build clean, all tests pass, the arrow-key
+  limb test measures as before. Not committed; awaiting the user's check in the game.
+  Walking and running come back later as one general mechanism (B2f below is on hold).
   Measured before (2026-11-16, test-only, reverted): walk's legs carry the weight (support
   up 0 N, knee within 1 deg) but its balance is the support's (level ~158 N, ground force
   line 20-35 cm off the centre of mass); jog: plan stance knee ~60 deg, the support carried
   ~700 N; the plan's fore-aft push came from the swing leg's motion (trunk ~0).
+- [ ] **A1 Muscle stiffness from research** (2026-11-16, measured, design awaiting the user's
+  answers). `measure: muscle stiffness, built against research`: the built K (inertia
+  beyond x (1 / 0.03 s)^2, w 33 rad/s) against BIOMECHANICS 14 at the hold's torque:
+  shoulder 548 vs 11-42, elbow 68 vs 9-23, hip 3069 vs 183-312, knee 447 vs 77-104,
+  trunk 4842 vs 590, ankle 17 vs ~570 (0.8 mgh): the ankle is nearly limp (balance is the
+  capsule spring's). The arrow-key sweep now prints the real end off the plan: hand
+  fwd/back/out 4.3/4.3/3.8 cm, across 41, up 16; feet moved on the ground 65-74 cm (the
+  real foot stays: an old issue, to look at). Predicted with research K and today's hold:
+  hand lag 10-20 cm, standing knees fold to ~30 deg (the hold lifts only the shank and
+  foot; the body above outweighs K 77) until the support's freeDown catches.
 - [ ] **B2f Feet slide at fast walk, jog, run** (2026-11-15, measured, NOT fixed; next
   session starts here). `measure: gaits by speed`: foot slide walk 1 cm, 1.56 m/s 20 cm,
   jog 45 cm, run 46 cm. Chain found (`measure: swing foot*`, `measure: hip through a

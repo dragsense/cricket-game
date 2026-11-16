@@ -6,27 +6,11 @@
     "ToggleDebugDraw": ["F2"],
     "ReloadConfig": ["F5"],
     "Quit": ["Escape"],
-    // Human: always faces the camera's heading; W forward, S back, A/D sidestep.
-    "StepForward": ["W"],
-    "StepBack": ["S"],
-    "StepLeft": ["A"],
-    "StepRight": ["D"],
-    // Held modifier: Shift (limb test: arrows go up/down; moving: run).
+    // Held modifier: Shift (limb test: arrows go up/down).
     "ModShift": ["LeftShift", "RightShift"],
-    // Held: jog (Shift wins if both are held).
-    "Jog": ["LeftCtrl", "RightCtrl"],
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
-    // V: free view; the camera can be moved to any angle while the player keeps
-    // their heading. V again: the player turns with the camera again.
-    "FreeView": ["V"],
-    // E / Q: walk faster / slower (locomotion.json "step.speedStep"; from the next step).
-    "WalkFaster": ["E"],
-    "WalkSlower": ["Q"],
-    // Space: held, the player crouches (arms back); let go, he jumps straight
-    // up (locomotion.json "jump": the hips target down, then pushed up).
-    "Jump": ["Space"],
     // I: slow motion for the whole game (engine.json debug.slowMotionFactor).
     "SlowMotion": ["I"],
     // Limb test (engine.json debug.limbTest): F chooses the target (right

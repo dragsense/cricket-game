@@ -380,7 +380,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
         math::Vec3 way = f.position - from;
         if (grounded_[i]) way.y = 0.0f;  // standing: only a new place on the ground
         if (math::length(way) <= s.stepMargin) continue;
-        timeStep(math::Vec3(0.0f), s);
+        timeStep(s);
         stepNow_[i] = nextStep_;
         if (f.pathLeft > 0.0f) stepNow_[i].duration = f.pathLeft;
         steps_[i].start(i, from, f.position, f.contactNormal);
@@ -418,7 +418,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
     const StepAdvice& a = out.step;
     if (a.wanted && a.foot >= 0 && given.balanceSteps) {
         if (!steps_[0].running() && !steps_[1].running()) {
-            timeStep(a.velocity, s);
+            timeStep(s);
             stepNow_[a.foot] = nextStep_;
             if (a.time > 0.0f) stepNow_[a.foot].duration = a.time;  // on the hips' path: lands as they arrive
             steps_[a.foot].start(a.foot, anchor_[a.foot], a.spot, anchorNormal_[a.foot]);
@@ -440,18 +440,6 @@ int BodyDecider::stepFoot() const {
 float BodyDecider::stepShare() const {
     const int f = stepFoot() >= 0 ? stepFoot() : lastStarted_;
     return f >= 0 ? steps_[f].share() : 0.0f;
-}
-
-void BodyDecider::timeStep(math::Vec3 velocity, const BodyDeciderSettings& s) {
-    // The gait's step time and double support for the body's speed
-    // (motion::gaitTiming, BIOMECHANICS 4: step = k H (v / v_ref)^0.42; slow
-    // or standing, the longest swing): the step's length is the speed times
-    // its time.
-    nextStep_ = s.stepShape;
-    if (!s.gait || !rig_) return;
-    const GaitTiming g = gaitTiming(std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z), rig_->height(), *s.gait);
-    nextStep_.duration = g.period;
-    if (g.period > 1e-3f) nextStep_.liftAt = std::clamp(1.0f - g.swing / g.period, 0.0f, 0.9f);
 }
 
 void BodyDecider::timeSwings(const TargetSet& t, const BodyDeciderSettings& s) {
@@ -1355,7 +1343,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     out.step.capturePoint = xcom;
     out.step.velocity = vGoal;
     out.step.outside = outsideFeet(xcom, standing, n, s);
-    if (swing < 0) timeStep(vGoal, s);  // the next step's timing (a step under way keeps its own)
+    if (swing < 0) timeStep(s);  // the next step's timing (a step under way keeps its own)
     const StepPlannerSettings& timing = swing >= 0 ? stepNow_[swing] : nextStep_;
     const float lift = std::clamp(timing.liftAt, 0.0f, 0.9f);
     const float lead = timing.duration * lift, swingTime = timing.duration * (1.0f - lift);

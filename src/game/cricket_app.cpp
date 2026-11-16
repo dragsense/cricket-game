@@ -204,35 +204,12 @@ bool CricketApp::pumpEvents() {
     if (actions_.pressed(input_, core::Action::ToggleOverlay)) debugSettings_.showOverlay = !debugSettings_.showOverlay;
     if (actions_.pressed(input_, core::Action::ToggleDebugDraw)) debugSettings_.debugDraw = !debugSettings_.debugDraw;
 
-    // Human movement: the fielder always turns to the camera's heading,
-    // standing or walking, unless free view (V) holds the heading; W walks forward, S backs up, A/D sidestep
-    // (character space, +X left).
-    auto axis = [&](core::Action pos, core::Action neg) {
-        return (actions_.down(input_, pos) ? 1.0f : 0.0f) - (actions_.down(input_, neg) ? 1.0f : 0.0f);
-    };
-    const camera::CameraPose view = camera_.pose();
-    const math::Vec3 ahead = math::safeNormalize(math::Vec3(view.target.x - view.eye.x, 0.0f, view.target.z - view.eye.z),
-                                                 -math::kForward);
-    math::Vec2 move(axis(core::Action::StepLeft, core::Action::StepRight),
-                    axis(core::Action::StepForward, core::Action::StepBack));
     // I: slow motion (the whole game) on/off.
     if (actions_.pressed(input_, core::Action::SlowMotion)) {
         slowMotion_ = !slowMotion_;
         setTimeScale(slowMotion_ ? cfg_.engine.getFloat("debug.slowMotionFactor", 0.2f) : 1.0);
         LOG_INFO("Slow motion {}", slowMotion_ ? "on" : "off");
     }
-    agents::Human& fielder = sim_.fielder();
-    if (actions_.pressed(input_, core::Action::FreeView)) freeView_ = !freeView_;
-    if (!freeView_) heading_ = std::atan2(ahead.x, ahead.z);
-    // WASD moves the hips (the user's design, 2026-11-15); the body's
-    // balance steps follow. The heading only turns the player. The jump is
-    // not used (reach and dive will come from the same push).
-    fielder.setFacing(true, heading_);
-    fielder.setStepInput(move);
-    fielder.setPace(actions_.down(input_, core::Action::ModShift) ? 2 : actions_.down(input_, core::Action::Jog) ? 1 : 0);
-    if (actions_.pressed(input_, core::Action::WalkFaster)) fielder.changeWalkSpeed(1);
-    if (actions_.pressed(input_, core::Action::WalkSlower)) fielder.changeWalkSpeed(-1);
-
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))

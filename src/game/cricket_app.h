@@ -81,8 +81,6 @@ private:
     math::Vec3 poseTarget_{0.0f};  // world
     math::Quat poseTurn_ = math::identityQuat();  // world
     bool slowMotion_ = false;      // I: the whole game in slow motion
-    float heading_ = 0.0f;    // the fielder's heading: the camera's, unless freeView_
-    bool freeView_ = false;   // V: the camera moves freely; the heading is held
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)
     debug::DebugSettings appliedSettings_;  // last values pushed to the renderer
     std::string backendName_;

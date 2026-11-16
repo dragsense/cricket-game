@@ -717,6 +717,18 @@ Dated log. Format: decision, reason, alternatives rejected.
   the ground, dives.
 - **Rejected:** separate walk / run controllers or modes.
 
+## 2026-11-16: The limb test only (walk, jog/run, jump removed)
+- **Decision (the user's call):** the fielder keeps only the limb test. Removed: WASD
+  walking (the hips target at the walker's velocity), E/Q pace, Ctrl/Shift jog and run,
+  the Space jump (JumpPlanner), turning to the camera's heading and free view (V), the
+  MoveController and gait timing, the old pose without the physics body (repositioning,
+  leg IK, arm swing, head steadying), the walking FootStepper (it only keeps where each
+  foot is planted), their configs (`move`, `jump`, `reposition`, walking `step` keys,
+  unused `ik` keys) and tests. The decider's balance steps stay (the limb test uses
+  them), timed by `step` alone.
+- **Why:** walking and running are to be built again on one general mechanism; until
+  then nothing half-working stays in the code.
+
 ## 2026-11-16: No running model in the decider (replaces the next entry)
 - **Decision (the user's call):** the decider is general only: no gait-specific model. The
   spring-mass running (run share, spring legs, take-off, neutral point, flight timing,
