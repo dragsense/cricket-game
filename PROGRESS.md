@@ -221,17 +221,6 @@ balance: the decider's balance step (DECISIONS 2026-11-15).
   1.18 m ahead at shoulder height: one step, reached (was 10 cm short); 0.8 m: no step,
   hips 0 (was 19 cm back); down then 58 cm ahead: hips 7 cm back (was 23), reached.
   Walking, the foot and hips cases unchanged (S's widest foot slide 7.9 cm, was 5.5).
-- [ ] **Running model removed from the decider** (2026-11-16, the user's call: the decider
-  is general only). Gone: `runPace`, `runSpring`, `runTakeoff`, `runAhead`, `runSpot`,
-  `touchdownTime/Height`, `springStance`, `contactTime`, `flightTime`, `paceShare`,
-  `swingTimeAtLeast`, the run share and spring legs, config `decider.run`. The hips' height
-  is the legs' bounds at every speed; steps time by the gait (`gaitTiming`) only. Build clean,
-  all tests pass; awaiting the user's check in the game (not committed). Jog/run now walk
-  fast (no flight) until running comes back as the one general mechanism by parameters.
-  Measured before (2026-11-16, test-only, reverted): walk's legs carry the weight (support
-  up 0 N, knee within 1 deg) but its balance is the support's (level ~158 N, ground force
-  line 20-35 cm off the centre of mass); jog: plan stance knee ~60 deg, the support carried
-  ~700 N; the plan's fore-aft push came from the swing leg's motion (trunk ~0).
 - [ ] **B2f Feet slide at fast walk, jog, run** (2026-11-15, measured, NOT fixed; next
   session starts here). `measure: gaits by speed`: foot slide walk 1 cm, 1.56 m/s 20 cm,
   jog 45 cm, run 46 cm. Chain found (`measure: swing foot*`, `measure: hip through a

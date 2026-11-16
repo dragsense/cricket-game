@@ -100,6 +100,7 @@ public:
     // The step under way: its foot (-1: none) and its clock share [0, 1].
     int stepFoot() const { return decider_.stepFoot(); }
     float stepPhase() const { return decider_.stepShare(); }
+    float runShare() const { return decider_.runShare(); }  // 0 walking .. 1 running
     // The whole body's strength (0..1): scales every muscle and the capsule's
     // hold (a hit, a fall, a get-up).
     float strength() const { return strength_; }

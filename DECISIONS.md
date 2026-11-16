@@ -717,17 +717,7 @@ Dated log. Format: decision, reason, alternatives rejected.
   the ground, dives.
 - **Rejected:** separate walk / run controllers or modes.
 
-## 2026-11-16: No running model in the decider (replaces the next entry)
-- **Decision (the user's call):** the decider is general only: no gait-specific model. The
-  spring-mass running (run share, spring legs, take-off, neutral point, flight timing,
-  config `decider.run`) is removed; the hips' height is the legs' bounds and steps take the
-  gait's timing at every speed. Running is to come back as the same general mechanism with
-  parameters by speed (the user's 2026-11-15 design: a bigger push gives the flight), its
-  push from the physics legs, not a spring in the plan.
-- **Why:** it was a separate gait model inside the decider; measured, its spring gave the
-  jog plan a ~60 deg stance knee and 6-27 x body weight spikes at landings.
-
-## 2026-11-15: Running as spring legs in the decider (removed 2026-11-16, see above)
+## 2026-11-15: Running as spring legs in the decider (work in progress)
 - **Decision:** running is the spring-mass model in the decider, not a gait mode: the
   hips ride the grounded leg as a spring (11.2 kN/m, rest = leg reach) and fly on
   gravity; the run share (0..1) comes from the body's own speed by Froude 0.5. A leg

@@ -177,6 +177,43 @@
     "headMaxRate": 6.0,
     "limbMaxRate": 12.0,
     "legMaxRate": 20.0,
+    // Running (the user's design, 2026-11-15: walking, running and the air
+    // from the hips' speed, not separate modes). The run's share: 0 below,
+    // 1 above the walk-run transition, Froude v^2 / (g L) = 0.5 (BIOMECHANICS
+    // 5: ~2.16 m/s), blended over +- walkRunBand m/s. Running, the hips ride
+    // the grounded leg as a spring (leg stiffness ~11.2 kN/m below 5 m/s,
+    // BIOMECHANICS 13; rest length the leg's reach) and fly on gravity
+    // between; a leg back at its length behind the hips takes off; a foot
+    // lands ahead of its hip by half the way the hips go in a stance (the
+    // neutral point, Raibert 1986: the stance even about the foot, timed by
+    // the last stance) when the flying hips come down to it. A fixed 68 deg
+    // attack angle (Seyfarth 2002) left the stance uneven with these legs
+    // (the spring's stance ~0.25 s whatever the speed): the hips never rose
+    // back, flights were cut short (measured 2026-11-15); the neutral point
+    // gives ~64 deg at 3 m/s, ~60 at 5. Take-off's push sets the
+    // flight: flightTimeJog at the jog speed, flightTimeRun at the run speed
+    // ([E] ~0.1 s at 3 m/s, more when faster). A running foot is in the air
+    // for a flight, the other foot's stance and a flight (~0.4-0.45 s, similar
+    // at all speeds as Weyand 2000 found); a fixed 0.45 s swing brought the
+    // foot down too early when a flight ran long (it hovered and landed behind
+    // the hips, measured 2026-11-15).
+    "run": {
+      "walkRunFroude": 0.5,
+      "walkRunBand": 0.3,
+      "legStiffness": 11200,
+      "flightTimeJog": 0.10,
+      "flightTimeRun": 0.14,
+      // The running swing's ankle apex (m above its ground): the heel comes up
+      // toward the buttock, more the faster (swing knee ~90 deg jogging, 120-130
+      // sprinting, Novacheck 1998; BIOMECHANICS 5: ~0.22 m jogging, ~0.36 m
+      // running). At the jog speed .. the run speed, by the run's share over
+      // the walking step's height; peak early (heel recovery, 0.38 of the swing).
+      // The walking step's 0.10 m left the toes 4-9 cm up: the real body, a few
+      // cm lower than the plan, dragged them on the ground (measured 2026-11-15).
+      "swingHeightJog": 0.22,
+      "swingHeightRun": 0.36,
+      "swingPeakAt": 0.38
+    },
     // The lowest hips: no grounded knee bends past this (deg). Two feet: the
     // semi-squat ~90 (Straker 2003; measured self-chosen ground lifts 48-71,
     // BIOMECHANICS 9.1, 9.4). One foot: 67, the largest mean stance knee of a
