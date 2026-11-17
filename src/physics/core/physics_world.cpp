@@ -203,9 +203,7 @@ struct PhysicsWorld::Impl {
         struct Joint {
             JPH::SixDOFConstraint* constraint = nullptr;  // owned by the ragdoll
             int part = -1;          // the part it moves
-            float base = 0.0f;      // its motors' full torque limit (N m)
-            int axis = -1;          // RagdollPart's directional strength
-            float plus = 0.0f, minus = 0.0f;
+            float plus[3] = {}, minus[3] = {};  // per axis: its muscles' full torque toward + / - (N m)
         };
         std::vector<Joint> joints;
         std::vector<int> jointOf;        // per part: its joint (-1: the root)
@@ -1017,11 +1015,10 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
                 index < static_cast<int>(ragdoll->GetConstraintCount()) ? ragdoll->GetConstraint(index) : nullptr;
             if (c && c->GetSubType() == JPH::EConstraintSubType::SixDOF) j.constraint = static_cast<JPH::SixDOFConstraint*>(c);
             j.part = static_cast<int>(i);
-            j.base = std::max(p.motor.maxTorque, 0.0f);
-            if (p.directionalAxis >= 0 && p.directionalAxis <= 2) {
-                j.axis = p.directionalAxis;
-                j.plus = std::max(p.plusTorque, 0.0f);
-                j.minus = std::max(p.minusTorque, 0.0f);
+            const float base = std::max(p.motor.maxTorque, 0.0f);
+            for (int a = 0; a < 3; ++a) {
+                j.plus[a] = p.plusTorque[a] >= 0.0f ? p.plusTorque[a] : base;
+                j.minus[a] = p.minusTorque[a] >= 0.0f ? p.minusTorque[a] : base;
             }
             if (j.constraint) motorsOnFreeAxes(*j.constraint);
             r.jointOf[i] = index;
@@ -1046,22 +1043,18 @@ namespace {
 
 // One joint's muscles this tick. The gravity hold (`hold`, world: the torque
 // the part needs about its joint) and the pose motors share each axis's
-// strength (base, or the directional pair on its axis; at the body's
+// strength (its pair of muscles per axis, `plus` / `minus`; at the body's
 // strength `k`), axis by axis in the joint's frame on the part: the hold
 // stays within it and the motor gets what is left (lo - h, hi - h), so the
 // two never give more than the muscle.
-void applyMuscles(JPH::SixDOFConstraint& c, float base, int axis, float plus, float minus, math::Vec3 hold, float k) {
+void applyMuscles(JPH::SixDOFConstraint& c, const float* plus, const float* minus, math::Vec3 hold, float k) {
     JPH::Body* b1 = c.GetBody1();
     JPH::Body* b2 = c.GetBody2();
     const JPH::Quat toWorld = b2->GetRotation() * c.GetConstraintToBody2Matrix().GetQuaternion();
     float lo[3], hi[3];
     for (int a = 0; a < 3; ++a) {
-        lo[a] = -base * k;
-        hi[a] = base * k;
-    }
-    if (axis >= 0 && axis <= 2) {
-        lo[axis] = -minus * k;
-        hi[axis] = plus * k;
+        lo[a] = -minus[a] * k;
+        hi[a] = plus[a] * k;
     }
     JPH::Vec3 h = toWorld.Conjugated() * toJolt(hold * k);
     for (int a = 0; a < 3; ++a) h.SetComponent(static_cast<JPH::uint>(a), std::clamp(h[a], lo[a], hi[a]));
@@ -1085,7 +1078,7 @@ void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations,
         const size_t part = static_cast<size_t>(j.part);
         r.target[part] = toJolt(math::normalize(rotations[part]));
         j.constraint->SetTargetOrientationBS(r.target[part]);
-        applyMuscles(*j.constraint, j.base, j.axis, j.plus, j.minus, r.hold[part], r.scale);
+        applyMuscles(*j.constraint, j.plus, j.minus, r.hold[part], r.scale);
     }
 }
 
@@ -1114,6 +1107,19 @@ void PhysicsWorld::setRagdollJointLimits(RagdollId id, int part, math::Vec3 minA
     if (!c) return;
     c->SetRotationLimits(toJolt(minAngles), toJolt(maxAngles));
     motorsOnFreeAxes(*c);
+}
+
+void PhysicsWorld::setRagdollJointSpring(RagdollId id, int part, math::Vec3 stiffness, math::Vec3 damping) {
+    if (!impl_ || id >= impl_->ragdolls.size()) return;
+    JPH::SixDOFConstraint* c = ragdollJoint(impl_->ragdolls[id], part);
+    if (!c) return;
+    using A = JPH::SixDOFConstraintSettings::EAxis;
+    for (int a = 0; a < 3; ++a) {
+        JPH::SpringSettings& s = c->GetMotorSettings(static_cast<A>(A::RotationX + a)).mSpringSettings;
+        s.mMode = JPH::ESpringMode::StiffnessAndDamping;
+        s.mStiffness = std::max(stiffness[a], 0.0f);
+        s.mDamping = std::max(damping[a], 0.0f);
+    }
 }
 
 math::Quat PhysicsWorld::ragdollJointRotation(RagdollId id, int part) const {
@@ -1157,11 +1163,8 @@ void PhysicsWorld::setRagdollStrength(RagdollId id, float scale) {
     using A = JPH::SixDOFConstraintSettings::EAxis;
     for (const Impl::RagdollSlot::Joint& j : r.joints) {
         if (!j.constraint) continue;
-        for (int a = 0; a < 3; ++a) {
-            const bool directional = a == j.axis;
-            j.constraint->GetMotorSettings(static_cast<A>(A::RotationX + a))
-                .SetTorqueLimits(-(directional ? j.minus : j.base) * k, (directional ? j.plus : j.base) * k);
-        }
+        for (int a = 0; a < 3; ++a)
+            j.constraint->GetMotorSettings(static_cast<A>(A::RotationX + a)).SetTorqueLimits(-j.minus[a] * k, j.plus[a] * k);
     }
 }
 

@@ -76,12 +76,9 @@
   },
 
   // The body's decider (motion::BodyDecider, DECISIONS 2026-11-06): the parts a
-  // target needs move together from the start, each with a share by its place
-  // in the queue (the user's rule): each next part carries queueShare times the
-  // share of the part before it (normalised; a blocked part's share goes to the
-  // rest). 0.5 is a starting value, not a measured one.
+  // target needs move together from the start, each with its least-effort
+  // share (lever^2 / inertia it turns; the muscle plan B1).
   "decider": {
-    "queueShare": 0.5,
     // The pelvis tilt limits (BIOMECHANICS 9.3), rotation vector in degrees,
     // character space: [forward tilt (hip flexion, + forward), turn, side tilt].
     // Forward tilt 80 = hip flexion with straight knees (hamstrings).
@@ -97,7 +94,6 @@
     // turns its hip forward; longer steps turn it more). Real: 11 deg peak to
     // peak at 0.40 m/s, 19 at 1.47 m/s (Yang 2013, BIOMECHANICS 4.3). [E] the
     // share is fitted so walking at 0.9 m/s gives about 15 deg.
-    "pelvisTurnShare": 0.11,
     // The pelvis drops on the side of the leg without weight (pelvic list:
     // the stance hip's abductors let it go): this much (deg) with all the
     // weight on one leg, by the weight's share. Real: about 4 deg each way
@@ -119,7 +115,10 @@
     // deg at 0.40 m/s, 6 at 1.47 m/s, Yang 2013; relative phase -20 deg slow,
     // -150 fast). [E] fitted roughly: walking 0.9 m/s about half the pelvis's
     // turn, lagging.
-    "trunkTurn": { "frequency": 2.5, "damping": 0.5 },
+    // The muscle plan B3: w = sqrt(K / I), K the trunk's axial stiffness ~20
+    // N m/rad (Kosmopoulos 2012), I the body above L4 ~0.55 kg m^2 (de Leva);
+    // damping ratio D / (2 sqrt(K I)), D 47.8 (Cholewicki 2010, axial).
+    "trunkTurn": { "frequency": 6.0, "damping": 7.2 },
     // Free arms (no goal) cancel this share of the rest of the body's turning
     // about the vertical: arm swing cuts the vertical ground reaction moment
     // by ~63 % in walking (Collins, Adamczyk & Kuo 2009).
@@ -234,6 +233,7 @@
     "maxTorque": {
       "spine_01": 270, "spine_02": 270, "chest": 270,  // trunk extension 268-283
       "head": 35,         // neck 28-41 (the head joint carries the neck)
+      "clavicle": 65,     // shoulder girdle about the SC joint: the four directions' mean (its axial turn: no data)
       "upper_arm": 120,   // shoulder flexion 77, extension 164
       "forearm": 55,      // elbow flexion 51-56
       "hand": 18,         // wrist flexion 21-25, extension 11-13
@@ -259,10 +259,51 @@
       "foot":      { "axis": "x", "plus": 125, "minus": 40 },
       // Shoulder: + extension 164, - flexion 77 (MVIC reference values).
       "upper_arm": { "axis": "x", "plus": 164, "minus": 77 },
+      // Shoulder girdle about the SC joint (Garner & Shim 2008, upper bounds, per side at
+      // ~0.14 m): Z + elevation 75, - depression 55; Y + retraction 60, - protraction 75.
+      "clavicle":  [ { "axis": "z", "plus": 75, "minus": 55 }, { "axis": "y", "plus": 60, "minus": 75 } ],
       // Elbow: + extension 48, - flexion 77 (isometric, men; systematic review, PMC5960876).
       "forearm":   { "axis": "x", "plus": 48, "minus": 77 },
       // Wrist: + extension (isometric not found: 11-13 isokinetic, Harbo 2012), - flexion (Harbo 2012 isometric 25).
       "hand":      { "axis": "z", "plus": 12, "minus": 25 }
+    },
+    // Measured joint stiffness (BIOMECHANICS 14; research 2026-11-17):
+    // relaxed N m/rad per axis [x, y, z] (the limits' frame, character axes
+    // at rest) or one value, its rise per N m held ("slope"), damping
+    // N m s/rad and its rise per N m held. Not listed (toes, clavicle: not
+    // found): K = I (2 pi f)^2 as before.
+    "stiffness": {
+      // Ankle: the measured total ankle feedback, both ankles together KP 18.6
+      // N m/deg, KD 6.1 N m s/deg (Peterka 2002), scaled to our mgh (~650 of
+      // his ~730) and halved per ankle; inversion/eversion 70 (Ribeiro ~2020).
+      "foot":      { "relaxed": [450, 70, 70], "damping": 150 },
+      // Knee: 75 relaxed, damping ~2 (Zhang 1998); +6.6 per N m (Granata 2002).
+      "shin":      { "relaxed": 75, "slope": 6.6, "damping": 2 },
+      // Hip: 169 relaxed, +5.9 per N m (Huang et al. 2020); damping 2-21, +0.22 per N m.
+      "thigh":     { "relaxed": 169, "slope": 5.9, "damping": 5, "dampingSlope": 0.22 },
+      // Trunk: flexion/extension ~600, lateral ~575 (Cholewicki 2010, activated),
+      // axial passive ~20 (Kosmopoulos 2012); damping 33 (Cholewicki 2010).
+      "spine_01":  { "relaxed": [600, 20, 575], "damping": 33 },
+      "spine_02":  { "relaxed": [600, 20, 575], "damping": 33 },
+      "chest":     { "relaxed": [600, 20, 575], "damping": 33 },
+      // Neck: 114 + 3.16 per N m (extension, Portero / Quaine); damping not found (1.5, a model value).
+      "head":      { "relaxed": 114, "slope": 3.16, "damping": 1.5 },
+      // Shoulder: 10.80 + 3.18 per N m, damping 0.63 + 0.10 per N m (Gomi and Osu 1998).
+      "upper_arm": { "relaxed": 10.8, "slope": 3.18, "damping": 0.63, "dampingSlope": 0.10 },
+      // Elbow: 8.67 + 6.18 per N m, damping 0.76 + 0.19 per N m (Gomi and Osu 1998).
+      "forearm":   { "relaxed": 8.67, "slope": 6.18, "damping": 0.76, "dampingSlope": 0.19 },
+      // Wrist: passive flexion/extension 1.42, deviation 1.85 (Formica 2012); damping not found.
+      "hand":      { "relaxed": [1.85, 1.0, 1.42], "damping": 0.1 }
     }
+  },
+  // A stance foot's functional base of support: where its centre of pressure
+  // can really go (young adults, Sloot et al. 2025, Sci Rep 15:37351: 65 % of
+  // the foot's length, its edge 17 % in from the heel and 21 % in from the
+  // toes; 35 % of its width). The stance legs' hold puts the ground's push
+  // there at most.
+  "footSupport": {
+    "heelIn": 0.17,   // of the foot's length
+    "toeIn": 0.21,    // of the foot's length
+    "width": 0.35     // of the foot's width, centred
   }
 }

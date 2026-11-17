@@ -170,6 +170,25 @@ void BodyDecider::setMasses(const std::vector<float>& mass, const std::vector<ma
     centre_ = centre;
     totalMass_ = 0.0f;
     for (float m : mass_) totalMass_ += m;
+    // The pelvis's share of a foot's fore-aft way (least effort): turning the
+    // body above the hips about the vertical (lever h, the hip's offset)
+    // against swinging the leg about its hip (lever L, the leg), at rest.
+    pelvisTurnShare_ = 0.0f;
+    if (!rig_ || joints_.pelvis < 0 || joints_.legs[0].start < 0) return;
+    const Plan& r = desired_;
+    const math::Vec3 pelvis = planPos(r, joints_.pelvis), hip = planPos(r, joints_.legs[0].start);
+    float turn = 0.0f, leg = 0.0f;
+    for (int k = 0; k < static_cast<int>(mass_.size()); ++k) {
+        if (mass_[static_cast<size_t>(k)] <= 0.0f) continue;
+        const math::Vec3 at = planPos(r, k) + planRot(r, k) * centre_[static_cast<size_t>(k)];
+        int a = k;
+        while (a >= 0 && a != joints_.legs[0].start && a != joints_.legs[1].start) a = rig_->parent(a);
+        if (a == joints_.legs[0].start) leg += mass_[static_cast<size_t>(k)] * math::length2(at - hip);
+        if (a < 0) turn += mass_[static_cast<size_t>(k)] * ((at.x - pelvis.x) * (at.x - pelvis.x) + (at.z - pelvis.z) * (at.z - pelvis.z));
+    }
+    hipHalfWidth_ = std::abs(hip.x - pelvis.x);
+    const float h2 = hipHalfWidth_ * hipHalfWidth_, l2 = legLength_[0] * legLength_[0];
+    if (turn > 1e-6f && leg > 1e-6f) pelvisTurnShare_ = (h2 / turn) / (h2 / turn + l2 / leg);
 }
 
 void BodyDecider::seed(const rig::Pose& pose) {
@@ -366,6 +385,101 @@ float BodyDecider::lowestHeight(const Plan& p, const BodyDeciderSettings& s, boo
         any = true;
     }
     return lowest;
+}
+
+math::Vec3 BodyDecider::legTarget(const TargetSet& t, int i, math::Vec3 hip, const BodyDeciderSettings& s) const {
+    // On its anchor (exactly: a pinned foot never slides; the hips'
+    // reference keeps the leg within its clamp), or on its way from it
+    // (a driven foot leaves the ground from its anchor), clamped.
+    const Target& foot = given(t, FootLW + i);
+    const float k = t.foot[i].mode == TargetMode::Driven
+                        ? act_[FootLW + i] * std::clamp(foot.weightPosition, 0.0f, 1.0f)
+                        : 0.0f;
+    return k > 0.0f ? clampToReach(hip, math::lerp(anchor_[i], foot.position, k), limbReach(2 + i, s)) : anchor_[i];
+}
+
+float BodyDecider::groundedHipExcess(Plan& p, const TargetSet& t, const math::Transform& pelvis,
+                                     const BodyDeciderSettings& s) {
+    placePelvis(p, pelvis);
+    if (!limits_) return 0.0f;
+    const rig::Pose& rest = rig_->restPose();
+    float worst = 0.0f;
+    for (int i = 0; i < 2; ++i) {
+        const ik::TwoBoneChain& leg = joints_.legs[i];
+        if (leg.start < 0 || !grounded_[i]) continue;
+        for (int j : {leg.start, leg.mid})
+            p.pose.locals[static_cast<size_t>(j)].rotation = rest.locals[static_cast<size_t>(j)].rotation;
+        refresh(p, leg.start);
+        const math::Vec3 target = legTarget(t, i, planPos(p, leg.start), s);
+        if (!ik::solveTwoBone(leg, p.models, target, anchorRot_[i] * footToPelvis_[i] * s.kneePole, 1.0f, p.pose))
+            continue;
+        const math::Quat local = math::normalize(p.pose.locals[static_cast<size_t>(leg.start)].rotation);
+        worst = std::max(worst, math::angleBetween(ik::clampRotation(local, limits_->limitIn(leg.start, p.pose)), local));
+    }
+    return worst;
+}
+
+math::Transform BodyDecider::hipsInRange(Plan& p, const TargetSet& t, math::Transform pelvis,
+                                         const BodyDeciderSettings& s) {
+    // A grounded hip at its limit carries the pelvis with its thigh: the
+    // pelvis turns about that hip (it stays, so the leg's solve does too)
+    // until the thigh's turn on it is its range's nearest. One leg a pass,
+    // the one furthest past (turning about one hip moves the other).
+    if (!limits_) return pelvis;
+    constexpr int kPasses = 4;
+    for (int pass = 0; pass < kPasses; ++pass) {
+        if (groundedHipExcess(p, t, pelvis, s) <= kMinAngle) break;
+        int worst = -1;
+        float most = kMinAngle;
+        math::Quat local, held;
+        for (int i = 0; i < 2; ++i) {
+            const int thigh = joints_.legs[i].start;
+            if (thigh < 0 || !grounded_[i]) continue;
+            const math::Quat l = math::normalize(p.pose.locals[static_cast<size_t>(thigh)].rotation);
+            const math::Quat h = ik::clampRotation(l, limits_->limitIn(thigh, p.pose));
+            const float past = math::angleBetween(h, l);
+            if (past <= most) continue;
+            most = past;
+            worst = i;
+            local = l;
+            held = h;
+        }
+        if (worst < 0) break;
+        // The thigh keeps its place in the world (pelvis x local); the
+        // pelvis takes what the range leaves, about that hip.
+        const math::Vec3 hip = pelvis.position + pelvis.rotation * hipOffset_[worst];
+        pelvis.rotation = math::normalize(pelvis.rotation * local * math::inverse(held));
+        pelvis.position = hip - pelvis.rotation * hipOffset_[worst];
+    }
+    return pelvis;
+}
+
+math::Transform BodyDecider::boundHips(Plan& p, const TargetSet& t, const math::Transform& from,
+                                       const math::Transform& to, const BodyDeciderSettings& s) {
+    // The pelvis's place and turn take a grounded thigh (its foot pinned)
+    // no further past its range than it already is: the hips stop where
+    // the first grounded hip meets its range (P1's rule: the plan keeps
+    // every joint inside its limits; the part beyond is reported short).
+    // Where the hips start may already be past (a foot landed, the feet
+    // moved under the character's frame): they start from there carried
+    // back onto the ranges (hipsInRange). A tolerance only at none: added
+    // to what is past, it would grow tick by tick.
+    const math::Transform start = hipsInRange(p, t, from, s);
+    const float allowed = std::max(groundedHipExcess(p, t, start, s), kMinAngle);
+    if (allowed > 0.01f) std::printf("TMP from %.2f start %.2f to %.2f\n", math::degrees(groundedHipExcess(p, t, from, s)), math::degrees(allowed), math::degrees(groundedHipExcess(p, t, to, s)));
+    groundedHipExcess(p, t, start, s);
+    if (groundedHipExcess(p, t, to, s) <= allowed) return to;
+    auto between = [&](float k) {
+        return math::Transform{math::lerp(start.position, to.position, k),
+                               math::normalize(math::slerp(start.rotation, to.rotation, k))};
+    };
+    float lo = 0.0f, hi = 1.0f;
+    constexpr int kHalvings = 10;
+    for (int n = 0; n < kHalvings; ++n) {
+        const float mid = 0.5f * (lo + hi);
+        (groundedHipExcess(p, t, between(mid), s) <= allowed ? lo : hi) = mid;
+    }
+    return between(lo);
 }
 
 // ---- the tick -----------------------------------------------------------------
@@ -883,10 +997,12 @@ float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) 
         const bool swinging = f.mode == TargetMode::Driven && f.swing >= 0.0f;
         at[i] = swinging ? f.position : grounded_[i] ? anchor_[i] : planPos(output_, joints_.legs[i].end);
     }
+    // The pelvis takes its least-effort share of the feet's fore-aft way
+    // (the hip rotators; pelvisTurnShare_), turning by it over the hip's lever.
+    (void)s;
     const float ahead = at[0].z - at[1].z;   // left ahead of right
-    const float across = at[0].x - at[1].x;  // left of right (+X left)
-    if (std::abs(across) < 1e-3f && std::abs(ahead) < 1e-3f) return 0.0f;
-    return -s.pelvisTurnShare * std::atan2(ahead, std::max(across, 1e-3f));
+    if (hipHalfWidth_ < 1e-3f) return 0.0f;
+    return -pelvisTurnShare_ * ahead / hipHalfWidth_;
 }
 
 void BodyDecider::balanceStanding(const TargetSet& t, const BodyDeciderSettings& s) {
@@ -973,12 +1089,8 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
         math::Quat footRot;
         const Target& foot = given(t, FootLW + i);
         const bool driven = t.foot[i].mode == TargetMode::Driven;
-        const float k = driven ? act_[FootLW + i] * std::clamp(foot.weightPosition, 0.0f, 1.0f) : 0.0f;
         const float kr = driven ? act_[FootLW + i] * std::clamp(foot.weightRotation, 0.0f, 1.0f) : 0.0f;
-        // On its anchor (exactly: a pinned foot never slides; the hips'
-        // reference keeps the leg within its clamp), or on its way from it
-        // (a driven foot leaves the ground from its anchor), clamped.
-        target = k > 0.0f ? clampToReach(hip, math::lerp(anchor_[i], foot.position, k), reach) : anchor_[i];
+        target = legTarget(t, i, hip, s);
         if (grounded_[i]) {
             pole = anchorRot_[i] * footToPelvis_[i] * s.kneePole;
             footRot = anchorRot_[i];
@@ -1175,7 +1287,8 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
     // muscle activation, so no target change can make the plan jump.
     const float dt = std::max(t.dt, 0.0f);
     const math::Transform want = pelvisOf(desired_);
-    math::Transform have = pelvisOf(output_);
+    const math::Transform before = pelvisOf(output_);
+    math::Transform have = before;
     // The pelvic list is the output's own: turned exactly about the hip
     // that carries the weight (so that hip never rises past its leg); its
     // place goes into the hips' bounded motion with the rest (the muscles
@@ -1203,8 +1316,13 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
     }
     have.rotation = math::normalize(have.rotation * roll);
     // The height under every grounded leg's reach is the desired pose's
-    // (solveLegs), so the hips get there within the legs' bounds.
-    placePelvis(output_, have);
+    // (solveLegs), so the hips get there within the legs' bounds; no
+    // further than keeps every grounded hip within its range (the hips
+    // stop there: their speed is what they moved).
+    const math::Transform bounded = boundHips(output_, t, before, have, s);
+    if (dt > 0.0f && math::distance(bounded.position, have.position) > 0.0f)
+        hipsVel_ = (bounded.position - before.position) / dt;
+    placePelvis(output_, bounded);
 
     // The trunk and head joints toward the desired ones by rate.
     for (int j : {joints_.spine[0], joints_.spine[1], joints_.spine[2], joints_.clavicles[0], joints_.clavicles[1]})
@@ -1216,6 +1334,9 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
     solveLegs(output_, t, s, out);
     solveArms(output_, t, s, out);
     refresh(output_);
+    if (limits_) for (int i = 0; i < 2; ++i) { const int th = joints_.legs[i].start; const math::Quat l = output_.pose.locals[th].rotation;
+        const float e = math::angleBetween(ik::clampRotation(l, limits_->limitIn(th, output_.pose)), l);
+        if (e > 0.01f) std::printf("TMP out leg %d excess %.2f grounded %d mode %d act %.2f\n", i, math::degrees(e), grounded_[i] ? 1 : 0, (int)t.foot[i].mode, act_[FootLW + i]); }
 }
 
 void BodyDecider::report(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {
@@ -1668,7 +1789,7 @@ void BodyDecider::trunkOrders(int h, math::Vec3 target, math::Vec3 velocity, con
         if (order[k] == Tilt) tilt = out.count;
         add(out, j, PartMove::Turn, sw.axis, velocity, which, false, order[k] == Tilt ? 1.0f - act_[HipsW] : 1.0f);
     }
-    shareQueue(first, s, out);
+    shareQueue(first, &target, s, out);
 
     // A bend (not a turn): the lumbar spine and the hips split their combined
     // share by the measured lumbopelvic rhythm at the trunk's flexion now.
@@ -1709,7 +1830,7 @@ void BodyDecider::footTrunk(int i, math::Vec3 target, math::Vec3 velocity, const
         add(out, joints_.pelvis, PartMove::Move, math::normalize(target - hip), velocity, which, false, 1.0f - act_[HipsW]);
     const Swing sw = swingToward(tiltPivot(e), hip, target, reach);
     if (sw.angle > kMinAngle) add(out, joints_.pelvis, PartMove::Turn, sw.axis, velocity, which, false, 1.0f - act_[HipsW]);
-    shareQueue(first, s, out);
+    shareQueue(first, &target, s, out);
     trunkFirst_[e] = first;
     trunkEnd_[e] = out.count;
     planTrunk(e, target, first, out.count, s, out);
@@ -1843,18 +1964,41 @@ void BodyDecider::turnChain(const int* joints, int count, math::Quat delta, math
         if (j < 0) continue;
         add(out, j, PartMove::Turn, axis, velocity, goal, false, 1.0f);
     }
-    shareQueue(first, s, out);
+    shareQueue(first, nullptr, s, out);
 }
 
-void BodyDecider::shareQueue(int first, const BodyDeciderSettings& s, BodyQueue& out) const {
-    // Orders come in with share 1 (free) to 0 (held: a driven pelvis); the
-    // k-th one by place carries queueShare^k, then all are normalised to 1.
-    float weight = 1.0f, total = 0.0f;
+void BodyDecider::shareQueue(int first, const math::Vec3* end, const BodyDeciderSettings& s, BodyQueue& out) const {
+    // Orders come in with share 1 (free) to 0 (held: a driven pelvis). Each
+    // part's share of the end's motion is the least effort's: the
+    // inertia-weighted (minimum kinetic energy) split, share ~ lever^2 / I
+    // (Khatib 1987; kinetic-energy postures, Biess, Liebermann & Flash 2007):
+    // a turning joint by its lever to the end (`end`; none: 1) squared over
+    // the inertia it turns (every mass beyond it, about it), the hips' move
+    // by 1 / the body's mass. Its range and strength still stop it (planTrunk).
+    (void)s;
+    const Plan& d = desired_;
+    float total = 0.0f;
     for (int i = first; i < out.count; ++i) {
         PartOrder& o = out.orders[static_cast<size_t>(i)];
+        float weight = 0.0f;
+        if (o.kind == PartMove::Move) {
+            weight = totalMass_ > 0.0f ? 1.0f / totalMass_ : 0.0f;
+        } else if (o.joint >= 0) {
+            const math::Vec3 pivot = planPos(d, o.joint);
+            float inertia = 0.0f;
+            for (int k = 0; k < static_cast<int>(mass_.size()); ++k) {
+                if (mass_[static_cast<size_t>(k)] <= 0.0f) continue;
+                int a = k;
+                while (a >= 0 && a != o.joint) a = rig_->parent(a);
+                if (a != o.joint) continue;
+                const math::Vec3 at = planPos(d, k) + planRot(d, k) * centre_[static_cast<size_t>(k)];
+                inertia += mass_[static_cast<size_t>(k)] * math::length2(at - pivot);
+            }
+            const float lever = end ? math::length(math::cross(o.direction, *end - pivot)) : 1.0f;
+            weight = inertia > 1e-6f ? lever * lever / inertia : 0.0f;
+        }
         o.share *= weight;
         total += o.share;
-        weight *= s.queueShare;
     }
     for (int i = first; i < out.count; ++i) {
         PartOrder& o = out.orders[static_cast<size_t>(i)];

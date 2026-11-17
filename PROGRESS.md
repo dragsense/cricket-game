@@ -105,6 +105,12 @@ Pieces (pass numbers in brackets):
   and the chest's inertia; `trunkTurn` gone [w = sqrt(K / I) from research].
 - [ ] B4 Free arms by physics (relaxed shoulder 10.8 N m/rad, Gomi & Osu 1998), not
   driven by the plan; `armCancel` gone [a hanging arm within 2 deg of vertical, no flip].
+- [ ] **2026-11-17: P2, P4, P5, P6, B1-B4 and D2's lead written, NOT measured** (the user's
+  call: code only, no tests or measures; release build clean). D2: the drive leads each
+  target by D / K x its speed through muscle activation (no acceleration term: it
+  amplified the plan's tick steps, measured: forward 4.7 -> 1.7 cm but down 4.7 -> 9.8).
+  P6 is config only (support maxForce 0, freeDown 0). Next: run every measure, check the
+  pass numbers above, fix what fails.
 
 - [x] **B1 Balance step** (built; awaiting the user's check in the game): WASD moves the
   hips target; the decider steps by the capture point (any direction, bigger push = bigger

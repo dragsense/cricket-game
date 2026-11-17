@@ -165,12 +165,11 @@ struct RagdollPart {
     math::Vec3 axisX{1.0f, 0.0f, 0.0f}, axisY{0.0f, 1.0f, 0.0f};
     math::Vec3 minAngles{0.0f}, maxAngles{0.0f};
     MotorDesc motor;  // its muscle for the pose drive, one motor per free axis; maxTorque 0: none
-    // A strength per direction about one joint axis (two muscles pulling
-    // opposite ways): its motor never pushes harder than plusTorque toward +
-    // rotation of the part about that axis, minusTorque toward - (N m).
-    // Axis: 0 X, 1 Y, 2 Z of the joint's frame; -1: maxTorque on every axis.
-    int directionalAxis = -1;
-    float plusTorque = 0.0f, minusTorque = 0.0f;
+    // A strength per direction about each joint axis (two muscles pulling
+    // opposite ways), X, Y, Z of the joint's frame: its motor never pushes
+    // harder than plusTorque toward + rotation of the part about that axis,
+    // minusTorque toward - (N m). A component < 0: motor.maxTorque that way.
+    math::Vec3 plusTorque{-1.0f}, minusTorque{-1.0f};
 };
 
 class PhysicsWorld {
@@ -328,6 +327,11 @@ public:
     // about its frame's X, Y, Z as RagdollPart), changed while it runs (a
     // range set by another joint's angle). No allocations.
     void setRagdollJointLimits(RagdollId id, int part, math::Vec3 minAngles, math::Vec3 maxAngles);
+    // The joint moving part `part`: its muscle's spring per rotation axis
+    // (stiffness N m/rad, damping N m s/rad, about its frame's X, Y, Z),
+    // changed while it runs (stiffness rises with the torque held). No
+    // allocations.
+    void setRagdollJointSpring(RagdollId id, int part, math::Vec3 stiffness, math::Vec3 damping);
     // The joint moving part `part`: the part's rotation now in the joint's
     // frame (identity: as built). Identity if there is no such joint.
     math::Quat ragdollJointRotation(RagdollId id, int part) const;

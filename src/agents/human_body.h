@@ -9,7 +9,7 @@
 // joint's angle follows the real body's joint each tick). Each axis's motor
 // is its muscle (human_joints.json "muscles": strength, activation time),
 // pulling the joint toward the pose. A bone without mass of its own (neck,
-// clavicles, fingers) rides its parent. The parts of one body do not collide
+// fingers) rides its parent. The parts of one body do not collide
 // with each other; they collide with the ground and with everything else.
 // Load-time allocation only.
 
@@ -37,13 +37,23 @@ struct MuscleSettings {
     // e.g. knee extensors and flexors), by bone name without its side: the
     // axis (0 x, 1 y, 2 z, the joint limits' frame) and the strongest torque
     // toward + and - rotation about it, left side (the right side mirrors).
-    // The joint's other axes keep maxTorque.
+    // A joint may list several axes; its other axes keep maxTorque.
     struct Directional {
         std::string bone;
         int axis = 0;
         float plus = 0.0f, minus = 0.0f;
     };
     std::vector<Directional> directional;
+    // Measured joint stiffness (BIOMECHANICS 14), by bone name without its
+    // side: relaxed stiffness per axis (x, y, z of the joint limits' frame,
+    // N m/rad), its rise per N m held (slope), damping (N m s/rad) and its
+    // rise per N m held. A joint not listed keeps K = I (2 pi f)^2.
+    struct Spring {
+        std::string bone;
+        math::Vec3 relaxed{0.0f};
+        float slope = 0.0f, damping = 0.0f, dampingSlope = 0.0f;
+    };
+    std::vector<Spring> springs;
 };
 
 // How fast a muscle closes its target's gap: Fitts' law movement time
@@ -76,6 +86,9 @@ public:
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame (X twist)
         bool muscle = false;               // its motor has strength
         int coupledPart = -1;              // its range follows this part's joint angle (-1: fixed range)
+        bool spring = false;               // measured stiffness (MuscleSettings::springs)
+        math::Vec3 relaxed{0.0f};          // N m/rad about the joint frame's X, Y, Z
+        float slope = 0.0f, damping = 0.0f, dampingSlope = 0.0f;
     };
     const std::vector<Part>& parts() const { return parts_; }
     // Per rig joint (`numJoints`): its part's mass (kg, 0 if none of its own)
@@ -89,10 +102,27 @@ public:
     // the muscle's strength: drivePose gives the hold within it and the motor
     // corrects with what is left. Call each tick before drivePose. No
     // allocations.
-    void holdWeight(physics::PhysicsWorld& world) const;
+    // A part pressed on the ground: the share of the body's weight the
+    // ground carries there and where that push acts (its centre of
+    // pressure, world). A joint between it and the pelvis also holds that
+    // push's turn (Winter's bottom-up statics: a stance leg carries the body
+    // above it).
+    struct GroundLoad {
+        int part = -1;
+        float share = 0.0f;
+        math::Vec3 at{0.0f};
+    };
+    void holdWeight(physics::PhysicsWorld& world, const GroundLoad* loads, int count) const;
+    // The centre of mass in the pose `models` (character space).
+    math::Vec3 centreOfMass(const std::vector<math::Mat4>& models) const;
     // A part's hold from the last holdWeight (world, N m) and the ragdoll (for measuring).
     math::Vec3 holdTorque(int part) const { return hold_[static_cast<size_t>(part)]; }
     physics::RagdollId ragdoll() const { return ragdoll_; }
+    // A part left to physics (the muscle plan B4): its muscle pulls only
+    // toward its rest angle (a relaxed muscle), not the plan's.
+    void setFree(int part, bool free) const {
+        if (part >= 0 && part < static_cast<int>(free_.size())) free_[static_cast<size_t>(part)] = free;
+    }
     // Every muscle pulls its joint toward the pose `models` (character space,
     // the rig's joints; a range set by another joint first follows that
     // joint in the real body, as the plan's limitIn); the head is
@@ -103,7 +133,7 @@ public:
     // joint of the head.
     // No allocations.
     void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
-                   int headJoint) const;
+                   int headJoint, float dt) const;
     // A part's joint range now: the plan's, a coupled bound set by the real
     // body's coupled joint (as JointLimits::limitIn reads the pose's).
     ik::JointLimit limitNow(const physics::PhysicsWorld& world, int part) const;
@@ -132,6 +162,19 @@ private:
     physics::RagdollId ragdoll_ = physics::kInvalidRagdoll;
     const ik::JointLimits* limits_ = nullptr;  // the ranges (owned by Human, outlives the body)
     mutable std::vector<math::Quat> rotations_;  // scratch: the pose drive's targets, sized at init
+    // The drive's lead (the muscle plan P3, D2): a spring-damper whose damper
+    // pulls toward no motion trails a moving target by D / K x its speed; the
+    // command leads by that (the equilibrium point runs ahead of the limb,
+    // Feldman; Flash 1987), with the target's speed passed through muscle
+    // activation (activationTime_: the command reaches force in 10-50 ms) so
+    // the plan's tick-to-tick steps do not jerk it.
+    mutable std::vector<math::Quat> lastTarget_;   // per part: last tick's target (body space)
+    mutable std::vector<math::Vec3> velocity_;     // per part: the target's speed after activation (rad/s, child frame)
+    mutable bool leadReady_ = false;               // false: no last target (start, reset)
+    std::vector<float> lead_;                      // per part: D / K (s)
+    float activationTime_ = 0.03f;
+    std::vector<math::Quat> restRotation_;          // per part: its rotation on its parent at rest
+    mutable std::vector<bool> free_;                // per part: left to physics (setFree)
     mutable std::vector<float> beyondMass_;         // scratch per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // scratch per part: their mass x centre of mass (world)
     mutable std::vector<math::Vec3> hold_;          // scratch per part: the torque its weight needs (world)

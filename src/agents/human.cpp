@@ -169,22 +169,42 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         if (auto m = root.find("muscles"); m != root.end())
             if (auto t = m->find("directional"); t != m->end() && t->is_object())
                 for (auto it = t->begin(); it != t->end(); ++it) {
-                    const nlohmann::json& v = *it;
-                    if (!v.is_object() || !v.contains("axis") || !v.contains("plus") || !v.contains("minus")) {
-                        LOG_WARN("fielder: muscles.directional.{} needs axis, plus and minus", it.key());
+                    // One axis's pair, or a list of them (one per axis).
+                    const nlohmann::json one = nlohmann::json::array({*it});
+                    for (const nlohmann::json& v : it->is_array() ? *it : one) {
+                        if (!v.is_object() || !v.contains("axis") || !v.contains("plus") || !v.contains("minus")) {
+                            LOG_WARN("fielder: muscles.directional.{} needs axis, plus and minus", it.key());
+                            continue;
+                        }
+                        const std::string axis = v["axis"].is_string() ? v["axis"].get<std::string>() : "";
+                        if (axis != "x" && axis != "y" && axis != "z") {
+                            LOG_WARN("fielder: muscles.directional.{}.axis must be x, y or z", it.key());
+                            continue;
+                        }
+                        MuscleSettings::Directional d;
+                        d.bone = it.key();
+                        d.axis = axis[0] - 'x';
+                        d.plus = v["plus"].get<float>();
+                        d.minus = v["minus"].get<float>();
+                        muscles.directional.push_back(d);
+                    }
+                }
+        if (auto m = root.find("muscles"); m != root.end())
+            if (auto t = m->find("stiffness"); t != m->end() && t->is_object())
+                for (auto it = t->begin(); it != t->end(); ++it) {
+                    if (!it->is_object() || !it->contains("relaxed")) {
+                        LOG_WARN("fielder: muscles.stiffness.{} needs relaxed", it.key());
                         continue;
                     }
-                    const std::string axis = v["axis"].is_string() ? v["axis"].get<std::string>() : "";
-                    if (axis != "x" && axis != "y" && axis != "z") {
-                        LOG_WARN("fielder: muscles.directional.{}.axis must be x, y or z", it.key());
-                        continue;
-                    }
-                    MuscleSettings::Directional d;
-                    d.bone = it.key();
-                    d.axis = axis[0] - 'x';
-                    d.plus = v["plus"].get<float>();
-                    d.minus = v["minus"].get<float>();
-                    muscles.directional.push_back(d);
+                    MuscleSettings::Spring s;
+                    s.bone = it.key();
+                    const nlohmann::json& r = (*it)["relaxed"];
+                    if (r.is_array() && r.size() == 3) s.relaxed = math::Vec3(r[0].get<float>(), r[1].get<float>(), r[2].get<float>());
+                    else if (r.is_number()) s.relaxed = math::Vec3(r.get<float>());
+                    s.slope = it->value("slope", 0.0f);
+                    s.damping = it->value("damping", 0.0f);
+                    s.dampingSlope = it->value("dampingSlope", 0.0f);
+                    muscles.springs.push_back(s);
                 }
     }
     if (!humanBody_.init(world, def_, rig_, limits_, muscles, root_, nextGroup++)) {
@@ -221,14 +241,12 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.fittsA = muscleTiming_.fittsA;
         deciderSettings_.fittsB = muscleTiming_.fittsB;
         deciderSettings_.fittsWidth = muscleTiming_.fittsWidth;
-        deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
         deciderSettings_.armCancel = jointsConfig_->getFloat("decider.armCancel", deciderSettings_.armCancel);
         deciderSettings_.passiveHead = jointsConfig_->getFloat("decider.passiveInfluence.head", deciderSettings_.passiveHead);
         deciderSettings_.passiveHands = jointsConfig_->getFloat("decider.passiveInfluence.hands", deciderSettings_.passiveHands);
         deciderSettings_.passiveHips = jointsConfig_->getFloat("decider.passiveInfluence.hips", deciderSettings_.passiveHips);
         deciderSettings_.passiveChest = jointsConfig_->getFloat("decider.passiveInfluence.chest", deciderSettings_.passiveChest);
         auto dv = [&](const char* key, float value) { return jointsConfig_->getFloat(key, value); };
-        deciderSettings_.pelvisTurnShare = dv("decider.pelvisTurnShare", deciderSettings_.pelvisTurnShare);
         deciderSettings_.pelvisList =
             math::radians(dv("decider.pelvisListDeg", math::degrees(deciderSettings_.pelvisList)));
         deciderSettings_.kneeForwardBias = dv("decider.kneeForwardBias", deciderSettings_.kneeForwardBias);
@@ -238,6 +256,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));
         deciderSettings_.blendTime = dv("decider.blendTime", deciderSettings_.blendTime);
         deciderSettings_.supportBlendTime = dv("decider.supportBlendTime", deciderSettings_.supportBlendTime);
+        footSupport_.heelIn = dv("footSupport.heelIn", footSupport_.heelIn);
+        footSupport_.toeIn = dv("footSupport.toeIn", footSupport_.toeIn);
+        footSupport_.width = dv("footSupport.width", footSupport_.width);
         deciderSettings_.hipsMaxSpeed = dv("decider.hipsMaxSpeed", deciderSettings_.hipsMaxSpeed);
         deciderSettings_.hipsMaxAccel = dv("decider.hipsMaxAccel", deciderSettings_.hipsMaxAccel);
         deciderSettings_.hipsMaxTurnRate = dv("decider.hipsMaxTurnRate", deciderSettings_.hipsMaxTurnRate);
@@ -465,13 +486,121 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     return queue_.plan;
 }
 
+void Human::groundLoads(const std::vector<math::Mat4>& target, float dt) {
+    const physics::PhysicsWorld& world = *physics_;
+    // Each foot as it really is: whether it (or its toes) touches the ground,
+    // its ankle and level axes, and its functional base of support (forward
+    // and side, m from the ankle) from the foot's and toes' shapes.
+    struct Sole {
+        int foot = -1, toe = -1;
+        bool touching = false, toeTouching = false;
+        math::Vec3 ankle{0.0f}, forward = math::kForward, side = math::kRight;
+        float lo[2] = {0.0f, 0.0f}, hi[2] = {0.0f, 0.0f};
+        float groundY = 0.0f, toeAt = 0.0f;
+    } sole[2];
+    auto extent = [&](int part, int axis, float& lo, float& hi) {
+        const HumanBody::Part& p = humanBody_.parts()[static_cast<size_t>(part)];
+        const float centre = axis == 0 ? p.shape.position.z : p.shape.position.x;
+        const float half = p.shapeType == physics::ShapeType::Box ? (axis == 0 ? p.halfExtents.z : p.halfExtents.x) : p.radius;
+        lo = centre - half;
+        hi = centre + half;
+    };
+    constexpr int kCorners = 8;
+    math::Vec3 corner[kCorners];
+    for (int f = 0; f < 2; ++f) {
+        Sole& s = sole[f];
+        s.foot = humanBody_.partOf(f == 0 ? joints_.legL.end : joints_.legR.end);
+        s.toe = humanBody_.partOf(f == 0 ? joints_.toeL : joints_.toeR);
+        if (s.foot < 0) continue;
+        const math::Transform ankle = humanBody_.boneWorld(world, s.foot);
+        s.ankle = ankle.position;
+        s.groundY = ankle.position.y;
+        const math::Vec3 ahead = ankle.rotation * math::kForward;
+        s.forward = math::safeNormalize(math::Vec3(ahead.x, 0.0f, ahead.z), math::kForward);
+        s.side = math::cross(math::kUp, s.forward);
+        if (s.toe >= 0) s.toeAt = math::dot(humanBody_.boneWorld(world, s.toe).position - s.ankle, s.forward);
+        float ySum = 0.0f;
+        int n = 0;
+        for (const int part : {s.foot, s.toe}) {
+            if (part < 0) continue;
+            const int touches = world.groundContacts(humanBody_.parts()[static_cast<size_t>(part)].body, corner, kCorners);
+            if (part == s.toe) s.toeTouching = touches > 0;
+            for (int i = 0; i < touches; ++i) ySum += corner[i].y;
+            n += touches;
+        }
+        s.touching = n > 0;
+        if (n > 0) s.groundY = ySum / static_cast<float>(n);
+        float heel = 0.0f, tip = 0.0f, right = 0.0f, left = 0.0f;
+        extent(s.foot, 0, heel, tip);
+        extent(s.foot, 1, right, left);
+        if (s.toe >= 0) {
+            float lo = 0.0f, hi = 0.0f;
+            extent(s.toe, 0, lo, hi);
+            tip = std::max(tip, s.toeAt + hi);
+        }
+        const float length = tip - heel, middle = 0.5f * (left + right), half = 0.5f * footSupport_.width * (left - right);
+        s.lo[0] = heel + footSupport_.heelIn * length;
+        s.hi[0] = std::max(s.lo[0], tip - footSupport_.toeIn * length);
+        s.lo[1] = middle - half;
+        s.hi[1] = middle + half;
+    }
+    // The plan's statics (character space, level).
+    const math::Vec3 planCom = humanBody_.centreOfMass(target);
+    const math::Vec3 planAnkle[2] = {modelPos(target, joints_.legL.end), modelPos(target, joints_.legR.end)};
+    float t = 0.5f;
+    {
+        math::Vec3 line = planAnkle[1] - planAnkle[0], off = planCom - planAnkle[0];
+        line.y = off.y = 0.0f;
+        const float len2 = math::dot(line, line);
+        if (len2 > 1e-6f) t = std::clamp(math::dot(off, line) / len2, 0.0f, 1.0f);
+    }
+    const float s0 = std::clamp(queue_.supportWeight[0], 0.0f, 1.0f), s1 = std::clamp(queue_.supportWeight[1], 0.0f, 1.0f);
+    const float plan[2] = {s0 * (1.0f - s1) + s0 * s1 * (1.0f - t), s1 * (1.0f - s0) + s0 * s1 * t};
+    const float on[2] = {sole[0].touching ? plan[0] : 0.0f, sole[1].touching ? plan[1] : 0.0f};
+    const float onSum = on[0] + on[1];
+    const float step = dt / std::max(deciderSettings_.supportBlendTime, 1e-3f);
+    for (int f = 0; f < 2; ++f) {
+        const float want = onSum > 1e-4f ? on[f] / onSum : 0.0f;
+        groundShare_[f] += std::clamp(want - groundShare_[f], -step, step);
+    }
+    const float sum = groundShare_[0] + groundShare_[1];
+    math::Vec3 off(0.0f);
+    if (sum > 1e-3f) {
+        off = planCom - (groundShare_[0] * planAnkle[0] + groundShare_[1] * planAnkle[1]) / sum;
+        off.y = 0.0f;
+        off = root_.rotation * off;
+    }
+    for (int f = 0; f < 2; ++f) {
+        const Sole& s = sole[f];
+        loads_[f] = HumanBody::GroundLoad{};
+        if (s.foot < 0 || groundShare_[f] <= 0.0f) continue;
+        const float u = std::clamp(math::dot(off, s.forward), s.lo[0], s.hi[0]);
+        const float v = std::clamp(math::dot(off, s.side), s.lo[1], s.hi[1]);
+        math::Vec3 at = s.ankle + s.forward * u + s.side * v;
+        at.y = s.groundY;
+        loads_[f].part = s.toeTouching && u > s.toeAt ? s.toe : s.foot;
+        loads_[f].share = groundShare_[f];
+        loads_[f].at = at;
+    }
+}
+
 void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     physics::PhysicsWorld& world = *physics_;
     const physics::CharacterSettings& c = world.settings().character;
     // The muscles: they carry the weight beyond each joint, and Jolt's pose
     // drive corrects toward this tick's pose.
-    humanBody_.holdWeight(world);
-    humanBody_.drivePose(world, target, root_, joints_.head);
+    groundLoads(target, dt);
+    // Free arms (no hand goal) are left to physics: relaxed muscles toward
+    // hanging, gravity and the body's motion swing them (the muscle plan B4).
+    for (int h = 0; h < 2; ++h) {
+        const bool free = poseLast_ != static_cast<int>(h == 0 ? motion::Goal::HandL : motion::Goal::HandR);
+        const ik::TwoBoneChain& arm = h == 0 ? joints_.armL : joints_.armR;
+        for (int j : {h == 0 ? joints_.clavicleL : joints_.clavicleR, arm.start, arm.mid, arm.end})
+            if (j >= 0 && humanBody_.partOf(j) >= 0 && rig_.boneDefIndex(j) >= 0 && humanBody_.parts()[static_cast<size_t>(humanBody_.partOf(j))].joint == j)
+                humanBody_.setFree(humanBody_.partOf(j), free);
+    }
+    humanBody_.holdWeight(world, loads_, 2);
+    humanBody_.drivePose(world, target, root_, joints_.head, dt);
     // The capsule is as tall as the pose's pelvis is high (crouch, stride).
     const float pelvisY = target[static_cast<size_t>(joints_.pelvis)][3].y;
     world.setCharacterHeight(capsule_, rig_.height() * std::clamp(pelvisY / restPelvisHeight_, 0.0f, 1.0f));

@@ -47,11 +47,14 @@
     "support": {
       "frequency": 4.0,   // Hz
       "damping": 1.0,     // ratio (1: no overshoot)
-      "maxForce": 2000,   // N (~2.8 x the body's weight)
+      // N: 0, the support no longer carries or pushes the body (the stance
+      // legs do: DECISIONS 2026-11-16, the muscle plan P6); it keeps only the
+      // body's tilt and turn (maxTorque). Was 2000.
+      "maxForce": 0,
       "maxTorque": 600,   // N m
       // m: the hips sink this far below the pose's pelvis with no hold (their
       // weight goes down the thighs onto the knees); below it the spring catches.
-      "freeDown": 0.03
+      "freeDown": 0       // was 0.03; 0: no up/down band (the legs hold the height)
     },
     // The capsule follows the real hips (DECISIONS 2026-11-11); the hold's
     // anchor rides the plan's pelvis.

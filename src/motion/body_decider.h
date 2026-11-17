@@ -130,9 +130,6 @@ struct BodyDeciderSettings {
     // (forward, level; Moriyama 2022's functional reach, young adults 0.22-
     // 0.24 H); a hand further takes the whole body after it (a step).
     float standingReachShare = 0.23f;
-    // Each next part in a reach queue carries this times the share of the
-    // part before it.
-    float queueShare = 0.5f;
     // The measured lumbopelvic rhythm (Esola et al. 1996): lumbar : hip ratio
     // per band of trunk flexion (upper bounds, rad).
     float lumbarHipBand[3] = {0.5236f, 1.0472f, 1.5708f};  // 30, 60, 90 deg
@@ -149,7 +146,6 @@ struct BodyDeciderSettings {
     // of the line between the feet (a foot ahead turns its hip forward), so
     // longer steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at
     // 0.40 m/s, 19 at 1.47 m/s, Yang 2013; larger with big steps, Liang 2014).
-    float pelvisTurnShare = 0.11f;
     // The pelvis drops on the side of the leg without weight, about the hip
     // that carries it (pelvic list), this much (rad) with all the weight on
     // one leg, by the weight's share (the weight shift: it leads a lift).
@@ -354,7 +350,8 @@ private:
     // A queue of joints turning one way together, shared by place.
     void turnChain(const int* joints, int count, math::Quat delta, math::Vec3 velocity, Goal goal,
                    const BodyDeciderSettings& s, BodyQueue& out);
-    void shareQueue(int first, const BodyDeciderSettings& s, BodyQueue& out) const;
+    // The queue's shares by least effort (lever^2 / inertia) toward `end` (none: lever 1).
+    void shareQueue(int first, const math::Vec3* end, const BodyDeciderSettings& s, BodyQueue& out) const;
     // The desired pelvis under the hands' and lifted feet's trunk: the
     // centre of mass over the support (standing only).
     void balanceStanding(const TargetSet& t, const BodyDeciderSettings& s);
@@ -396,6 +393,21 @@ private:
     // The lowest the pelvis may be over the grounded feet: no grounded knee
     // past its bound (two feet or one). `any`: some grounded leg bounds it.
     float lowestHeight(const Plan& p, const BodyDeciderSettings& s, bool& any) const;
+    // How far the grounded hips are past their ranges (rad, the worst) with
+    // the pelvis at `pelvis`: each grounded leg solved onto its anchor as
+    // solveLegs does. Places p's pelvis and those legs.
+    float groundedHipExcess(Plan& p, const TargetSet& t, const math::Transform& pelvis, const BodyDeciderSettings& s);
+    // Where leg i's solve aims from `hip`: its anchor, or on its way off it
+    // (a driven foot by its weight), within its reach.
+    math::Vec3 legTarget(const TargetSet& t, int i, math::Vec3 hip, const BodyDeciderSettings& s) const;
+    // `pelvis` turned about each grounded hip past its range until that
+    // thigh is on its range (the thigh carries the pelvis). Places p's pelvis.
+    math::Transform hipsInRange(Plan& p, const TargetSet& t, math::Transform pelvis, const BodyDeciderSettings& s);
+    // The pelvis from `from` (first carried onto the ranges, hipsInRange)
+    // toward `to` as far as no grounded hip goes past its range, on the way
+    // between them. Places p's pelvis.
+    math::Transform boundHips(Plan& p, const TargetSet& t, const math::Transform& from, const math::Transform& to,
+                              const BodyDeciderSettings& s);
 
     const rig::Rig* rig_ = nullptr;
     const ik::JointLimits* limits_ = nullptr;
@@ -446,6 +458,10 @@ private:
     std::vector<float> mass_;          // per rig joint (kg)
     std::vector<math::Vec3> centre_;   // per rig joint: its mass's centre in the bone's frame
     float totalMass_ = 0.0f;
+    // A foot's share that the pelvis's turn takes of its fore-aft way, by
+    // least effort (h^2 / I_turn against L^2 / I_leg at rest, h the hip's
+    // offset from the pelvis, L the leg; the muscle plan B2), and h.
+    float pelvisTurnShare_ = 0.0f, hipHalfWidth_ = 0.0f;
     // Free arms: each rig joint's arm (-1 none, 0 left, 1 right), the
     // planned mass centres last decide (character space), each arm's swing
     // angle (rad, forward +) about the shoulder.

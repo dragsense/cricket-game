@@ -902,7 +902,8 @@ TEST_CASE("measure: stance legs carry the weight" * doctest::skip()) {
 // joint by joint. For a held goal: each joint's real local rotation off the
 // plan's (deg), its motor's torque and limit, and the torque its range's
 // limits take (non-zero: Jolt's joint limit blocks it). Joints off by more
-// than 3 deg.
+// than 3 deg. Over the whole move: Jolt's worst clamp (a planned joint outside
+// its range) and how far each pinned foot's plan slid.
 namespace {
 void jointGaps(int which, const char* name) {
     core::Config pw;
@@ -924,13 +925,38 @@ void jointGaps(int which, const char* name) {
     case 1: goal = shoulderL + h.root().transformDirection(math::Vec3(0.05f, 0.55f, 0.1f)); break;  // up overhead
     case 2: goal = shoulderL + h.root().transformDirection(math::Vec3(0.0f, 0.0f, 0.6f)); break;   // ahead, shoulder height
     case 3: goal = h.root().transformPoint(math::Vec3(0.15f, 0.05f, 0.25f)); break;               // at the toes
+    case 5: goal = h.root().transformPoint(math::Vec3(-0.35f, 0.05f, 0.25f)); break;              // the ground across
     default: goal = a0 + h.root().transformDirection(math::Vec3(0.0f, 0.2f, 0.3f)); hand = false; break;  // foot up ahead
     }
+    const agents::HumanBody& body = h.humanBody();
+    math::Vec3 feet0[2] = {a0, h.ankle(false, plan0, h.root())};
+    float moveClamp = 0.0f, slide[2] = {0.0f, 0.0f};
+    int steps[2] = {0, 0};  // ticks each foot was stepping
+    std::string moveJoint = "-";
     for (int i = 0; i < 360; ++i) {
         if (hand) h.setPoseHand(true, goal);
         else h.setPoseFoot(motion::Foot::Left, goal);
         h.tick(kDt);
         world.step(kDt);
+        for (size_t k = 0; k < body.parts().size(); ++k) {
+            physics::PhysicsWorld::RagdollJointState st;
+            if (world.ragdollJointState(body.ragdoll(), static_cast<int>(k), kDt, st) && st.clamped > 0.01f)
+                std::printf("TMP tick %d %s %.2f stepFoot %d grounded? landed %d\n", i, h.rig().jointName(body.parts()[k].joint).c_str(), math::degrees(st.clamped), h.stepFoot(), h.bodyQueue().landed[0] ? 1 : 0);
+            if (!world.ragdollJointState(body.ragdoll(), static_cast<int>(k), kDt, st) || st.clamped <= moveClamp) continue;
+            moveClamp = st.clamped;
+            moveJoint = h.rig().jointName(body.parts()[k].joint);
+        }
+        // A pinned foot's plan off where it stood (a foot that stepped is
+        // measured from where it landed).
+        for (int f = 0; f < 2; ++f) {
+            const math::Vec3 at = h.ankle(f == 0, *h.bodyQueue().plan, h.root());
+            if (h.stepFoot() == f || h.bodyQueue().landed[f]) {
+                feet0[f] = at;
+                ++steps[f];
+            } else if (hand || f == 1) {
+                slide[f] = std::max(slide[f], math::distance(at, feet0[f]));
+            }
+        }
     }
     std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
     REQUIRE(h.physicalModels(world, 1.0f, real));
@@ -938,7 +964,9 @@ void jointGaps(int which, const char* name) {
     auto end = [&](const std::vector<math::Mat4>& m) { return hand ? h.wrist(true, m, h.root()) : h.ankle(true, m, h.root()); };
     std::printf("--- %s: end real off plan %.1f cm, plan off goal %.1f cm\n", name,
                 100.0f * math::distance(end(real), end(plan)), 100.0f * math::distance(end(plan), goal));
-    const agents::HumanBody& body = h.humanBody();
+    std::printf("    over the move: Jolt clamp worst %.2f deg (%s) | pinned feet slid (plan) L %.1f cm, R %.1f cm | "
+                "stepping ticks L %d R %d\n",
+                math::degrees(moveClamp), moveJoint.c_str(), 100.0f * slide[0], 100.0f * slide[1], steps[0], steps[1]);
     std::printf("    ground contacts:");
     for (const char* bone : {"foot_l", "toe_l", "foot_r", "toe_r"}) {
         math::Vec3 points[8];
@@ -982,6 +1010,7 @@ TEST_CASE("measure: where the physics body misses the plan" * doctest::skip()) {
     jointGaps(2, "hand L 0.6 m ahead");
     jointGaps(3, "hand L at the toes");
     jointGaps(4, "foot L up and ahead");
+    jointGaps(5, "hand L on the ground across");
 }
 
 // Measurement (on demand): a moving goal (the hand at 0.5 m/s, 1 s, each

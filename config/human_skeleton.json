@@ -33,15 +33,19 @@
       "visual": { "shape": "capsule", "material": "kit", "radius": 0.062 } },
     { "name": "spine_02", "parent": "spine_01", "offset": [0.0, 0.09, 0.0], "mass": 8.33,
       "visual": { "shape": "capsule", "material": "kit", "radius": 0.066 } },
-    { "name": "chest",    "parent": "spine_02", "offset": [0.0, 0.09, 0.0], "mass": 15.96,
+    { "name": "chest",    "parent": "spine_02", "offset": [0.0, 0.09, 0.0], "mass": 13.96,
       "visual": { "shape": "capsule", "material": "kit", "from": [-0.06, 0.02, 0.0], "to": [0.06, 0.02, 0.0], "radius": 0.065 } },
     { "name": "neck",     "parent": "chest",    "offset": [0.0, 0.065, 0.0], "mass": 0.0,
       "visual": { "shape": "capsule", "material": "skin", "radius": 0.03 } },
     { "name": "head",     "parent": "neck",     "offset": [0.0, 0.05, 0.0], "mass": 6.94, "tip": [0.0, 0.12, 0.0],
       "visual": { "shape": "capsule", "material": "skin", "from": [0.0, 0.0, 0.01], "to": [0.0, 0.065, 0.01], "radius": 0.055 } },
 
-    { "name": "clavicle",  "parent": "chest",     "mirror": true, "offset": [0.015, 0.035, 0.0], "mass": 0.0,
-      "visual": { "shape": "capsule", "material": "kit", "radius": 0.025 } },
+    // Shoulder girdle (clavicle + scapula, one body): 1.00 % (clavicle 0.18 + scapula 0.82,
+    // Sarshari 2021 after Dumas 2007; taken from the chest, 15.96 -> 13.96). Its capsule runs
+    // from the SC joint back and out so its centre is the girdle's centre of mass: 8.5 cm
+    // lateral, 5.9 posterior, 1.1 inferior of the SC joint (BIOMECHANICS 1.2).
+    { "name": "clavicle",  "parent": "chest",     "mirror": true, "offset": [0.015, 0.035, 0.0], "mass": 1.00,
+      "visual": { "shape": "capsule", "material": "kit", "from": [0.012, 0.0, -0.012], "to": [0.0825, -0.012, -0.0535], "radius": 0.02 } },
     { "name": "upper_arm", "parent": "clavicle",  "mirror": true, "offset": [0.115, 0.015, -0.01], "mass": 2.71,
       "visual": { "shape": "capsule", "material": "kit", "radius": 0.03 } },
     { "name": "forearm",   "parent": "upper_arm", "mirror": true, "offset": [0.0, -0.186, 0.0], "mass": 1.62,
