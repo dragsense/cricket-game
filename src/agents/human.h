@@ -186,19 +186,6 @@ private:
     // The real pelvis's error from the hold's target.
     PelvisError pelvisError_ = PelvisError::Small;
     float pelvisErrorNow_ = 0.0f, pelvisErrorTime_ = 0.0f;
-    // The ground's push under each foot this tick (loads_), from the plan
-    // `target`'s statics (the muscles hold the planned posture): the plan's
-    // supported feet share the weight by where its centre of mass lies
-    // between their ankles (Winter 1995's load / unload); only a foot that
-    // really touches the ground carries; eased at supportBlendTime. The
-    // centre of pressure: the real ankle moved by the plan's centre of mass
-    // off its feet, inside the foot's functional base of support.
-    void groundLoads(const std::vector<math::Mat4>& target, float dt);
-    struct FootSupport {
-        float heelIn = 0.17f, toeIn = 0.21f, width = 0.35f;
-    } footSupport_;
-    HumanBody::GroundLoad loads_[2];
-    float groundShare_[2] = {0.0f, 0.0f};
 
     // Where each foot is planted (character space): the limb test's feet.
     motion::FootStepper stepper_;

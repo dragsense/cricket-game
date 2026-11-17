@@ -134,8 +134,9 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
                 // The right side is the left mirrored: rotations about Y and Z turn the other way.
                 const bool right = base != bone.name && bone.name.back() == 'r';
                 const bool flipped = (dots[k] < 0.0f) != (right && d.axis != 0);
-                r.plusTorque[k] = flipped ? d.minus : d.plus;
-                r.minusTorque[k] = flipped ? d.plus : d.minus;
+                r.directionalAxis = k;
+                r.plusTorque = flipped ? d.minus : d.plus;
+                r.minusTorque = flipped ? d.plus : d.minus;
             }
         }
         owner[static_cast<size_t>(j)] = static_cast<int>(parts_.size());
@@ -173,26 +174,6 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
         ragdoll[i].motor.stiffness = inertia[i] * w2;
         ragdoll[i].motor.damping = 2.0f * std::sqrt(ragdoll[i].motor.stiffness * inertia[i]) * muscles.damping;
     }
-    // Measured stiffness: each listed joint's axes (character x, y, z) onto
-    // its joint frame's X, Y, Z.
-    for (Part& p : parts_) {
-        if (p.parent < 0 || !p.muscle) continue;
-        const std::string base = baseName(rig.jointName(p.joint));
-        for (const MuscleSettings::Spring& s : muscles.springs) {
-            if (s.bone != base) continue;
-            const math::Vec3 frame[3] = {p.frameX, p.frameY, p.frameZ};
-            for (int a = 0; a < 3; ++a) {
-                int k = 0;
-                for (int i = 1; i < 3; ++i)
-                    if (std::abs(frame[a][i]) > std::abs(frame[a][k])) k = i;
-                p.relaxed[a] = s.relaxed[k];
-            }
-            p.slope = s.slope;
-            p.damping = s.damping;
-            p.dampingSlope = s.dampingSlope;
-            p.spring = true;
-        }
-    }
     std::vector<physics::BodyId> bodies;
     limits_ = &limits;
     ragdoll_ = world.createRagdoll(ragdoll, group, bodies);
@@ -202,19 +183,6 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     }
     for (size_t i = 0; i < parts_.size(); ++i) parts_[i].body = bodies[i];
     rotations_.assign(parts_.size(), math::identityQuat());
-    lastTarget_.assign(parts_.size(), math::identityQuat());
-    velocity_.assign(parts_.size(), math::Vec3(0.0f));
-    leadReady_ = false;
-    activationTime_ = std::max(muscles.activationTime, 1e-3f);
-    lead_.assign(parts_.size(), 0.0f);
-    for (size_t i = 0; i < parts_.size() && i < ragdoll.size(); ++i)
-        if (ragdoll[i].parent >= 0 && ragdoll[i].motor.stiffness > 0.0f)
-            lead_[i] = ragdoll[i].motor.damping / ragdoll[i].motor.stiffness;
-    free_.assign(parts_.size(), false);
-    restRotation_.assign(parts_.size(), math::identityQuat());
-    for (size_t i = 0; i < parts_.size(); ++i)
-        if (parts_[i].parent >= 0)
-            restRotation_[i] = math::inverse(partPose(parts_[i].parent, models).rotation) * partPose(static_cast<int>(i), models).rotation;
     beyondMass_.assign(parts_.size(), 0.0f);
     beyondMoment_.assign(parts_.size(), math::Vec3(0.0f));
     hold_.assign(parts_.size(), math::Vec3(0.0f));
@@ -227,7 +195,7 @@ math::Transform HumanBody::partPose(int part, const std::vector<math::Mat4>& mod
     return math::toTransform(models[static_cast<size_t>(p.joint)]) * p.shape;
 }
 
-void HumanBody::holdWeight(physics::PhysicsWorld& world, const GroundLoad* loads, int count) const {
+void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
     // Mass and moment of each part's subtree (children come after parents).
     for (size_t i = 0; i < parts_.size(); ++i) {
         beyondMass_[i] = parts_[i].mass;
@@ -249,18 +217,6 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world, const GroundLoad* loads
         const math::Vec3 centre = beyondMoment_[i] / beyondMass_[i];
         hold_[i] = -math::cross(centre - pivot, g * beyondMass_[i]);
     }
-    // The ground pushes up on a part pressed on it, beyond every joint
-    // between it and the pelvis: each of them holds that push's turn too.
-    for (int k = 0; loads && k < count; ++k) {
-        const GroundLoad& l = loads[k];
-        if (l.part < 0 || l.part >= static_cast<int>(parts_.size()) || l.share <= 0.0f) continue;
-        const math::Vec3 push = -g * (l.share * totalMass_);
-        for (int i = l.part; parts_[static_cast<size_t>(i)].parent >= 0; i = parts_[static_cast<size_t>(i)].parent) {
-            if (!parts_[static_cast<size_t>(i)].muscle) continue;
-            const math::Vec3 pivot = boneWorld(world, i).position;
-            hold_[static_cast<size_t>(i)] -= math::cross(l.at - pivot, push);
-        }
-    }
     world.setRagdollHold(ragdoll_, hold_.data(), static_cast<int>(hold_.size()));
 }
 
@@ -276,7 +232,7 @@ ik::JointLimit HumanBody::limitNow(const physics::PhysicsWorld& world, int part)
 }
 
 void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
-                          int headJoint, float dt) const {
+                          int headJoint) const {
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         if (p.parent < 0) continue;
@@ -298,45 +254,12 @@ void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::
             rotations_[i] = math::inverse(partPose(p.parent, models).rotation) * child;
         }
     }
-    for (size_t i = 0; i < parts_.size(); ++i)
-        if (free_[i]) rotations_[i] = restRotation_[i];
-    // The lead: the target's speed (after activation) x D / K ahead.
-    const float follow = dt > 0.0f ? dt / (activationTime_ + dt) : 0.0f;
-    for (size_t i = 0; i < parts_.size() && dt > 0.0f; ++i) {
-        const Part& p = parts_[i];
-        if (p.parent < 0) continue;
-        const math::Quat now = math::normalize(rotations_[i]);
-        math::Quat step = math::inverse(lastTarget_[i]) * now;
-        if (step.w < 0.0f) step = -step;
-        const math::Vec3 w = leadReady_ ? math::rotationVector(step) / dt : math::Vec3(0.0f);
-        lastTarget_[i] = now;
-        velocity_[i] += (w - velocity_[i]) * follow;
-        float lead = lead_[i];
-        if (p.spring) {  // measured muscle: D / K now
-            const float held = math::length(hold_[i]);
-            const float k = std::max(p.relaxed.x + p.slope * held, 1e-3f);
-            lead = (p.damping + p.dampingSlope * held) / k;
-        }
-        const math::Vec3 ahead = velocity_[i] * lead;
-        const float angle = math::length(ahead);
-        if (angle > 1e-6f) rotations_[i] = math::normalize(now * math::fromAxisAngle(ahead / angle, angle));
-    }
-    leadReady_ = dt > 0.0f;
-    // Measured muscles: stiffness and damping rise with the torque held.
-    for (size_t i = 0; i < parts_.size(); ++i) {
-        const Part& p = parts_[i];
-        if (!p.spring) continue;
-        const float held = math::length(hold_[i]);
-        world.setRagdollJointSpring(ragdoll_, static_cast<int>(i), p.relaxed + math::Vec3(p.slope * held),
-                                    math::Vec3(p.damping + p.dampingSlope * held));
-    }
     world.driveRagdollToPose(ragdoll_, rotations_.data(), static_cast<int>(rotations_.size()));
 }
 
 void HumanBody::reset(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root) const {
     for (size_t i = 0; i < parts_.size(); ++i)
         world.resetBody(parts_[i].body, root * partPose(static_cast<int>(i), models));
-    leadReady_ = false;  // a reset: no lead from the pose before
 }
 
 void HumanBody::boneModels(const physics::PhysicsWorld& world, float alpha, const rig::Rig& rig,
@@ -366,12 +289,6 @@ void HumanBody::jointMasses(int numJoints, std::vector<float>& mass, std::vector
         mass[static_cast<size_t>(p.joint)] = p.mass;
         centre[static_cast<size_t>(p.joint)] = p.shape.position;
     }
-}
-
-math::Vec3 HumanBody::centreOfMass(const std::vector<math::Mat4>& models) const {
-    math::Vec3 sum(0.0f);
-    for (size_t i = 0; i < parts_.size(); ++i) sum += partPose(static_cast<int>(i), models).position * parts_[i].mass;
-    return totalMass_ > 0.0f ? sum / totalMass_ : sum;
 }
 
 math::Vec3 HumanBody::centreOfMassVelocity(const physics::PhysicsWorld& world) const {
