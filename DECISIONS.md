@@ -885,3 +885,13 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** keeping SwingTwist with centred half cones (a different set for large
   ranges); clamping grounded legs too (the plan's feet slid up to 44 cm in deep reaches);
   clamping every drive target in HumanBody (it would hide plan joints outside their range).
+
+## 2026-11-17 Pelvis turn by the step's length
+- **Decision:** the decider turns the pelvis by `pelvisTurnPerStep` (0.216 rad/m = 12.4 deg)
+  times the fore-aft distance between the feet, not by a share of the feet line's
+  `atan2` turn (`pelvisTurnShare` 0.11, fitted at one speed).
+- **Why:** Yang 2013's 11 and 19 deg peak to peak at 0.40 and 1.47 m/s, with step length
+  0.41 H (v / 1.35)^0.42 (BIOMECHANICS 4.1), are the same 12.4 deg per metre each way;
+  the `atan2` form saturated for long steps. No table of turn against step length exists
+  (BIOMECHANICS 4.3), so this is the two points' ratio; approximate (women, H 1.65).
+- **Rejected:** keeping the fitted share.

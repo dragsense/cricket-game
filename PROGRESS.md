@@ -119,9 +119,11 @@ Pieces (pass numbers in brackets):
   sway over the standing foot again: side sway 4.5 cm walking (was 0.2 cm; real 3.9-7 cm,
   Orendurff 2004). Replaces `hipsWeightHorizontal/Vertical`.
 - [x] **B1c-1 Pelvis turns with the legs** (BIOMECHANICS 4.3, research done): the decider
-  turns the pelvis by `decider.pelvisTurnShare` 0.11 of the turn of the line between the
-  feet (a swinging foot counts at its target). Walking 0.9 m/s: pelvis 15.8 deg peak to
-  peak in the plan, 15.2 real (real people 11 at 0.40 m/s, 19 at 1.47 m/s). Hand and
+  turns the pelvis by `decider.pelvisTurnPerStep` 0.216 rad per metre the feet are apart
+  fore-aft (a swinging foot counts at its target; 2026-11-17: was 0.11 of the line's turn,
+  fitted at 0.9 m/s; now 12.4 deg per metre of step, matching Yang's 11 and 19 deg peak to
+  peak at 0.40 and 1.47 m/s; not yet measured in the game). Before: walking 0.9 m/s: pelvis
+  15.8 deg peak to peak in the plan, 15.2 real (real people 11 at 0.40, 19 at 1.47). Hand and
   chest targets still turn the pelvis on top (their reach queue composes with it).
   Measured too: the chest turns with the pelvis exactly (15.2 deg, correlation +1.00):
   the physics trunk does not counter-turn on its own (real ~8 deg and opposite), so B1c-2

@@ -145,11 +145,11 @@ struct BodyDeciderSettings {
     // pulls by its weight, the others by these shares, the body's own motion
     // the rest (the user's design 2026-11-09).
     float passiveHead = 0.7f, passiveHands = 0.5f, passiveHips = 0.5f, passiveChest = 0.5f;
-    // The pelvis turns about the vertical with the legs: a share of the turn
-    // of the line between the feet (a foot ahead turns its hip forward), so
-    // longer steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at
-    // 0.40 m/s, 19 at 1.47 m/s, Yang 2013; larger with big steps, Liang 2014).
-    float pelvisTurnShare = 0.11f;
+    // The pelvis turns about the vertical with the legs: rad per metre the
+    // feet are apart fore-aft (a foot ahead turns its hip forward), so longer
+    // steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at 0.40 m/s,
+    // 19 at 1.47 m/s, Yang 2013; both are 12.4 deg per metre of step length).
+    float pelvisTurnPerStep = 0.216f;
     // The pelvis drops on the side of the leg without weight, about the hip
     // that carries it (pelvic list), this much (rad) with all the weight on
     // one leg, by the weight's share (the weight shift: it leads a lift).

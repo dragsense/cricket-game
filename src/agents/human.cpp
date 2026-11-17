@@ -228,7 +228,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.passiveHips = jointsConfig_->getFloat("decider.passiveInfluence.hips", deciderSettings_.passiveHips);
         deciderSettings_.passiveChest = jointsConfig_->getFloat("decider.passiveInfluence.chest", deciderSettings_.passiveChest);
         auto dv = [&](const char* key, float value) { return jointsConfig_->getFloat(key, value); };
-        deciderSettings_.pelvisTurnShare = dv("decider.pelvisTurnShare", deciderSettings_.pelvisTurnShare);
+        deciderSettings_.pelvisTurnPerStep = dv("decider.pelvisTurnPerStep", deciderSettings_.pelvisTurnPerStep);
         deciderSettings_.pelvisList =
             math::radians(dv("decider.pelvisListDeg", math::degrees(deciderSettings_.pelvisList)));
         deciderSettings_.kneeForwardBias = dv("decider.kneeForwardBias", deciderSettings_.kneeForwardBias);

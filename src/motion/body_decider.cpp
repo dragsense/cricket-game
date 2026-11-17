@@ -873,9 +873,10 @@ void BodyDecider::trunkSpring(float pelvisYaw, float dt, const BodyDeciderSettin
 
 float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const {
     // Each foot where it stands, or where its target is on a timed swing (the
-    // swinging leg carries its hip with it); the pelvis turns by a share of
-    // the turn of the line between them from straight across. Left foot ahead:
-    // the left hip forward, a turn to the right (negative about +Y).
+    // swinging leg carries its hip with it); the pelvis turns by
+    // pelvisTurnPerStep per metre the feet are apart fore-aft (the step's
+    // length). Left foot ahead: the left hip forward, a turn to the right
+    // (negative about +Y).
     math::Vec3 at[2];
     for (int i = 0; i < 2; ++i) {
         if (joints_.legs[i].end < 0) return 0.0f;
@@ -883,10 +884,8 @@ float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) 
         const bool swinging = f.mode == TargetMode::Driven && f.swing >= 0.0f;
         at[i] = swinging ? f.position : grounded_[i] ? anchor_[i] : planPos(output_, joints_.legs[i].end);
     }
-    const float ahead = at[0].z - at[1].z;   // left ahead of right
-    const float across = at[0].x - at[1].x;  // left of right (+X left)
-    if (std::abs(across) < 1e-3f && std::abs(ahead) < 1e-3f) return 0.0f;
-    return -s.pelvisTurnShare * std::atan2(ahead, std::max(across, 1e-3f));
+    const float ahead = at[0].z - at[1].z;  // left ahead of right
+    return -s.pelvisTurnPerStep * ahead;
 }
 
 void BodyDecider::balanceStanding(const TargetSet& t, const BodyDeciderSettings& s) {
