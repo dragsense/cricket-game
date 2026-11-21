@@ -430,6 +430,11 @@ private:
     math::Vec3 anchorNormal_[2] = {math::kUp, math::kUp};
     math::Quat anchorRot_[2] = {math::identityQuat(), math::identityQuat()};
     bool grounded_[2] = {true, true};  // on the ground this tick (Pinned, or Driven not yet lifted)
+    // Where each grounded leg reaches to (its ankle, character space): the
+    // anchor, or on a foot's way still on the ground (the weight shift) its
+    // target as the leg is solved to it, the heel risen by the toe-off: the
+    // hips' height bound counts the leg from there.
+    math::Vec3 reachFrom_[2]{};
     // Blended states: each target's activation (0..1 toward its mode) and
     // each foot's support weight.
     float act_[kTargets] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
@@ -444,6 +449,7 @@ private:
     // follows the capture point (dcmXi_), and the capture point where the
     // step began (dcmStart_). Off: the hips are where the support puts them.
     math::Vec3 dcmHips_{0.0f}, dcmXi_{0.0f}, dcmStart_{0.0f};
+    math::Vec3 dcmStartVel_{0.0f};  // its velocity where the step began (the body's level speed)
     bool dcmOn_ = false;
     // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
     int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};

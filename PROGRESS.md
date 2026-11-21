@@ -116,6 +116,31 @@ Pieces (pass numbers in brackets):
   forward only, held until the last step lands); the decider steps (no decider change).
   Measured: steps 58 cm, ~0.48 s (~124/min). Open: the real other foot lifts 0.02-0.05 s
   after the first lands (real double support ~0.1 s). The user checked it in the game: good.
+- [x] W2 Walk every way, by speed (2026-11-21, the user checked it in the game: "perfect";
+  DECISIONS). Input only drives the hips target (no walk code in the body):
+  - W / S / A / D: the hips pushed forward (1.2 m/s), back (0.7 [E]), sideways (0.35, the
+    shuffle's limit B1c-5); E / Q: forward speed +-0.2 m/s within 0.4..1.6 (locomotion.json
+    "move"). Top 1.6: measured, from 1.8 m/s the swing's hip muscle sits at its torque
+    limit most of the swing (steps stop at maxStepForward 0.6) and the foot lands ~55 cm
+    short and slides (1.6: 8.7 cm). maxStepForward 0.9 was tried: steps 67-83 cm (real
+    ~70-87) but every other step landed 45-73 cm short (slide 85-88 cm), cause not found;
+    kept 0.6.
+  - Decider, general: a grounded leg's reach counts from its ankle as solved, the heel
+    risen by the toe-off (`reachFrom_`); was the ground under it: in a slow walk the hips
+    dropped 1.3 cm after each landing, both knees to ~30 deg (now none, knees <= 23).
+  - Decider, general: a weight shift starts from the capture point's own motion (the
+    body's speed; at rest the old minimum-jerk path) and takes the shortest time keeping
+    the centre of pressure within the feet the whole way. Was: taken at rest, 0.5 s when
+    it started just inside the feet, 0.12 s 3 mm outside: a pause every other step of a
+    slow walk (L 0.50 / R 0.12 s, steps 34 / 24 cm) and in the first side step. Now every
+    walking shift 0.12 s, slow steps 21 / 21 cm; standing hips press unchanged (~0.4 s).
+  - Measured (`measure: W walk, the feet slide`, env CRICKET_PRESS / SIDE / BACK / TRACE):
+    worst slide 0.4 m/s 3.6 cm, 1.2 m/s 6.1, 1.6 m/s 9.5, A 2.9, S 9.1; arrow-key limb
+    test unchanged.
+  - Open: the swing foot rises first, then goes forward (its forward path starts from
+    rest; the arc by the way gone was tried: slide 6.5 -> 30 cm, reverted; next idea: the
+    swing starts at the foot's push-off speed); A's first steps 20 then 11 cm; the knee in
+    swing 70 deg plan vs real people's 60-65.
 - [ ] P4 Stance hold: the plan's statics, the ground push inside the foot's functional
   base of support (Sloot 2025) [spring vertical ~0 in standing, one foot, squat; static
   leg motors < 5 N m].

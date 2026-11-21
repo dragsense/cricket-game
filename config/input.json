@@ -9,6 +9,15 @@
     // Held: the hips are pushed forward (locomotion.json "move"); the body's
     // decider steps after them. Let go: the hips stop, the last step lands.
     "StepForward": ["W"],
+    // Held: the hips are pushed back (locomotion.json "move.backSpeed").
+    "StepBack": ["S"],
+    // Held: the hips are pushed to that side (the player's own left / right).
+    "StepLeft": ["A"],
+    "StepRight": ["D"],
+    // E / Q: walk faster / slower, one locomotion.json "move.speedStep" per
+    // press, within move.minSpeed .. move.maxSpeed.
+    "WalkFaster": ["E"],
+    "WalkSlower": ["Q"],
     // Held modifier: Shift (limb test: arrows go up/down).
     "ModShift": ["LeftShift", "RightShift"],
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the

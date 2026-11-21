@@ -210,8 +210,15 @@ bool CricketApp::pumpEvents() {
         setTimeScale(slowMotion_ ? cfg_.engine.getFloat("debug.slowMotionFactor", 0.2f) : 1.0);
         LOG_INFO("Slow motion {}", slowMotion_ ? "on" : "off");
     }
-    // W: the fielder's hips pushed forward; the body steps after them.
-    sim_.fielder().setWalkInput(actions_.down(input_, core::Action::StepForward));
+    // W / A / D: the fielder's hips pushed forward or to a side (his own
+    // left / right, character +X left); the body steps after them.
+    const float side = (actions_.down(input_, core::Action::StepLeft) ? 1.0f : 0.0f) -
+                       (actions_.down(input_, core::Action::StepRight) ? 1.0f : 0.0f);
+    const float ahead = (actions_.down(input_, core::Action::StepForward) ? 1.0f : 0.0f) -
+                        (actions_.down(input_, core::Action::StepBack) ? 1.0f : 0.0f);
+    sim_.fielder().setWalkInput(math::Vec2(side, ahead));
+    if (actions_.pressed(input_, core::Action::WalkFaster)) sim_.fielder().changeWalkSpeed(1);
+    if (actions_.pressed(input_, core::Action::WalkSlower)) sim_.fielder().changeWalkSpeed(-1);
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))

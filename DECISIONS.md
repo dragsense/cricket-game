@@ -926,3 +926,20 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** the velocity eased over the activation time (it led on after the pose
   stopped: 8 cm past the spot, knee +6 deg); the inertia torque part of P3 (not needed);
   a walking-only fix.
+
+## 2026-11-21: Walk every way by input; two general decider fixes
+- **Decision (the user's OK):** W / S / A / D push the hips target forward / back / sideways
+  and E / Q change the forward speed within 0.4..1.6 m/s (locomotion.json "move"); the
+  decider makes every step. In the decider, generally: (1) a grounded leg's reach counts
+  from its ankle as solved (the heel risen by the toe-off), not the ground under it; (2) a
+  weight shift's capture point starts at the body's own speed (a quintic: that velocity
+  at the start, at rest at the lift; standing it is the minimum-jerk path as before), the
+  shift the shortest time that keeps the centre of pressure inside the feet the whole
+  way, none fitting: the step goes at once; `stepHips` runs the same path.
+- **Why:** measured: (1) the hips dropped 1.3 cm after each landing of a slow walk; (2) a
+  capture point taken at rest made the shift 0.5 s or 0.12 s on a 3 mm difference (a pause
+  every other step). The top speed is our body's measured limit (hip muscle at its torque
+  limit from 1.8 m/s with steps capped at 0.6 m), not the walk-run transition (2.16 m/s).
+- **Rejected:** the shift by the LIP's fastest time (constant centre of pressure at the
+  feet's edge): the long shift moved to the other foot; maxStepForward 0.9 (every other
+  step landed 45-73 cm short); the swing's arc by the way gone (slide 6.5 -> 30 cm).

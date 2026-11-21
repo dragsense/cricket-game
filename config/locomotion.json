@@ -8,8 +8,20 @@
   // `acceleration` (m/s^2). The decider steps after them (no walking timing
   // here). Comfortable walking 1.2-1.4 m/s (BIOMECHANICS 4.2); gait
   // initiation reaches its steady speed in about the first two steps
-  // (~1.2 s): ~1 m/s^2.
-  "move": { "speed": 1.2, "acceleration": 1.0 },
+  // (~1.2 s): ~1 m/s^2. A / D push them sideways at `sideSpeed`: 0.35 m/s, the
+  // side shuffle's limit measured 2026-11-15 (B1c-5: faster, the hips run ahead
+  // of the feet, whose step across is at most maxStepSide).
+  // E / Q change `speed` by `speedStep` per press, within minSpeed .. maxSpeed:
+  // a slow walk 0.4. Real people walk up to the walk-run transition, Froude
+  // 0.5 = ~2.16 m/s with our leg (BIOMECHANICS 5), but our body walks only to
+  // 1.6 (measured 2026-11-21, `measure: W walk, the feet slide`): its steps
+  // stop at maxStepForward 0.6 m, so faster means quicker swings, and from
+  // 1.8 m/s the swing's hip muscle sits at its torque limit most of the
+  // swing; the foot lands ~55 cm short and slides (1.6: 8.6 cm).
+  // S pushes them back at `backSpeed`: backward walking is slower than forward
+  // (BIOMECHANICS 4.6, no number there); 0.7 m/s [E], about the usual 0.6-0.9.
+  "move": { "speed": 1.2, "backSpeed": 0.7, "sideSpeed": 0.35, "acceleration": 1.0,
+            "speedStep": 0.2, "minSpeed": 0.4, "maxSpeed": 1.6 },
   "step": {
     // Its timing is the decider's per step: the weight shift by the capture
     // point (centre of pressure within the feet), the swing by Fitts' law for

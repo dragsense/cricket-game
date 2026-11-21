@@ -99,6 +99,20 @@ float bentSpan(float a, float b, float bend) {
     return std::sqrt(std::max(a * a + b * b + 2.0f * a * b * std::cos(bend), 0.0f));
 }
 
+// The capture point's path through a weight shift (time T, share u): from `a`
+// moving at `v0` to `b` at rest, no acceleration at either end (a quintic;
+// v0 = 0: the minimum-jerk path), and its velocity.
+math::Vec3 shiftPath(math::Vec3 a, math::Vec3 v0, math::Vec3 b, float T, float u) {
+    const float h = u - 6.0f * u * u * u + 8.0f * u * u * u * u - 3.0f * u * u * u * u * u;
+    return a + (b - a) * math::minimumJerk(u) + v0 * (T * h);
+}
+math::Vec3 shiftRate(math::Vec3 a, math::Vec3 v0, math::Vec3 b, float T, float u) {
+    const float u2 = u * u, u3 = u2 * u, u4 = u3 * u;
+    const float dm = 30.0f * u2 - 60.0f * u3 + 30.0f * u4;
+    const float dh = 1.0f - 18.0f * u2 + 32.0f * u3 - 15.0f * u4;
+    return T > 1e-6f ? (b - a) * (dm / T) + v0 * dh : v0;
+}
+
 // `x` moved toward `want` by at most `step` (a ramp, never a switch).
 float ramp(float x, float want, float step) { return x + std::clamp(want - x, -step, step); }
 
@@ -181,6 +195,7 @@ void BodyDecider::seed(const rig::Pose& pose) {
     for (int i = 0; i < 2; ++i) {
         const int ankle = joints_.legs[i].end;
         if (ankle >= 0) anchor_[i] = planPos(output_, ankle);
+        reachFrom_[i] = anchor_[i];
         anchorNormal_[i] = math::kUp;
         anchorRot_[i] = restFoot_[i];
         grounded_[i] = true;
@@ -190,6 +205,7 @@ void BodyDecider::seed(const rig::Pose& pose) {
     hipsRef_ = pelvisOf(output_).position;
     hipsRefVel_ = hipsVel_ = math::Vec3(0.0f);
     dcmOn_ = false;
+    dcmStartVel_ = math::Vec3(0.0f);
     for (int e = 0; e < kEnds; ++e) trunkFirst_[e] = trunkEnd_[e] = -1;
     lastValid_ = false;
     armAngle_[0] = armAngle_[1] = 0.0f;
@@ -207,6 +223,7 @@ void BodyDecider::seed(const rig::Pose& pose) {
 void BodyDecider::rebase(const math::Transform& toNew) {
     for (int i = 0; i < 2; ++i) {
         anchor_[i] = toNew.transformPoint(anchor_[i]);
+        reachFrom_[i] = toNew.transformPoint(reachFrom_[i]);
         anchorNormal_[i] = toNew.rotation * anchorNormal_[i];
         anchorRot_[i] = toNew.rotation * anchorRot_[i];
     }
@@ -222,6 +239,7 @@ void BodyDecider::rebase(const math::Transform& toNew) {
     hipsRefVel_ = toNew.rotation * hipsRefVel_;
     hipsVel_ = toNew.rotation * hipsVel_;
     for (math::Vec3* p : {&dcmHips_, &dcmXi_, &dcmStart_}) *p = toNew.transformPoint(*p);
+    dcmStartVel_ = toNew.rotation * dcmStartVel_;
     for (math::Vec3& p : lastCentre_) p = toNew.transformPoint(p);
     for (StepPlanner& p : steps_) p.rebase(toNew);
     lastGoalVelocity_ = toNew.rotation * lastGoalVelocity_;
@@ -326,16 +344,17 @@ math::Quat BodyDecider::restFootLevel(int i) const {
 
 float BodyDecider::reachableHeight(const Plan& p, int i, const BodyDeciderSettings& s, bool& valid) const {
     // The pelvis can be no higher than puts the hip at the leg's reach from
-    // the anchor (the knee keeps limbMinBend); level distance beyond that
-    // reach: no height works.
+    // where the leg reaches to (the anchor, or the ankle risen by the
+    // toe-off in the weight shift: reachFrom_; the knee keeps limbMinBend);
+    // level distance beyond that reach: no height works.
     const math::Transform pelvis = pelvisOf(p);
     const math::Vec3 hip = pelvis.position + pelvis.rotation * hipOffset_[i];
     const float reach = limbReach(2 + i, s);
-    const math::Vec3 d = anchor_[i] - hip;
+    const math::Vec3 d = reachFrom_[i] - hip;
     const float flat = d.x * d.x + d.z * d.z;
     valid = flat < reach * reach;
     if (!valid) return pelvis.position.y;
-    return anchor_[i].y + std::sqrt(reach * reach - flat) - (hip.y - pelvis.position.y);
+    return reachFrom_[i].y + std::sqrt(reach * reach - flat) - (hip.y - pelvis.position.y);
 }
 
 float BodyDecider::lowestHeight(const Plan& p, const BodyDeciderSettings& s, bool& any) const {
@@ -557,6 +576,7 @@ void BodyDecider::pinFeet(const TargetSet& t, const BodyDeciderSettings& s) {
             anchorNormal_[i] = math::safeNormalize(f.contactNormal, math::kUp);
             anchorRot_[i] = restFootLevel(i);
             grounded_[i] = true;
+            reachFrom_[i] = anchor_[i];
         } else if (f.mode == TargetMode::Driven) {
             // On its way: the anchor follows the foot, so a foot let go is
             // pinned where it is. On the ground until it lifts clear of
@@ -565,10 +585,14 @@ void BodyDecider::pinFeet(const TargetSet& t, const BodyDeciderSettings& s) {
             const math::Vec3 at = planPos(output_, ankle);
             grounded_[i] = grounded_[i] && at.y <= groundY + s.onGround;
             anchor_[i] = math::Vec3(at.x, groundY, at.z);  // the ground under it
+            // The leg reaches where it is solved to (solveLegs), the heel risen.
+            const float k = act_[FootLW + i] * std::clamp(f.weightPosition, 0.0f, 1.0f);
+            reachFrom_[i] = math::lerp(anchor_[i], f.position, k);
         } else {
             // Free: pinned where it last was. A foot lifted and let go lands
             // on its anchor (the planner pins it once it is down).
             grounded_[i] = true;
+            reachFrom_[i] = anchor_[i];
         }
     }
 }
@@ -1306,10 +1330,13 @@ void BodyDecider::timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const
     // put it (x + v / w0, whatever moved them: support, a hips target, a
     // reach); by the lift it must be where the swing on the other foot
     // carries it to the centre of the new stance as the foot lands
-    // (xi_lift = p + (xi_end - p) e^(-w0 T_swing)). It moves there on a
-    // minimum-jerk path, fastest at the middle (1.875 D / T); the centre of
-    // pressure, xi - xi' / w0, then lies 1.875 D / (w0 T) behind it: the
-    // shift takes at least the time that keeps it within the feet. At least
+    // (xi_lift = p + (xi_end - p) e^(-w0 T_swing)). It moves there from its
+    // own speed (the body's: walking, it is never at rest; standing, the
+    // minimum-jerk path), and the shift takes the shortest time whose centre
+    // of pressure, xi - xi' / w0, stays within the feet the whole way (none
+    // does: the step goes at once). (2026-11-21: a capture point taken as at
+    // rest gave 0.5 s when it started just inside the feet, 0.12 s when 3 mm
+    // outside: a pause every other step of a slow walk.) At least
     // the foot's unloading time (supportBlendTime, Winter 1995), at most
     // weightShiftMost; a foot already off the ground has no weight to shift.
     // The swing is the foot's aimed move: Fitts' law for its way (swingTime).
@@ -1326,28 +1353,37 @@ void BodyDecider::timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const
     const float own = swingTime(f, anchor_[f], spot, s);
     const float swing = fixedTotal ? std::min(own, total) : own;
     float shift = grounded_[f] ? std::max(s.supportBlendTime, 0.0f) : 0.0f;
+    // The capture point moves on as the body does (walking: it is never at
+    // rest), so its path through the shift starts at the body's speed.
+    dcmStartVel_ = w0 > 0.0f ? level(hipsVel_) : math::Vec3(0.0f);
     if (grounded_[f] && w0 > 0.0f) {
         const math::Vec3 p = anchor_[o];
         const math::Vec3 end = 0.5f * (p + spot);
-        math::Vec3 way = p + (end - p) * std::exp(-w0 * swing) - dcmStart_;
-        way.y = 0.0f;
-        const float d = math::length(way);
-        const math::Vec3 mid = dcmStart_ + 0.5f * way;
-        // At the start the capture point is still (xi' = 0): the centre of
-        // pressure is the capture point itself. Already out of the feet,
-        // the body falls: no shift can bring it back, the step goes at once.
-        const bool held = outsideFeet(dcmStart_, anchor_, 2, s) <= 0.0f;
-        if (held && d > 1e-4f && outsideFeet(mid, anchor_, 2, s) <= 0.0f) {
-            // How far behind the middle the centre of pressure may go.
-            const math::Vec3 back = -way / d;
-            float lo = 0.0f, hi = 1.0f;
-            constexpr int kHalvings = 16;
-            for (int n = 0; n < kHalvings; ++n) {
-                const float a = 0.5f * (lo + hi);
-                (outsideFeet(mid + back * a, anchor_, 2, s) <= 0.0f ? lo : hi) = a;
+        math::Vec3 to = p + (end - p) * std::exp(-w0 * swing);
+        to.y = dcmStart_.y;
+        // The shortest shift whose centre of pressure (xi - xi' / w0) stays
+        // within the feet the whole way; none does: the body falls, the step
+        // goes at once (as when the capture point starts outside the feet).
+        auto fits = [&](float T) {
+            constexpr int kSamples = 16;
+            constexpr float kInside = 1e-3f;  // m
+            for (int k = 0; k <= kSamples; ++k) {
+                const float u = static_cast<float>(k) / kSamples;
+                const math::Vec3 cop = shiftPath(dcmStart_, dcmStartVel_, to, T, u) -
+                                       shiftRate(dcmStart_, dcmStartVel_, to, T, u) / w0;
+                if (outsideFeet(cop, anchor_, 2, s) > kInside) return false;
             }
-            const float most = s.weightShiftMost;
-            shift = std::clamp(1.875f * d / (w0 * std::max(lo, 1e-4f)), shift, std::max(most, shift));
+            return true;
+        };
+        const float least = shift, most = std::max(s.weightShiftMost, shift);
+        if (!fits(least) && fits(most)) {
+            float lo = least, hi = most;
+            constexpr int kHalvings = 12;
+            for (int n = 0; n < kHalvings; ++n) {
+                const float m = 0.5f * (lo + hi);
+                (fits(m) ? hi : lo) = m;
+            }
+            shift = hi;
         }
     }
     if (fixedTotal) {
@@ -1375,7 +1411,7 @@ math::Vec3 BodyDecider::stepHips(int timed, float dt, const BodyDeciderSettings&
     auto onSwing = [&](float left) { return p + (end - p) * std::exp(-w0 * std::max(left, 0.0f)); };
     if (step.phase() == StepPlanner::Phase::Start && lift > 0.0f) {
         const float u = std::clamp(step.share() / lift, 0.0f, 1.0f);
-        dcmXi_ = math::lerp(dcmStart_, onSwing(timing.duration * (1.0f - lift)), math::minimumJerk(u));
+        dcmXi_ = shiftPath(dcmStart_, dcmStartVel_, onSwing(timing.duration * (1.0f - lift)), timing.duration * lift, u);
     } else {
         dcmXi_ = onSwing(step.timeLeft(timing));
     }

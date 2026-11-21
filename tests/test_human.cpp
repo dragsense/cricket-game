@@ -704,11 +704,26 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
     REQUIRE(h.attachPhysics(world));
     constexpr float kDt = 1.0f / 120.0f;
     for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
-    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    // CRICKET_SIDE 1 / -1: A / D (left / right) instead of W; "ahead" is then that way.
+    // CRICKET_PRESS n: E pressed n times (negative: Q) before walking.
+    for (int n = std::getenv("CRICKET_PRESS") ? std::atoi(std::getenv("CRICKET_PRESS")) : 0; n != 0; n += n > 0 ? -1 : 1)
+        h.changeWalkSpeed(n > 0 ? 1 : -1);
+    const float sideIn = std::getenv("CRICKET_SIDE") ? static_cast<float>(std::atof(std::getenv("CRICKET_SIDE"))) : 0.0f;
+    // CRICKET_BACK 1: S (back) instead of W.
+    const bool backIn = std::getenv("CRICKET_BACK") != nullptr;
+    const math::Vec3 fwd = h.root().transformDirection(sideIn != 0.0f ? math::Vec3(sideIn, 0.0f, 0.0f)
+                                                       : backIn       ? -math::kForward
+                                                                      : math::kForward);
     std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
     math::Vec3 spot[2], lastSpot[2];
     bool stance[2] = {false, false}, had[2] = {false, false};
     bool wasPlanUp[2] = {false, false}, wasRealUp[2] = {false, false};
+    Range planSpeed, realSpeed;
+    motion::StepPlanner::Phase lastPhase[2] = {motion::StepPlanner::Phase::None, motion::StepPlanner::Phase::None};
+    int swTicks[2] = {0, 0}, swReach[2] = {0, 0}, swSat[2][2] = {{0, 0}, {0, 0}};
+    float swTrack[2][2] = {{0.0f, 0.0f}, {0.0f, 0.0f}}, swRange[2][2] = {{0.0f, 0.0f}, {0.0f, 0.0f}};
+    math::Vec3 lastPlanHips{0.0f}, lastRealHips{0.0f};
+    bool hipsSeen = false;
     float apex[2] = {0.0f, 0.0f}, knee[2] = {0.0f, 0.0f}, planApex[2] = {0.0f, 0.0f}, planKnee[2] = {0.0f, 0.0f};
     const math::Vec3 start[2] = {h.ankle(true, *h.bodyQueue().plan, h.root()), h.ankle(false, *h.bodyQueue().plan, h.root())};
     const float ground = start[0].y;  // the standing ankle's height
@@ -731,11 +746,41 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
     const int ticks = static_cast<int>((hold + 2.0f) * 120.0f);
     for (int i = 0; i < ticks; ++i) {
         const float time = i * kDt;
-        h.setWalkInput(time < hold);
+        h.setWalkInput(time < hold ? (sideIn != 0.0f ? math::Vec2(sideIn, 0.0f) : math::Vec2(0.0f, backIn ? -1.0f : 1.0f)) : math::Vec2(0.0f));
         h.tick(kDt);
         world.step(kDt);
         if (!h.physicalModels(world, 1.0f, real)) continue;
         const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        {
+            // The hips' speed along the way (plan and real), steady part only
+            // (from 2 s until let go), and every 0.05 s within one stride.
+            const math::Vec3 ph = h.root().transformPoint(math::Vec3(p[0][3]));
+            const math::Vec3 rh = h.root().transformPoint(math::Vec3(real[0][3]));
+            if (hipsSeen) {
+                const float vp = math::dot(ph - lastPlanHips, fwd) / kDt, vr = math::dot(rh - lastRealHips, fwd) / kDt;
+                if (time >= 2.0f && time < hold) {
+                    planSpeed.add(vp);
+                    realSpeed.add(vr);
+                }
+                if (time >= 2.24f && time < 3.25f && i % 6 == 0)
+                    std::printf("        %.2f s hips speed plan %.2f real %.2f m/s\n", time, vp, vr);
+            }
+            lastPlanHips = ph;
+            lastRealHips = rh;
+            hipsSeen = true;
+        }
+        if (std::getenv("CRICKET_TRACE") && time >= 2.0f && time < 3.6f && i % 2 == 0) {
+            // Around each landing: the hips' height (plan, real) and both knees.
+            const float ground0 = h.root().position.y;
+            auto kneeOf = [&](const std::vector<math::Mat4>& m, bool l) {
+                return flexionDeg(m, h, l ? "thigh_l" : "thigh_r", l ? "shin_l" : "shin_r", l ? "foot_l" : "foot_r");
+            };
+            std::printf("        %.3f s hips y plan %.3f real %.3f | knee L plan %3.0f real %3.0f | R plan %3.0f real %3.0f%s%s\n",
+                        time, h.root().transformPoint(math::Vec3(p[0][3])).y - ground0,
+                        h.root().transformPoint(math::Vec3(real[0][3])).y - ground0, kneeOf(p, true), kneeOf(real, true),
+                        kneeOf(p, false), kneeOf(real, false), h.bodyQueue().landed[0] ? "  <- L lands" : "",
+                        h.bodyQueue().landed[1] ? "  <- R lands" : "");
+        }
         for (int f = 0; f < 2; ++f) {
             const bool left = f == 0;
             const math::Vec3 r = h.ankle(left, real, h.root());
@@ -744,6 +789,27 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
                             time, 100.0f * worst[f]);
                 worstAll = std::max(worstAll, worst[f]);
                 stance[f] = false;
+            }
+            if (!stance[f] && had[f]) {
+                // In its swing: its hip and knee drives (how far the real joint
+                // is off Jolt's target, ticks at the torque limit the way it
+                // pulls, torque its range took) and the other leg at its reach.
+                const char* bones[2][2] = {{"thigh_l", "shin_l"}, {"thigh_r", "shin_r"}};
+                for (int b = 0; b < 2; ++b) {
+                    physics::PhysicsWorld::RagdollJointState st;
+                    const int part = h.humanBody().partOf(h.rig().findJoint(bones[f][b]));
+                    if (part < 0 || !world.ragdollJointState(h.humanBody().ragdoll(), part, kDt, st)) continue;
+                    swTrack[f][b] = std::max(swTrack[f][b], st.tracking);
+                    swRange[f][b] = std::max(swRange[f][b], math::length(st.range));
+                    bool atLimit = false;
+                    for (int a = 0; a < 3; ++a) {
+                        const float limit = st.motor[a] >= 0.0f ? st.motorMax[a] : -st.motorMin[a];
+                        atLimit = atLimit || (limit > 0.0f && std::abs(st.motor[a]) > 0.95f * limit);
+                    }
+                    if (atLimit) ++swSat[f][b];
+                }
+                ++swTicks[f];
+                if (h.bodyQueue().heightClamped) ++swReach[f];
             }
             if (!stance[f]) {  // in its swing: the ankle's rise and knee bend, real and plan
                 apex[f] = std::max(apex[f], r.y - ground);
@@ -763,6 +829,13 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
                             time, left ? "L" : "R", 100.0f * math::dot(spot[f] - lastSpot[f], fwd),
                             100.0f * math::dot(spot[f] - other, fwd), 100.0f * apex[f], 100.0f * planApex[f], knee[f],
                             planKnee[f], 100.0f * levelDist(r, spot[f]), 100.0f * math::dot(spot[f] - r, fwd));
+                if (swTicks[f] > 0)
+                    std::printf("     swing %d ticks: hip off target %.0f deg, at torque limit %d ticks, range %.0f N m | "
+                                "knee off %.0f deg, at limit %d, range %.0f N m | other leg at its reach %d ticks\n",
+                                swTicks[f], math::degrees(swTrack[f][0]), swSat[f][0], swRange[f][0],
+                                math::degrees(swTrack[f][1]), swSat[f][1], swRange[f][1], swReach[f]);
+                swTicks[f] = swReach[f] = swSat[f][0] = swSat[f][1] = 0;
+                swTrack[f][0] = swTrack[f][1] = swRange[f][0] = swRange[f][1] = 0.0f;
                 apex[f] = knee[f] = planApex[f] = planKnee[f] = 0.0f;
                 lastSpot[f] = spot[f];
                 had[f] = stance[f] = true;
@@ -770,6 +843,17 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
                 landedAt[f] = time;
             }
             if (stance[f]) worst[f] = std::max(worst[f], levelDist(r, spot[f]));
+            {
+                // The plan's own step: its start (the weight shift) and its lift.
+                const motion::StepPlanner::Phase ph = h.decider().step(f).phase();
+                if (ph != lastPhase[f]) {
+                    if (ph == motion::StepPlanner::Phase::Start)
+                        std::printf("      %.2f s plan %s step starts (weight shift)" "\n", time, left ? "L" : "R");
+                    else if (ph == motion::StepPlanner::Phase::Up)
+                        std::printf("      %.2f s plan %s lifts" "\n", time, left ? "L" : "R");
+                    lastPhase[f] = ph;
+                }
+            }
             // The plan's lift (its swing starts) and the real ankle leaving /
             // reaching the ground (more / less than 1 cm above its standing height).
             const bool planUp = h.bodyTargets().foot[f].swing > 0.0f;
@@ -783,6 +867,8 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
         }
     }
     std::printf("worst slide in a stance %.1f cm\n", 100.0f * worstAll);
+    std::printf("hips speed (steady, 2 s on): plan %.2f..%.2f, real %.2f..%.2f m/s\n", planSpeed.lo, planSpeed.hi,
+                realSpeed.lo, realSpeed.hi);
 }
 
 // Measurement (on demand, 2026-11-16, muscles A1): each muscle's stiffness as

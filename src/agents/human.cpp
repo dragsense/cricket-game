@@ -33,7 +33,13 @@ void Human::loadLocomotion(const core::Config& c) {
     // (locomotion.json "step": its shape, its passive shares; its timing is
     // the decider's own, per step).
     moveSpeed_ = c.getFloat("move.speed", moveSpeed_);
+    backSpeed_ = c.getFloat("move.backSpeed", backSpeed_);
+    sideSpeed_ = c.getFloat("move.sideSpeed", sideSpeed_);
     moveAccel_ = c.getFloat("move.acceleration", moveAccel_);
+    speedStep_ = c.getFloat("move.speedStep", speedStep_);
+    minSpeed_ = c.getFloat("move.minSpeed", minSpeed_);
+    maxSpeed_ = std::max(c.getFloat("move.maxSpeed", maxSpeed_), minSpeed_);
+    moveSpeed_ = std::clamp(moveSpeed_, minSpeed_, maxSpeed_);
     toeClearance_ = c.getFloat("step.toeClearance", toeClearance_);
     stepSettings_.stepHeight = c.getFloat("step.stepHeight", stepSettings_.stepHeight);
     stepSettings_.peakAt = c.getFloat("step.swingPeakAt", stepSettings_.peakAt);
@@ -47,6 +53,11 @@ void Human::loadLocomotion(const core::Config& c) {
     shape.peakAt = stepSettings_.peakAt;
     shape.toeOffPitch = toeOffPitch_;
     deciderSettings_.stepPassive = stepPassive_;
+}
+
+void Human::changeWalkSpeed(int direction) {
+    moveSpeed_ = std::clamp(moveSpeed_ + static_cast<float>(direction) * speedStep_, minSpeed_, maxSpeed_);
+    LOG_INFO("walk speed {:.1f} m/s", moveSpeed_);
 }
 
 bool Human::setHeight(float height) {
@@ -459,14 +470,20 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     } else {
         footPath_.on = false;
     }
-    // W: the hips target goes forward at the eased speed, forward only (across
-    // and up stay the body's own: the sway over the standing foot, the legs'
-    // height). Stopped, it holds until the last step has landed, then lets go
-    // (the hips settle between the feet). The decider makes the steps.
+    // W / A / D: the hips target goes at the eased velocity, driven only along
+    // the way it goes (the rest stays the body's own: across a forward walk
+    // the sway over the standing foot, up the legs' height). Stopped, it holds
+    // until the last step has landed, then lets go (the hips settle between
+    // the feet). The decider makes the steps.
     {
-        const float want = walkInput_ ? moveSpeed_ : 0.0f;
-        walkSpeed_ += std::clamp(want - walkSpeed_, -moveAccel_ * dt, moveAccel_ * dt);
-        const bool moving = walkSpeed_ > 1e-3f;
+        math::Vec2 in = walkInput_;
+        if (const float n = math::length(in); n > 1.0f) in /= n;  // diagonals
+        const math::Vec3 want(in.x * sideSpeed_, 0.0f, in.y * (in.y >= 0.0f ? moveSpeed_ : backSpeed_));
+        const math::Vec3 change = want - walkVelocity_;
+        const float most = moveAccel_ * dt, len = math::length(change);
+        walkVelocity_ += len > most ? change * (most / len) : change;
+        const float speed = math::length(walkVelocity_);
+        const bool moving = speed > 1e-3f;
         const bool settling = hipsDriven_ && (decider_.stepFoot() >= 0 || queue_.step.wanted);
         if ((moving || settling) && joints_.pelvis >= 0 && g != static_cast<int>(motion::Goal::Hips)) {
             if (!hipsDriven_) {
@@ -474,12 +491,13 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
                 hipsGoal_ = root_.transformPoint(math::Vec3(plan[static_cast<size_t>(joints_.pelvis)][3]));
                 hipsDriven_ = true;
             }
-            hipsGoal_ += (root_.rotation * math::kForward) * (walkSpeed_ * dt);
+            if (moving) hipsDirection_ = walkVelocity_ / speed;
+            hipsGoal_ += root_.rotation * (walkVelocity_ * dt);
             t.hips.mode = motion::TargetMode::Driven;
             t.hips.position = math::inverse(root_).transformPoint(hipsGoal_);
-            t.hips.velocity = math::kForward * walkSpeed_;
+            t.hips.velocity = walkVelocity_;
             t.hips.weightRotation = 0.0f;
-            t.hips.directions[0] = math::kForward;
+            t.hips.directions[0] = hipsDirection_;
             t.hips.directionCount = 1;
         } else {
             hipsDriven_ = false;

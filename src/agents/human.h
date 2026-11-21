@@ -85,9 +85,13 @@ public:
     void setPoseHand(bool left, math::Vec3 world);
     void setPoseFoot(motion::Foot foot, math::Vec3 world);
     void clearPose();
-    // W held: the hips are pushed forward (locomotion.json "move"); the
-    // decider steps after them. Let go: they stop once the last step lands.
-    void setWalkInput(bool forward) { walkInput_ = forward; }
+    // W / A / D held: the hips are pushed forward or to a side (`move`:
+    // x left, y forward, each -1..1; locomotion.json "move"); the decider
+    // steps after them. Let go: they stop once the last step lands.
+    void setWalkInput(math::Vec2 move) { walkInput_ = move; }
+    // E / Q: the forward push's speed one move.speedStep up (+1) or down
+    // (-1), within move.minSpeed .. move.maxSpeed.
+    void changeWalkSpeed(int direction);
     // The rig joint a target moves (its bone: wrist, ankle, pelvis, chest, head).
     int goalJoint(motion::Goal goal) const;
     // Every part back at the planned standing pose, at rest, the hold on
@@ -156,12 +160,16 @@ private:
         bool on = false;
     };
     GoalPath handPath_, footPath_, hipsPath_;
-    // W: the hips target pushed forward (world, from the plan's hips when it
-    // starts) at walkSpeed_, eased to moveSpeed_ at moveAccel_; held until
-    // the last step has landed after a stop.
-    bool walkInput_ = false, hipsDriven_ = false;
-    math::Vec3 hipsGoal_{0.0f};
-    float walkSpeed_ = 0.0f, moveSpeed_ = 1.2f, moveAccel_ = 1.0f;
+    // W / A / D: the hips target pushed (world, from the plan's hips when it
+    // starts) at walkVelocity_ (character space), eased toward the input's
+    // speed (forward moveSpeed_, sideways sideSpeed_) at moveAccel_, driven
+    // along the way it goes (hipsDirection_, kept while it settles); held
+    // until the last step has landed after a stop.
+    math::Vec2 walkInput_{0.0f};
+    bool hipsDriven_ = false;
+    math::Vec3 hipsGoal_{0.0f}, walkVelocity_{0.0f}, hipsDirection_{0.0f, 0.0f, 1.0f};
+    float moveSpeed_ = 1.2f, backSpeed_ = 0.7f, sideSpeed_ = 0.35f, moveAccel_ = 1.0f;
+    float speedStep_ = 0.2f, minSpeed_ = 0.4f, maxSpeed_ = 2.1f;
     // The decider's balance step's shape (locomotion.json "step").
     motion::StepSettings stepSettings_;
     float toeOffPitch_ = 0.0f;  // rad, the foot's plantarflexion at toe-off (step.toeOffPitchDeg)
