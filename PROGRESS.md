@@ -81,6 +81,10 @@ Pieces (pass numbers in brackets):
   at the toes thigh 13.6 deg, ground across 26.6 deg, Jolt clamps it; the end poses are
   inside). Needs a hips bound from the grounded hips' ranges (as the knees' bound), not
   built.
+- 2026-11-21 (not checked in the game yet): cleanup (one warning when gravity <= 0; the
+  decider's / travel's last constants in `human_joints.json`); toe-off only for a step's
+  forward share (a side or backward step keeps the foot flat); both feet with no weight:
+  the support lets go and the body falls by physics (DECISIONS 2026-11-21).
 - [ ] P2 Clavicle body and muscle (mass, strength from research) [hand across: real off
   plan 29 -> < 5 cm].
 - [ ] P3 Drive feedforward (internal model; equilibrium point leads, Feldman, Flash 1987;

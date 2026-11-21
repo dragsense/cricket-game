@@ -895,3 +895,12 @@ Dated log. Format: decision, reason, alternatives rejected.
   the `atan2` form saturated for long steps. No table of turn against step length exists
   (BIOMECHANICS 4.3), so this is the two points' ratio; approximate (women, H 1.65).
 - **Rejected:** keeping the fitted share.
+
+## 2026-11-21: Both feet in the air: the support lets go
+- **Decision:** when neither foot carries weight (the decider's `supportWeight` sum
+  < 1e-3), `Human::physicsTick` disables the capsule's support joint exactly as the lean
+  release does, whatever `releaseOn` says; the body falls by physics alone and the
+  existing at-rest path takes it back.
+- **Why:** the user's rule. Scaling only the motor strength by the weight left the
+  joint's hard upper limit and its `freeDown` spring active, so the body was never free.
+- **Rejected:** zeroing the motor alone (the limits still hold the body).
