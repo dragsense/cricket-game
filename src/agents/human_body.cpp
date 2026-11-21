@@ -184,9 +184,7 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     for (size_t i = 0; i < parts_.size(); ++i) parts_[i].body = bodies[i];
     rotations_.assign(parts_.size(), math::identityQuat());
     lastTarget_.assign(parts_.size(), math::identityQuat());
-    velocity_.assign(parts_.size(), math::Vec3(0.0f));
     leadReady_ = false;
-    activationTime_ = std::max(muscles.activationTime, 1e-3f);
     lead_.assign(parts_.size(), 0.0f);
     for (size_t i = 0; i < parts_.size() && i < ragdoll.size(); ++i)
         if (ragdoll[i].parent >= 0 && ragdoll[i].motor.stiffness > 0.0f)
@@ -241,8 +239,10 @@ ik::JointLimit HumanBody::limitNow(const physics::PhysicsWorld& world, int part)
 
 void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
                           int headJoint, float dt) const {
+    // The pose's own velocity, not eased: an eased one still leads after the
+    // pose has stopped (measured: the swing foot landed 8 cm past its spot,
+    // the knee 6 deg past the plan's).
     const bool lead = leadReady_ && dt > 0.0f;
-    const float follow = dt > 0.0f ? dt / (activationTime_ + dt) : 0.0f;
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         if (p.parent < 0) continue;
@@ -269,12 +269,9 @@ void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::
             math::Quat last = lastTarget_[i];
             if (math::dot(now, last) < 0.0f) last = -last;
             const math::Vec3 w = math::rotationVector(math::normalize(now * math::inverse(last))) / dt;
-            velocity_[i] += (w - velocity_[i]) * follow;
-            const math::Vec3 ahead = velocity_[i] * lead_[i];
+            const math::Vec3 ahead = w * lead_[i];
             const float angle = math::length(ahead);
             if (angle > 1e-6f) rotations_[i] = math::normalize(math::fromAxisAngle(ahead / angle, angle) * now);
-        } else {
-            velocity_[i] = math::Vec3(0.0f);
         }
         lastTarget_[i] = now;
     }

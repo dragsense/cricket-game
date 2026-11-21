@@ -709,8 +709,25 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
     math::Vec3 spot[2], lastSpot[2];
     bool stance[2] = {false, false}, had[2] = {false, false};
     bool wasPlanUp[2] = {false, false}, wasRealUp[2] = {false, false};
+    float apex[2] = {0.0f, 0.0f}, knee[2] = {0.0f, 0.0f}, planApex[2] = {0.0f, 0.0f}, planKnee[2] = {0.0f, 0.0f};
+    const math::Vec3 start[2] = {h.ankle(true, *h.bodyQueue().plan, h.root()), h.ankle(false, *h.bodyQueue().plan, h.root())};
+    const float ground = start[0].y;  // the standing ankle's height
     float worst[2] = {0.0f, 0.0f}, landedAt[2] = {0.0f, 0.0f}, worstAll = 0.0f;
     auto levelDist = [](math::Vec3 a, math::Vec3 b) { return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)); };
+    {
+        // Standing still first (1 s): how much the real wrist and pelvis shake.
+        Range wx, wz, px, pz;
+        for (int i = 0; i < 120; ++i) {
+            h.tick(kDt);
+            world.step(kDt);
+            if (!h.physicalModels(world, 1.0f, real)) continue;
+            const math::Vec3 w = h.wrist(true, real, h.root());
+            const math::Vec3 pel = h.root().transformPoint(math::Vec3(real[0][3]));
+            wx.add(w.x), wz.add(w.z), px.add(pel.x), pz.add(pel.z);
+        }
+        std::printf("standing 1 s: real wrist moves %.2f / %.2f cm, pelvis %.2f / %.2f cm (x / z)\n", 100.0f * wx.span(),
+                    100.0f * wz.span(), 100.0f * px.span(), 100.0f * pz.span());
+    }
     const int ticks = static_cast<int>((hold + 2.0f) * 120.0f);
     for (int i = 0; i < ticks; ++i) {
         const float time = i * kDt;
@@ -728,11 +745,25 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
                 worstAll = std::max(worstAll, worst[f]);
                 stance[f] = false;
             }
+            if (!stance[f]) {  // in its swing: the ankle's rise and knee bend, real and plan
+                apex[f] = std::max(apex[f], r.y - ground);
+                knee[f] = std::max(knee[f], flexionDeg(real, h, left ? "thigh_l" : "thigh_r", left ? "shin_l" : "shin_r",
+                                                       left ? "foot_l" : "foot_r"));
+                planApex[f] = std::max(planApex[f], h.ankle(left, p, h.root()).y - ground);
+                planKnee[f] = std::max(planKnee[f], flexionDeg(p, h, left ? "thigh_l" : "thigh_r", left ? "shin_l" : "shin_r",
+                                                               left ? "foot_l" : "foot_r"));
+            }
             if (h.bodyQueue().landed[f]) {
                 spot[f] = h.ankle(left, p, h.root());
-                const float length = had[f] ? 100.0f * math::dot(spot[f] - lastSpot[f], fwd) : 0.0f;
-                std::printf("  %.2f s %s lands | step %.1f cm | real ankle %.1f cm off (behind %.1f)\n", time,
-                            left ? "L" : "R", length, 100.0f * levelDist(r, spot[f]), 100.0f * math::dot(spot[f] - r, fwd));
+                if (!had[f]) lastSpot[f] = start[f];
+                // The step: this foot's way ahead of the other foot (fore-aft).
+                const math::Vec3 other = h.ankle(!left, p, h.root());
+                std::printf("  %.2f s %s lands | foot moved %.1f cm, %.1f cm ahead of the other | swing ankle up real %.1f "
+                            "plan %.1f cm, knee real %.0f plan %.0f deg | real ankle %.1f cm off (behind %.1f)\n",
+                            time, left ? "L" : "R", 100.0f * math::dot(spot[f] - lastSpot[f], fwd),
+                            100.0f * math::dot(spot[f] - other, fwd), 100.0f * apex[f], 100.0f * planApex[f], knee[f],
+                            planKnee[f], 100.0f * levelDist(r, spot[f]), 100.0f * math::dot(spot[f] - r, fwd));
+                apex[f] = knee[f] = planApex[f] = planKnee[f] = 0.0f;
                 lastSpot[f] = spot[f];
                 had[f] = stance[f] = true;
                 worst[f] = 0.0f;

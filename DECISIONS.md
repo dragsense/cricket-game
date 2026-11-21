@@ -917,10 +917,12 @@ Dated log. Format: decision, reason, alternatives rejected.
 
 ## 2026-11-21: The drive leads the pose (muscle plan P3, lead only); W pushes the hips
 - **Decision (the user's OK):** each part's drive target is set D / K (its motor's damping
-  over stiffness, 0.06 s) ahead along the pose's own joint velocity, eased over the
-  activation time (`HumanBody::drivePose`); not the head (a reflex from the real body).
+  over stiffness, 0.06 s) ahead along the pose's own joint velocity this tick
+  (`HumanBody::drivePose`); not the head (a reflex from the real body).
   W pushes the hips target forward (locomotion.json "move"); the decider makes the steps.
 - **Why:** measured walking at 1.2 m/s: the real swing foot touched down 0.1 s early and
   27 cm behind the plan, then slid 27 cm: the damper pulls toward no motion, so a target
-  moving at w is followed D / K x w behind (PROGRESS D2). With the lead: 7-8 cm.
-- **Rejected:** the inertia torque part of P3 (not needed for this); a walking-only fix.
+  moving at w is followed D / K x w behind (PROGRESS D2). With the lead: 3-5 cm.
+- **Rejected:** the velocity eased over the activation time (it led on after the pose
+  stopped: 8 cm past the spot, knee +6 deg); the inertia torque part of P3 (not needed);
+  a walking-only fix.
