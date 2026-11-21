@@ -141,7 +141,7 @@ Pieces (pass numbers in brackets):
     rest; the arc by the way gone was tried: slide 6.5 -> 30 cm, reverted; next idea: the
     swing starts at the foot's push-off speed); A's first steps 20 then 11 cm; the knee in
     swing 70 deg plan vs real people's 60-65.
-- [x] S1 Standing plan still (2026-11-21, awaiting the user's game check; DECISIONS).
+- [x] S1 Standing plan still (2026-11-21, the user checked it in the game: all fine; DECISIONS).
   Measured (`measure: stance legs carry the weight`): the legs carry the weight (spring
   up-force 0), but standing the spring held 53.7 N m against the leg motors: the output
   pelvis chattered +-0.17 mm in a 6-tick cycle around a still reference (knee 4.5..5.5
