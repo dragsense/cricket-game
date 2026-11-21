@@ -726,6 +726,12 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
     bool hipsSeen = false;
     Range gapRange;
     int caught = 0;
+    math::Vec3 lastHold[6], lastSpin[6];
+    int spinFlips[6] = {0, 0, 0, 0, 0, 0};
+    bool holdSeen = false;
+    float worstHoldJump = 0.0f, worstHoldTime = 0.0f;
+    const char* worstHoldBone = "-";
+    int bigHoldJumps = 0;
     // The trace's leg reach: the knee bent at least limbMinBend (human_joints.json).
     core::Config hj;
     REQUIRE(hj.load(CRICKET_CONFIG_DIR "/human_joints.json"));
@@ -787,6 +793,38 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
         const float bandGap = world.transform(h.humanBody().parts()[0].body).position.y -
                               (h.root() * h.humanBody().partPose(0, p)).position.y;
         gapRange.add(bandGap);
+        {
+            // The legs' hold, change per tick (N m): its jumps jerk the muscles.
+            const agents::HumanBody& hb = h.humanBody();
+            const char* legBones[6] = {"thigh_l", "shin_l", "foot_l", "thigh_r", "shin_r", "foot_r"};
+            for (int b = 0; b < 6; ++b) {
+                const int part = hb.partOf(h.rig().findJoint(legBones[b]));
+                if (part < 0) continue;
+                const math::Vec3 now = hb.holdTorque(part);
+                if (holdSeen) {
+                    const float jump = math::length(now - lastHold[b]);
+                    if (jump > worstHoldJump) {
+                        worstHoldJump = jump;
+                        worstHoldTime = time;
+                        worstHoldBone = legBones[b];
+                    }
+                    if (jump > 10.0f) ++bigHoldJumps;
+                }
+                lastHold[b] = now;
+                // Shake: the real part's turn rate flips back and forth (a
+                // flip over 0.5 rad/s each way within a tick).
+                const math::Vec3 wv = world.angularVelocity(hb.parts()[static_cast<size_t>(part)].body);
+                if (holdSeen && math::dot(wv, lastSpin[b]) < 0.0f && math::length(wv) > 0.5f &&
+                    math::length(lastSpin[b]) > 0.5f)
+                    ++spinFlips[b];
+                lastSpin[b] = wv;
+                if (std::getenv("CRICKET_SHAKE") && b == 2 && time >= 1.70f && time < 1.85f)
+                    std::printf("        %.3f s foot_l hold %6.1f %6.1f %6.1f N m | spin %5.2f %5.2f %5.2f rad/s | weights %.2f %.2f\n",
+                                time, now.x, now.y, now.z, wv.x, wv.y, wv.z, h.bodyQueue().supportWeight[0],
+                                h.bodyQueue().supportWeight[1]);
+            }
+            holdSeen = true;
+        }
         if (bandGap < -world.settings().character.supportFreeDown || bandGap > world.settings().character.supportFreeUp)
             ++caught;
         if (std::getenv("CRICKET_TRACE") && time >= 2.0f && time < 3.6f && i % 2 == 0) {
@@ -921,6 +959,10 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
         }
     }
     std::printf("worst slide in a stance %.1f cm\n", 100.0f * worstAll);
+    std::printf("legs' hold change per tick: most %.1f N m (%s at %.2f s), %d changes over 10 N m\n", worstHoldJump,
+                worstHoldBone, worstHoldTime, bigHoldJumps);
+    std::printf("shake (turn rate flips over 0.5 rad/s): thigh_l %d shin_l %d foot_l %d thigh_r %d shin_r %d foot_r %d\n",
+                spinFlips[0], spinFlips[1], spinFlips[2], spinFlips[3], spinFlips[4], spinFlips[5]);
     std::printf("pelvis real - plan %+.1f..%+.1f cm, %d ticks outside the band (caught)\n", 100.0f * gapRange.lo,
                 100.0f * gapRange.hi, caught);
     std::printf("hips speed (steady, 2 s on): plan %.2f..%.2f, real %.2f..%.2f m/s\n", planSpeed.lo, planSpeed.hi,

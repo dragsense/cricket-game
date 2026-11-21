@@ -320,8 +320,11 @@ public:
     // The gravity hold for the next driveRagdollToPose: per part (as built,
     // [0] unused), the torque (world) it needs about its joint. The drive
     // gives it at the body's strength within the joint's muscles, axis by
-    // axis, and the motor gets what is left of them. No allocations.
-    void setRagdollHold(RagdollId id, const math::Vec3* torques, int count);
+    // axis, and the motor gets what is left of them. `ground` (per part, or
+    // nullptr): a further share of the hold that the ground gives the part
+    // (a foot standing on it): the muscle pulls the parent by it, the part
+    // does not get it. No allocations.
+    void setRagdollHold(RagdollId id, const math::Vec3* torques, const math::Vec3* ground, int count);
     // Every motor's torque limit at `scale` of its MotorDesc's: the body's
     // strength (below 1: hits, falls, get-up; above 1, up to 10: more of the
     // muscles recruited for a faster pace). No allocations.

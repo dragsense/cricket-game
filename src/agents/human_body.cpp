@@ -192,6 +192,7 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     beyondMass_.assign(parts_.size(), 0.0f);
     beyondMoment_.assign(parts_.size(), math::Vec3(0.0f));
     hold_.assign(parts_.size(), math::Vec3(0.0f));
+    ground_.assign(parts_.size(), math::Vec3(0.0f));
     LOG_INFO("human body: Jolt ragdoll, {} parts, {:.1f} kg", parts_.size(), totalMass_);
     return true;
 }
@@ -201,7 +202,7 @@ math::Transform HumanBody::partPose(int part, const std::vector<math::Mat4>& mod
     return math::toTransform(models[static_cast<size_t>(p.joint)]) * p.shape;
 }
 
-void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
+void HumanBody::holdWeight(physics::PhysicsWorld& world, const StanceFeet& feet) const {
     // Mass and moment of each part's subtree (children come after parents).
     for (size_t i = 0; i < parts_.size(); ++i) {
         beyondMass_[i] = parts_[i].mass;
@@ -216,14 +217,83 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world) const {
     const math::Vec3 g = world.world().gravity;
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
-        hold_[i] = math::Vec3(0.0f);
+        hold_[i] = ground_[i] = math::Vec3(0.0f);
         if (p.parent < 0 || !p.muscle || beyondMass_[i] <= 0.0f) continue;
         // Gravity's turn on everything beyond the joint, about the joint.
         const math::Vec3 pivot = boneWorld(world, static_cast<int>(i)).position;
         const math::Vec3 centre = beyondMoment_[i] / beyondMass_[i];
         hold_[i] = -math::cross(centre - pivot, g * beyondMass_[i]);
     }
-    world.setRagdollHold(ragdoll_, hold_.data(), static_cast<int>(hold_.size()));
+    // A foot on the ground: the weight comes down its leg the other way (the
+    // foot the root; Winter 1995). The ground pushes up its share of the
+    // whole body's weight at its centre of pressure. Standing feet share by
+    // the lever rule along the line between them, within the decider's support
+    // weights (a foot lifting or landing eases out or in). The feet's pushes
+    // together act below the centre of mass: every foot's centre of pressure
+    // is its centre moved by the same shift (the centre of mass off the
+    // shares' centre), inside its outline. One rule for one foot or two: on
+    // two side by side it moves them along with the body, on one it is the
+    // centre of mass below that foot. Each joint from the ankle up to the hip
+    // carries that push's turn about it as well (the static balance of the
+    // part and all below it). What the pushes leave unbalanced the support
+    // spring takes, as before.
+    // All of it from the plan (its centre of mass, feet and joints), never
+    // the real body: a push that followed the real body's shake fed the shake
+    // (the feet trembled) and followed its lean (a foot rolled onto its heel).
+    if (parts_.empty() || beyondMass_[0] <= 0.0f || !feet.plan) {
+        world.setRagdollHold(ragdoll_, hold_.data(), ground_.data(), static_cast<int>(hold_.size()));
+        return;
+    }
+    const std::vector<math::Mat4>& plan = *feet.plan;
+    const auto planJoint = [&](int part) {
+        return feet.root.transformPoint(math::Vec3(plan[static_cast<size_t>(parts_[static_cast<size_t>(part)].joint)][3]));
+    };
+    const float total = beyondMass_[0];
+    math::Vec3 com(0.0f);
+    for (size_t i = 0; i < parts_.size(); ++i)
+        com += (feet.root * partPose(static_cast<int>(i), plan)).position * parts_[i].mass;
+    com /= total;
+    const math::Vec3 fwd = feet.facing * math::kForward, side = feet.facing * math::kRight;
+    math::Vec3 centre[2], cop[2];
+    float w[2], share[2] = {0.0f, 0.0f};
+    for (int f = 0; f < 2; ++f) {
+        w[f] = feet.part[f] >= 0 ? std::clamp(feet.weight[f], 0.0f, 1.0f) : 0.0f;
+        centre[f] = feet.part[f] >= 0 ? planJoint(feet.part[f]) + fwd * feet.ahead : com;
+    }
+    float lever = 0.5f;
+    if (w[0] > 0.0f && w[1] > 0.0f) {
+        const math::Vec3 line = centre[1] - centre[0];
+        const float len2 = line.x * line.x + line.z * line.z;
+        const math::Vec3 d = com - centre[0];
+        if (len2 > 1e-6f) lever = std::clamp((d.x * line.x + d.z * line.z) / len2, 0.0f, 1.0f);
+    }
+    // No foot carries more than its support weight lets it (a foot landing
+    // takes the weight as the decider gives it, never all at once); both
+    // under full: by those weights alone.
+    share[1] = w[0] + w[1] >= 1.0f ? std::clamp(lever, 1.0f - w[0], w[1]) : w[1] / std::max(w[0] + w[1], 1e-6f);
+    share[0] = w[0] + w[1] > 1e-6f ? 1.0f - share[1] : 0.0f;
+    if (const float all = share[0] + share[1]; all > 1e-6f) {
+        const math::Vec3 shift = com - (share[0] * centre[0] + share[1] * centre[1]) / all;
+        for (int f = 0; f < 2; ++f) {
+            const float x = std::clamp(math::dot(shift, side), -feet.halfWidth, feet.halfWidth);
+            const float z = std::clamp(math::dot(shift, fwd), -feet.halfLength, feet.halfLength);
+            cop[f] = centre[f] + side * x + fwd * z;
+        }
+    }
+    const float sum = share[0] + share[1];
+    for (int f = 0; f < 2 && sum > 1e-6f; ++f) {
+        const float m = total * share[f] / sum;
+        if (m <= 0.0f) continue;
+        for (int i = feet.part[f]; i >= 0 && parts_[static_cast<size_t>(i)].parent >= 0; i = parts_[static_cast<size_t>(i)].parent) {
+            if (!parts_[static_cast<size_t>(i)].muscle) continue;
+            // The foot itself stands on the ground, which gives it its share:
+            // the ankle's muscles pull only the shin by it (a foot pressed
+            // between the push and the ground shook within the contact).
+            const math::Vec3 push = math::cross(cop[f] - planJoint(i), g * m);
+            (i == feet.part[f] ? ground_ : hold_)[static_cast<size_t>(i)] += push;
+        }
+    }
+    world.setRagdollHold(ragdoll_, hold_.data(), ground_.data(), static_cast<int>(hold_.size()));
 }
 
 ik::JointLimit HumanBody::limitNow(const physics::PhysicsWorld& world, int part) const {

@@ -212,6 +212,7 @@ struct PhysicsWorld::Impl {
         std::vector<int> jointOf;        // per part: its joint (-1: the root)
         std::vector<JPH::Quat> target;   // per part: the drive's target (body space, as asked)
         std::vector<math::Vec3> hold;    // per part: setRagdollHold's torque (world)
+        std::vector<math::Vec3> ground;  // per part: its share the ground gives (world; on the parent only)
         float scale = 1.0f;  // setRagdollStrength
     };
     std::vector<RagdollSlot> ragdolls;
@@ -1008,6 +1009,7 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
     Impl::RagdollSlot r;
     r.ragdoll = ragdoll;
     r.hold.assign(parts.size(), math::Vec3(0.0f));
+    r.ground.assign(parts.size(), math::Vec3(0.0f));
     r.target.assign(parts.size(), JPH::Quat::sIdentity());
     r.jointOf.assign(parts.size(), -1);
     for (size_t i = 0; i < parts.size(); ++i)
@@ -1051,7 +1053,8 @@ namespace {
 // strength `k`), axis by axis in the joint's frame on the part: the hold
 // stays within it and the motor gets what is left (lo - h, hi - h), so the
 // two never give more than the muscle.
-void applyMuscles(JPH::SixDOFConstraint& c, float base, int axis, float plus, float minus, math::Vec3 hold, float k) {
+void applyMuscles(JPH::SixDOFConstraint& c, float base, int axis, float plus, float minus, math::Vec3 hold,
+                  math::Vec3 ground, float k) {
     JPH::Body* b1 = c.GetBody1();
     JPH::Body* b2 = c.GetBody2();
     const JPH::Quat toWorld = b2->GetRotation() * c.GetConstraintToBody2Matrix().GetQuaternion();
@@ -1064,13 +1067,18 @@ void applyMuscles(JPH::SixDOFConstraint& c, float base, int axis, float plus, fl
         lo[axis] = -minus * k;
         hi[axis] = plus * k;
     }
-    JPH::Vec3 h = toWorld.Conjugated() * toJolt(hold * k);
-    for (int a = 0; a < 3; ++a) h.SetComponent(static_cast<JPH::uint>(a), std::clamp(h[a], lo[a], hi[a]));
-    const JPH::Vec3 applied = toWorld * h;
-    if (!applied.IsNearZero()) {
-        b2->AddTorque(applied);
-        b1->AddTorque(-applied);
+    // The whole hold within the muscle's strength; the ground's share of it
+    // the part does not get (the ground pushes it there itself).
+    JPH::Vec3 h = toWorld.Conjugated() * toJolt((hold + ground) * k);
+    JPH::Vec3 gnd = toWorld.Conjugated() * toJolt(ground * k);
+    for (int a = 0; a < 3; ++a) {
+        h.SetComponent(static_cast<JPH::uint>(a), std::clamp(h[a], lo[a], hi[a]));
+        gnd.SetComponent(static_cast<JPH::uint>(a), std::clamp(gnd[a], lo[a], hi[a]));
     }
+    const JPH::Vec3 applied = toWorld * h;
+    if (!applied.IsNearZero()) b1->AddTorque(-applied);
+    const JPH::Vec3 onPart = toWorld * (h - gnd);
+    if (!onPart.IsNearZero()) b2->AddTorque(onPart);
     using A = JPH::SixDOFConstraintSettings::EAxis;
     for (int a = 0; a < 3; ++a)
         c.GetMotorSettings(static_cast<A>(A::RotationX + a)).SetTorqueLimits(lo[a] - h[a], hi[a] - h[a]);
@@ -1086,15 +1094,18 @@ void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations,
         const size_t part = static_cast<size_t>(j.part);
         r.target[part] = toJolt(math::normalize(rotations[part]));
         j.constraint->SetTargetOrientationBS(r.target[part]);
-        applyMuscles(*j.constraint, j.base, j.axis, j.plus, j.minus, r.hold[part], r.scale);
+        applyMuscles(*j.constraint, j.base, j.axis, j.plus, j.minus, r.hold[part], r.ground[part], r.scale);
     }
 }
 
-void PhysicsWorld::setRagdollHold(RagdollId id, const math::Vec3* torques, int count) {
+void PhysicsWorld::setRagdollHold(RagdollId id, const math::Vec3* torques, const math::Vec3* ground, int count) {
     if (!impl_ || id >= impl_->ragdolls.size() || !torques) return;
     Impl::RagdollSlot& r = impl_->ragdolls[id];
     const size_t n = std::min(static_cast<size_t>(std::max(count, 0)), r.hold.size());
-    for (size_t i = 0; i < n; ++i) r.hold[i] = torques[i];
+    for (size_t i = 0; i < n; ++i) {
+        r.hold[i] = torques[i];
+        r.ground[i] = ground ? ground[i] : math::Vec3(0.0f);
+    }
 }
 
 namespace {

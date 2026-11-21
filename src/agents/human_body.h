@@ -27,6 +27,18 @@
 namespace agents {
 
 // config/human_joints.json "muscles" (BIOMECHANICS 14).
+// The feet on the ground for holdWeight.
+struct StanceFeet {
+    int part[2] = {-1, -1};                    // each foot's part (-1: none)
+    float weight[2] = {0.0f, 0.0f};            // the decider's support weight, 0..1
+    math::Quat facing{1.0f, 0.0f, 0.0f, 0.0f};  // the character's turn (world): the feet's axes
+    const std::vector<math::Mat4>* plan = nullptr;  // the decider's pose (character space, the rig's joints)
+    math::Transform root;                           // character space to world
+    float halfWidth = 0.045f;                  // m, the foot's outline: half its width
+    float halfLength = 0.11f;                  // m, half its length
+    float ahead = 0.05f;                       // m, the foot's centre ahead of the ankle
+};
+
 struct MuscleSettings {
     float activationTime = 0.03f;  // s, muscle excitation to force (10-50 ms): how fast a motor pulls
     float damping = 1.0f;          // ratio; 1 = reaches the pose without overshoot
@@ -88,13 +100,16 @@ public:
 
     // Every muscle carries the weight of the parts beyond it (away from the
     // pelvis), as real muscles hold posture: a torque on the part and the
-    // opposite on its parent. The hold and Jolt's motor (drivePose) share
+    // opposite on its parent. A foot on the ground (StanceFeet) also passes
+    // its share of the body's weight up its leg: each joint from the ankle to
+    // the hip holds the ground's push at the foot's centre of pressure, all
+    // from the plan (StanceFeet::plan). The hold and Jolt's motor (drivePose) share
     // the muscle's strength: drivePose gives the hold within it and the motor
     // corrects with what is left. Call each tick before drivePose. No
     // allocations.
-    void holdWeight(physics::PhysicsWorld& world) const;
+    void holdWeight(physics::PhysicsWorld& world, const StanceFeet& feet) const;
     // A part's hold from the last holdWeight (world, N m) and the ragdoll (for measuring).
-    math::Vec3 holdTorque(int part) const { return hold_[static_cast<size_t>(part)]; }
+    math::Vec3 holdTorque(int part) const { return hold_[static_cast<size_t>(part)] + ground_[static_cast<size_t>(part)]; }
     physics::RagdollId ragdoll() const { return ragdoll_; }
     // Every muscle pulls its joint toward the pose `models` (character space,
     // the rig's joints; a range set by another joint first follows that
@@ -147,6 +162,7 @@ private:
     mutable std::vector<float> beyondMass_;         // scratch per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // scratch per part: their mass x centre of mass (world)
     mutable std::vector<math::Vec3> hold_;          // scratch per part: the torque its weight needs (world)
+    mutable std::vector<math::Vec3> ground_;        // scratch per part: the share of it the ground gives the part (world)
     // The drive's lead: per part D / K (s) and the target last tick (before
     // its lead); none yet after a reset.
     std::vector<float> lead_;

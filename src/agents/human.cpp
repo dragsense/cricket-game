@@ -522,7 +522,18 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     const physics::CharacterSettings& c = world.settings().character;
     // The muscles: they carry the weight beyond each joint, and Jolt's pose
     // drive corrects toward this tick's pose.
-    humanBody_.holdWeight(world);
+    StanceFeet stance;
+    stance.part[0] = humanBody_.partOf(joints_.legL.end);
+    stance.part[1] = humanBody_.partOf(joints_.legR.end);
+    stance.weight[0] = queue_.supportWeight[0];
+    stance.weight[1] = queue_.supportWeight[1];
+    stance.facing = root_.rotation;
+    stance.plan = &target;
+    stance.root = root_;
+    stance.halfWidth = deciderSettings_.footHalfWidth;
+    stance.halfLength = deciderSettings_.footHalfLength;
+    stance.ahead = deciderSettings_.footCentreAhead;
+    humanBody_.holdWeight(world, stance);
     humanBody_.drivePose(world, target, root_, joints_.head, dt);
     // The capsule is as tall as the pose's pelvis is high (crouch, stride).
     const float pelvisY = target[static_cast<size_t>(joints_.pelvis)][3].y;
