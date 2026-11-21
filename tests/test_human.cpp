@@ -726,6 +726,16 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
     bool hipsSeen = false;
     Range gapRange;
     int caught = 0;
+    // The trace's leg reach: the knee bent at least limbMinBend (human_joints.json).
+    core::Config hj;
+    REQUIRE(hj.load(CRICKET_CONFIG_DIR "/human_joints.json"));
+    const float minBendDeg = hj.getFloat("decider.limbMinBendDeg", 5.0f);
+    float standAnkleY[2];
+    {
+        const std::vector<math::Mat4>& p0 = *h.bodyQueue().plan;
+        standAnkleY[0] = p0[static_cast<size_t>(h.rig().findJoint("foot_l"))][3].y;
+        standAnkleY[1] = p0[static_cast<size_t>(h.rig().findJoint("foot_r"))][3].y;
+    }
     float apex[2] = {0.0f, 0.0f}, knee[2] = {0.0f, 0.0f}, planApex[2] = {0.0f, 0.0f}, planKnee[2] = {0.0f, 0.0f};
     const math::Vec3 start[2] = {h.ankle(true, *h.bodyQueue().plan, h.root()), h.ankle(false, *h.bodyQueue().plan, h.root())};
     const float ground = start[0].y;  // the standing ankle's height
@@ -805,6 +815,25 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
             std::printf("        %.3f s desired y %.3f | output behind: level %.1f cm, up %+.1f cm | output v level %.2f up %+.2f m/s\n",
                         time, want.y, 100.0f * std::sqrt(lag.x * lag.x + lag.z * lag.z), 100.0f * lag.y,
                         std::sqrt(v.x * v.x + v.z * v.z), v.y);
+            // Each leg at the desired pelvis (its hip moved by the output's
+            // lag): level distance hip to ankle, the ankle above standing (the
+            // heel risen), the hip-ankle span against the reach (thigh + shin
+            // at limbMinBend), and the height that reach allows the pelvis.
+            for (int f = 0; f < 2; ++f) {
+                const char* names[3] = {f == 0 ? "thigh_l" : "thigh_r", f == 0 ? "shin_l" : "shin_r", f == 0 ? "foot_l" : "foot_r"};
+                const int j[3] = {h.rig().findJoint(names[0]), h.rig().findJoint(names[1]), h.rig().findJoint(names[2])};
+                const math::Vec3 hip = math::Vec3(p[static_cast<size_t>(j[0])][3]) + lag;
+                const math::Vec3 kneeAt = math::Vec3(p[static_cast<size_t>(j[1])][3]);
+                const math::Vec3 ank = math::Vec3(p[static_cast<size_t>(j[2])][3]);
+                const float tl = math::distance(math::Vec3(p[static_cast<size_t>(j[0])][3]), kneeAt), sl = math::distance(kneeAt, ank);
+                const float reach = std::sqrt(tl * tl + sl * sl + 2.0f * tl * sl * std::cos(math::radians(minBendDeg)));
+                const math::Vec3 d = ank - hip;
+                const float flat = std::sqrt(d.x * d.x + d.z * d.z);
+                const float allows = flat < reach ? ank.y + std::sqrt(reach * reach - flat * flat) - (hip.y - want.y) : -1.0f;
+                std::printf("        %.3f s   leg %c: level %.1f cm, ankle up %.1f cm, span %.1f / reach %.1f cm, pelvis allowed %.3f\n",
+                            time, f == 0 ? 'L' : 'R', 100.0f * flat, 100.0f * (ank.y - standAnkleY[f]), 100.0f * math::length(d),
+                            100.0f * reach, allows);
+            }
         }
         for (int f = 0; f < 2; ++f) {
             const bool left = f == 0;
