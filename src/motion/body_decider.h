@@ -247,6 +247,10 @@ public:
     // plan (feet, hips, everything) stays put in the world.
     void rebase(const math::Transform& toNew);
     math::Vec3 planCentreOfMass() const;
+    // For measuring: the desired pelvis (before the bounded motion) and the
+    // output hips' velocity (character space).
+    math::Vec3 desiredPelvis() const;
+    math::Vec3 outputHipsVelocity() const { return hipsVel_; }
 
     // One tick: from the targets and the plan so far, fills `out`. No
     // allocations.

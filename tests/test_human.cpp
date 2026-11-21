@@ -798,6 +798,13 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
             std::printf("        %.3f s hips ref y %.3f output %.3f%s | weights L %.2f R %.2f\n", time,
                         h.bodyQueue().hipsReference.y, p[0][3].y, h.bodyQueue().heightClamped ? " | reach clamped" : "",
                         h.bodyQueue().supportWeight[0], h.bodyQueue().supportWeight[1]);
+            // The bounded motion: the desired pelvis, the output's lag behind
+            // it (along the way and up) and the output's speed.
+            const math::Vec3 want = h.decider().desiredPelvis(), lag = want - math::Vec3(p[0][3]);
+            const math::Vec3 v = h.decider().outputHipsVelocity();
+            std::printf("        %.3f s desired y %.3f | output behind: level %.1f cm, up %+.1f cm | output v level %.2f up %+.2f m/s\n",
+                        time, want.y, 100.0f * std::sqrt(lag.x * lag.x + lag.z * lag.z), 100.0f * lag.y,
+                        std::sqrt(v.x * v.x + v.z * v.z), v.y);
         }
         for (int f = 0; f < 2; ++f) {
             const bool left = f == 0;

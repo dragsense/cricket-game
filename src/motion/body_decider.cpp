@@ -329,6 +329,7 @@ void BodyDecider::clampLimb(Plan& p, int e, const int* joints, int count, math::
 }
 
 math::Vec3 BodyDecider::planCentreOfMass() const { return centreOfMass(desired_); }
+math::Vec3 BodyDecider::desiredPelvis() const { return pelvisOf(desired_).position; }
 
 math::Vec3 BodyDecider::centreOfMass(const Plan& p) const {
     math::Vec3 sum(0.0f);
