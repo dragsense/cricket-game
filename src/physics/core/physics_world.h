@@ -56,6 +56,8 @@ struct CharacterSettings {
     // m: the hips may sink this far below the pose's pelvis with no hold
     // (their weight goes down the legs); below it the spring catches them.
     float supportFreeDown = 0.03f;
+    // m: and rise this far above it (jog, run) before the spring catches.
+    float supportFreeUp = 0.05f;
     // The real pelvis off the pin's target (m, level): under `small` nothing;
     // past `medium` for `sustained` s a recovery step is reported; past
     // `large` the strength goes (ragdoll) when the release is on.
@@ -350,10 +352,11 @@ public:
     // driven by a spring motor toward its target): `linear` for position
     // (maxTorque read as the force limit, N), `angular` for rotation. Load
     // time; kInvalidJoint when full. Off/on: setJointEnabled. freeDown > 0:
-    // up/down has no motor; b is free from its target to freeDown (m) below
-    // it, then a soft limit with `linear`'s stiffness and damping (its force
-    // limit does not apply there).
-    JointId createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular, float freeDown = 0.0f);
+    // up/down has no motor; b is free from freeDown (m) below its target to
+    // freeUp above it, then a soft limit with `linear`'s stiffness and
+    // damping (its force limit does not apply there).
+    JointId createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular, float freeDown = 0.0f,
+                          float freeUp = 0.0f);
     // Its target: b's centre of mass at `offset` from a's (a's frame) and b's
     // rotation `rotation` relative to a's.
     void setSupportTarget(JointId id, math::Vec3 offset, math::Quat rotation);

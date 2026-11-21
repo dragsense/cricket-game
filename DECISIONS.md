@@ -956,3 +956,18 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** applying the stance hold first (computed, it is right, but the spring was
   fighting the chatter, not gravity); a stance hold split 50/50 between the feet without
   centres of pressure (measured worse: 105 N m, reverted).
+
+## 2026-11-21: The support spring is a slack rope (up and down)
+- **Decision (the user's design and OK):** the hold's anchor rides the plan's pelvis
+  height too (the clamp to standing height gone); up/down is free from `freeDown` (0.03 m)
+  below the target to `freeUp` (0.05 m, [E], physics_world.json character.support) above
+  it, and Jolt's soft limit (the linear spring) catches only outside. The band keeps both
+  sizes when the target moves (the target's y, unused by the off motor, marks its centre).
+- **Why:** the hold blocked every rise (the clamp, and the band's top at the target: above
+  the plan the ~46 kN/m limit pulled the hips down), so jog and run could not lift the
+  hips. A slack rope catches a fall but lets the legs carry the body. Measured: walking
+  the spring catches far less (1.2 m/s 202 -> 13 ticks), slides unchanged; squat spring
+  torque 122.5 -> 135.2 N m (open).
+- **Rejected:** the anchor on the real hips (no gap, holds nothing: the 11-09 loop; the
+  body falls, CRICKET_NOHOLD); a tight hold at the plan's hips (the spring would carry the
+  weight, not the legs).

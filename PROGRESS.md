@@ -155,6 +155,20 @@ Pieces (pass numbers in brackets):
   of pressure (Winter 1995): standing ankle 1.4, knee 5.5, hip 0.4 N m; one foot knee 56,
   hip 87. A first try that split the stance hold 50/50 without centres of pressure made
   it worse (spring 105 N m, straight knee 38 N m) and was reverted.
+- [ ] S2 Support spring as a slack rope (2026-11-21, awaiting the user's game check;
+  DECISIONS). The hold's anchor rides the plan's pelvis (the standing-height clamp gone);
+  up/down free from 3 cm below the plan to 5 cm above (`freeUp`, physics_world.json),
+  caught only outside: the hips may rise (jog, run). Measured (release; before -> after):
+  standing 10.7 -> 10.8, one foot 67.2 -> 67.2, squat (hand at the toes) 122.5 -> 135.2
+  N m (before, the band's top held the hips 160 N down); walk slide 0.4 / 1.2 / 1.6 m/s
+  3.6 / 6.1 / 9.8 -> 3.1 / 5.9 / 10.0 cm, A 2.9 -> 2.9, S 8.9 -> 8.9; ticks the spring
+  caught (real pelvis outside the band) 49 / 202 / 251, A 141, S 127 -> 0 / 13 / 111,
+  A 7, S 70; real - plan at 1.6 m/s -4.0..+0.8 -> -4.6..+3.2 cm (the drop below the band
+  was there before). Arrow-key limb test unchanged; all tests pass. First try reported
+  as a miss (predicted squat 122, walk never caught) and reverted, then re-applied on
+  the user's OK once the baseline showed the catches were older.
+  Open: squat 135 N m (why the spring torque grows once free up/down); the hips 3.5-4.6
+  cm below the plan in walking.
 - [ ] P4 Stance hold: the plan's statics, the ground push inside the foot's functional
   base of support (Sloot 2025) [spring vertical ~0 in standing, one foot, squat; static
   leg motors < 5 N m].

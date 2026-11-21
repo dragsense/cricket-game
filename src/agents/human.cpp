@@ -330,7 +330,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
     angular.maxTorque = c.supportMaxTorque;
     support_ = anchor_ == physics::kInvalidBody ? physics::kInvalidJoint
                                                 : world.createSupport(anchor_, humanBody_.parts()[0].body, linear, angular,
-                                                                    c.supportFreeDown);
+                                                                    c.supportFreeDown, c.supportFreeUp);
     if (support_ == physics::kInvalidJoint) {
         LOG_ERROR("human: no room for the capsule's hold in the physics world");
         physics_ = nullptr;
@@ -534,12 +534,10 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
         // damper by the speed off the PLAN's (a still anchor would damp the
         // hips toward standing still and hold them back). Not the capsule:
         // that follows the real hips, and a hold riding it would chase them
-        // (the 11-09 loop). Never higher than standing (as the capsule is
-        // never taller than the player): pulled higher, the hold would lift
-        // the feet off the ground.
-        math::Transform planned = humanBody_.partPose(0, target);
-        planned.position.y -= std::max(0.0f, pelvisY - restPelvisHeight_);
-        const math::Transform pelvis = root_ * planned;  // world
+        // (the 11-09 loop). Up/down it is a slack rope: free from freeDown
+        // below the plan to freeUp above it (the hips may rise, as in a run),
+        // caught only outside (DECISIONS 2026-11-21).
+        const math::Transform pelvis = root_ * humanBody_.partPose(0, target);  // world
         const math::Quat turn = root_.rotation;
         world.moveKinematic(anchor_, math::Transform{pelvis.position, turn}, dt);
         world.setSupportTarget(support_, math::Vec3(0.0f), math::inverse(turn) * pelvis.rotation);

@@ -51,7 +51,10 @@
       "maxTorque": 600,   // N m
       // m: the hips sink this far below the pose's pelvis with no hold (their
       // weight goes down the thighs onto the knees); below it the spring catches.
-      "freeDown": 0.03
+      "freeDown": 0.03,
+      // m [E]: and rise this far above it (jog, run lift the hips); above it
+      // the spring catches. A slack rope against a fall, not a hold.
+      "freeUp": 0.05
     },
     // The capsule follows the real hips (DECISIONS 2026-11-11); the hold's
     // anchor rides the plan's pelvis.

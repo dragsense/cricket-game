@@ -724,6 +724,8 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
     float swTrack[2][2] = {{0.0f, 0.0f}, {0.0f, 0.0f}}, swRange[2][2] = {{0.0f, 0.0f}, {0.0f, 0.0f}};
     math::Vec3 lastPlanHips{0.0f}, lastRealHips{0.0f};
     bool hipsSeen = false;
+    Range gapRange;
+    int caught = 0;
     float apex[2] = {0.0f, 0.0f}, knee[2] = {0.0f, 0.0f}, planApex[2] = {0.0f, 0.0f}, planKnee[2] = {0.0f, 0.0f};
     const math::Vec3 start[2] = {h.ankle(true, *h.bodyQueue().plan, h.root()), h.ankle(false, *h.bodyQueue().plan, h.root())};
     const float ground = start[0].y;  // the standing ankle's height
@@ -769,7 +771,17 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
             lastRealHips = rh;
             hipsSeen = true;
         }
+        // The real pelvis body's height off the hold's target (the plan's
+        // pelvis body): the support's band is -freeDown .. +freeUp; outside
+        // it the spring catches.
+        const float bandGap = world.transform(h.humanBody().parts()[0].body).position.y -
+                              (h.root() * h.humanBody().partPose(0, p)).position.y;
+        gapRange.add(bandGap);
+        if (bandGap < -world.settings().character.supportFreeDown || bandGap > world.settings().character.supportFreeUp)
+            ++caught;
         if (std::getenv("CRICKET_TRACE") && time >= 2.0f && time < 3.6f && i % 2 == 0) {
+            std::printf("        %.3f s pelvis real - plan %+.1f cm (band %+.0f..%+.0f)\n", time, 100.0f * bandGap,
+                        -100.0f * world.settings().character.supportFreeDown, 100.0f * world.settings().character.supportFreeUp);
             // Around each landing: the hips' height (plan, real) and both knees.
             const float ground0 = h.root().position.y;
             auto kneeOf = [&](const std::vector<math::Mat4>& m, bool l) {
@@ -867,6 +879,8 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
         }
     }
     std::printf("worst slide in a stance %.1f cm\n", 100.0f * worstAll);
+    std::printf("pelvis real - plan %+.1f..%+.1f cm, %d ticks outside the band (caught)\n", 100.0f * gapRange.lo,
+                100.0f * gapRange.hi, caught);
     std::printf("hips speed (steady, 2 s on): plan %.2f..%.2f, real %.2f..%.2f m/s\n", planSpeed.lo, planSpeed.hi,
                 realSpeed.lo, realSpeed.hi);
 }
