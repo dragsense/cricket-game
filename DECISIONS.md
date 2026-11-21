@@ -904,3 +904,13 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Why:** the user's rule. Scaling only the motor strength by the weight left the
   joint's hard upper limit and its `freeDown` spring active, so the body was never free.
 - **Rejected:** zeroing the motor alone (the limits still hold the body).
+
+## 2026-11-21: The shoulder girdle is a body (muscle plan P2)
+- **Decision:** the `clavicle` bone (clavicle + scapula as one body) has mass 1.2 % per side
+  (Veeger et al. 1991: 0.156 + 0.705 kg), taken from the chest (de Leva's upper trunk 15.96
+  -> 13.56 %, the total unchanged); shape, ranges and stiffness as every other part (its
+  existing joint limits, K from the inertia beyond it); `muscles.maxTorque` 45 N m from
+  isometric protraction / retraction 13-24 kg at the arm (Williams 2009, women) times ~0.21 m.
+  `planTrunk` turns it like the spine joints (no clavicle-only code).
+- **Why:** without a body the plan's clavicle turn landed in the shoulder (PROGRESS D1).
+- **Rejected:** per-direction girdle strengths (one value is enough for now).

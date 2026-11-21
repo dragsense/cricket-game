@@ -85,8 +85,23 @@ Pieces (pass numbers in brackets):
   decider's / travel's last constants in `human_joints.json`); toe-off only for a step's
   forward share (a side or backward step keeps the foot flat); both feet with no weight:
   the support lets go and the body falls by physics (DECISIONS 2026-11-21).
-- [ ] P2 Clavicle body and muscle (mass, strength from research) [hand across: real off
-  plan 29 -> < 5 cm].
+- [x] P2 Clavicle body and muscle (mass, strength from research) [hand across: real off
+  plan 29 -> < 5 cm]. Built 2026-11-21 (DECISIONS): the shoulder girdle is its own body,
+  1.2 % per side (Veeger 1991) from the chest (15.96 -> 13.56 %), its existing ranges, muscle
+  45 N m (Williams 2009); planTrunk turns it like the spine joints. Measured before -> after:
+  - Hand across held: real off plan 0.1 -> 0.1 cm (P1 had 29 -> 0.1); plan off goal 27.8 ->
+    27.8 (the goal is within the arm's reach: no trunk queue, the shoulder's adduction stops it).
+  - Arrow-key, real off plan worst: across 4.5 -> 4.5 cm, forward 4.3 -> 4.7, back 4.3 ->
+    4.6, out 3.8 -> 4.0, up 16.4 -> 17.0, down 4.6 -> 4.7, feet unchanged; plan final miss
+    across 31.6 -> 21.3, back 24.1 -> 22.0, down 19.3 -> 18.4 cm.
+  - Moving hand, wrist real off plan worst: forward 4.3 -> 4.7, across 4.2 -> 4.3, up 4.5 ->
+    4.6, down 4.6 -> 4.7 cm; Jolt clamp worst 0.06 deg. Free right arm tracking: across
+    34.2 -> 33.4, down 44.6 -> 46.5 deg; its clavicle at the torque limit 20 / 48 ticks
+    (tracking 8.6 / 13.1 deg: the free arm's 12 rad/s swing, P3 / B4).
+  - Squat (hand L at the toes): all foot boxes on the ground; support spring 156 -> 164 N,
+    48.8 -> 62.5 N m (the plan's girdle turn takes the arm forward; with the turn but no
+    girdle body 85.9 N m; P4 / P6). Standing and one foot unchanged (10.6, 67.1 N m).
+  - Cost (release, one human): ~192 -> ~208 us per tick (21 parts, was 19; noise ~10 %).
 - [ ] P3 Drive feedforward (internal model; equilibrium point leads, Feldman, Flash 1987;
   Wolpert & Kawato 1998): the target led by D / K x the plan's joint velocity, plus each
   joint's inertia torque for the plan's acceleration [moving tracking < 1.5 deg; hand lag
