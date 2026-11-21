@@ -501,6 +501,16 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
         // support under the feet.
         if (supportShare_ < 1.0f) supportShare_ = std::min(1.0f, supportShare_ + dt / std::max(c.recoverTime, 1e-3f));
         const float onFeet = std::min(1.0f, queue_.supportWeight[0] + queue_.supportWeight[1]);
+        // Both feet in the air (no weight on either): the hold lets go and the
+        // body falls by physics alone (the user's rule, DECISIONS 2026-11-21);
+        // whatever the release setting. At rest the capsule takes it again.
+        if (queue_.supportWeight[0] + queue_.supportWeight[1] < 1e-3f) {
+            world.setJointEnabled(support_, false);
+            supportOn_ = false;
+            restTime_ = 0.0f;
+            LOG_INFO("human: both feet off the ground: the capsule lets go");
+            return;
+        }
         const float k = supportShare_ * onFeet;
         world.setSupportLimits(support_, c.supportMaxForce * k, c.supportMaxTorque * k);
         // The real pelvis off the hold's target (level): small is nothing;
