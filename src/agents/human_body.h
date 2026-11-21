@@ -51,6 +51,9 @@ struct MuscleSettings {
 // BIOMECHANICS 9.6).
 struct MuscleTiming {
     float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
+    // A goal that moves more than goalJump (m) in one tick jumped (a press: a
+    // new path); one moving more than goalMoved after its path ended starts one.
+    float goalJump = 0.02f, goalMoved = 1e-3f;
 };
 
 class HumanBody {

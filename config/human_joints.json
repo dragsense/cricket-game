@@ -120,8 +120,12 @@
     // turns less and against the pelvis; slow steps: with it (real: thorax 12
     // deg at 0.40 m/s, 6 at 1.47 m/s, Yang 2013; relative phase -20 deg slow,
     // -150 fast). [E] fitted roughly: walking 0.9 m/s about half the pelvis's
-    // turn, lagging.
-    "trunkTurn": { "frequency": 2.5, "damping": 0.5 },
+    // turn, lagging. maxDeg: the chest's turn against the pelvis stays within
+    // the thoracic turn's range, 30 deg each way (BIOMECHANICS 2).
+    "trunkTurn": { "frequency": 2.5, "damping": 0.5, "maxDeg": 30 },
+    // A foot on its way this close (m) above where it was pinned still stands
+    // on the ground (not lifted yet: the weight shift before a step). [E]
+    "onGround": 0.02,
     // Free arms (no goal) cancel this share of the rest of the body's turning
     // about the vertical: arm swing cuts the vertical ground reaction moment
     // by ~63 % in walking (Collins, Adamczyk & Kuo 2009).
@@ -214,7 +218,10 @@
       // The longest weight shift before a lift (s): needing longer, the body
       // steps anyway. Gait initiation's APA: ~0.5 s at natural speed, ~0.3 s
       // at the fastest.
-      "weightShiftMost": 0.5
+      "weightShiftMost": 0.5,
+      // A hips path longer than a step reaches is shared by at most this
+      // many steps (each landing plans the next). [E]
+      "mostSteps": 4
     }
   },
 
@@ -227,6 +234,11 @@
     "fittsA": 0.1,
     "fittsB": 0.1,
     "fittsWidth": 0.1,
+    // A goal moving more than goalJump (m) in one tick jumped (a press: a new
+    // path from where the point is); one moving more than goalMoved after its
+    // path ended starts a new one. [E]
+    "goalJump": 0.02,
+    "goalMoved": 0.001,
     "activationTime": 0.03,  // s, excitation to force (measured 10-50 ms): motor f = 1 / (2 pi t)
     "damping": 1.0,          // ratio: reaches the pose without overshoot
     // Strongest torque per joint, N m (adult men; one value per joint for both

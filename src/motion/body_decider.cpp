@@ -1,5 +1,6 @@
 #include "motion/body_decider.h"
 
+#include "core/log.h"
 #include "ik/joint_limits.h"
 
 #include <algorithm>
@@ -71,9 +72,6 @@ math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach) {
 
 // Turns smaller than this (rad) are no direction at all.
 constexpr float kMinAngle = 1e-4f;
-// A Driven foot this close (m) above where it was pinned still stands on the
-// ground (it has not lifted yet: the weight shift before a step).
-constexpr float kOnGround = 0.02f;
 
 void add(BodyQueue& out, int joint, PartMove kind, math::Vec3 direction, math::Vec3 velocity, Goal goal, bool active,
          float share = 1.0f) {
@@ -428,8 +426,12 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
         if (p.head < 0.0f && p.hands < 0.0f && p.hips < 0.0f && p.chest < 0.0f) work_.passive = s.stepPassive;
     }
 
+    if (s.balanceStepOn && s.gravity <= 0.0f && !warnedNoGravity_) {
+        warnedNoGravity_ = true;
+        LOG_WARN("body decider: gravity is {} m/s^2 (<= 0): no balance step and no capture-point pendulum", s.gravity);
+    }
     blendWeights(t, s);
-    pinFeet(t);
+    pinFeet(t, s);
     supportAndHips(t, s, out);
     desiredPose(t, s, out);
     limitOutput(t, s, out);
@@ -543,7 +545,7 @@ const Target& BodyDecider::given(const TargetSet& t, int k) const {
     return targets[k]->mode == TargetMode::Driven ? *targets[k] : last_[k];
 }
 
-void BodyDecider::pinFeet(const TargetSet& t) {
+void BodyDecider::pinFeet(const TargetSet& t, const BodyDeciderSettings& s) {
     for (int i = 0; i < 2; ++i) {
         const int ankle = joints_.legs[i].end;
         if (ankle < 0) continue;
@@ -561,7 +563,7 @@ void BodyDecider::pinFeet(const TargetSet& t) {
             // where it was pinned (the weight shift before a step).
             const float groundY = anchor_[i].y;
             const math::Vec3 at = planPos(output_, ankle);
-            grounded_[i] = grounded_[i] && at.y <= groundY + kOnGround;
+            grounded_[i] = grounded_[i] && at.y <= groundY + s.onGround;
             anchor_[i] = math::Vec3(at.x, groundY, at.z);  // the ground under it
         } else {
             // Free: pinned where it last was. A foot lifted and let go lands
@@ -867,8 +869,8 @@ void BodyDecider::trunkSpring(float pelvisYaw, float dt, const BodyDeciderSettin
     const float w = std::max(s.trunkTurnFrequency, 0.0f);
     trunkTwistRate_ += dt * (-w * w * trunkTwist_ - 2.0f * s.trunkTurnDamping * w * trunkTwistRate_ - accel);
     trunkTwist_ += dt * trunkTwistRate_;
-    constexpr float kMaxTwist = 0.5236f;  // 30 deg, the thoracic turn's range each way (BIOMECHANICS 2)
-    trunkTwist_ = std::clamp(trunkTwist_, -kMaxTwist, kMaxTwist);
+    const float maxTwist = std::max(s.trunkMaxTwist, 0.0f);  // the thoracic turn's range each way
+    trunkTwist_ = std::clamp(trunkTwist_, -maxTwist, maxTwist);
 }
 
 float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const {
@@ -1528,11 +1530,10 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
         // More steps only when this one, cut short by its reach, still leaves
         // the centre of mass out of the support (a wide side step may catch
         // it although the hips do not end between the feet).
-        constexpr int kMostSteps = 4;
         const math::Vec3 after[2] = {spot, anchor_[1 - foot]};
         const bool caught = outsideFeet(at, after, 2, s) <= s.stepMargin;
         const int steps = beyondReach && !caught && got > 1e-3f
-                              ? std::clamp(static_cast<int>(std::ceil(need / got - 1e-3f)), 1, kMostSteps)
+                              ? std::clamp(static_cast<int>(std::ceil(need / got - 1e-3f)), 1, std::max(s.mostSteps, 1))
                               : 1;
         out.step.wanted = true;
         out.step.foot = foot;

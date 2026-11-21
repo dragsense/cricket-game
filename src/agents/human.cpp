@@ -217,6 +217,8 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         muscleTiming_.fittsA = jointsConfig_->getFloat("muscles.fittsA", muscleTiming_.fittsA);
         muscleTiming_.fittsB = jointsConfig_->getFloat("muscles.fittsB", muscleTiming_.fittsB);
         muscleTiming_.fittsWidth = jointsConfig_->getFloat("muscles.fittsWidth", muscleTiming_.fittsWidth);
+        muscleTiming_.goalJump = jointsConfig_->getFloat("muscles.goalJump", muscleTiming_.goalJump);
+        muscleTiming_.goalMoved = jointsConfig_->getFloat("muscles.goalMoved", muscleTiming_.goalMoved);
         // A step's swing is a foot's aimed move too: the same Fitts' law.
         deciderSettings_.fittsA = muscleTiming_.fittsA;
         deciderSettings_.fittsB = muscleTiming_.fittsB;
@@ -235,6 +237,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.standingReachShare = dv("decider.standingReachShare", deciderSettings_.standingReachShare);
         deciderSettings_.trunkTurnFrequency = dv("decider.trunkTurn.frequency", deciderSettings_.trunkTurnFrequency);
         deciderSettings_.trunkTurnDamping = dv("decider.trunkTurn.damping", deciderSettings_.trunkTurnDamping);
+        deciderSettings_.trunkMaxTwist =
+            math::radians(dv("decider.trunkTurn.maxDeg", math::degrees(deciderSettings_.trunkMaxTwist)));
+        deciderSettings_.onGround = dv("decider.onGround", deciderSettings_.onGround);
         deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));
         deciderSettings_.blendTime = dv("decider.blendTime", deciderSettings_.blendTime);
         deciderSettings_.supportBlendTime = dv("decider.supportBlendTime", deciderSettings_.supportBlendTime);
@@ -266,6 +271,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.maxStepSide = dv("decider.balanceStep.maxStepSide", deciderSettings_.maxStepSide);
         deciderSettings_.reachDrop = dv("decider.balanceStep.reachDrop", deciderSettings_.reachDrop);
         deciderSettings_.weightShiftMost = dv("decider.balanceStep.weightShiftMost", deciderSettings_.weightShiftMost);
+        deciderSettings_.mostSteps = jointsConfig_->getInt("decider.balanceStep.mostSteps", deciderSettings_.mostSteps);
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
@@ -348,9 +354,9 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         // A new goal (a press: it jumps) starts a new path from where the
         // point is, in Fitts' time for the new way; a goal moving on smoothly
         // retargets the path under way, or starts one once it has ended.
-        constexpr float kJump = 0.02f, kMoved = 1e-3f;  // m in one tick
-        const float moved = math::distance(goalWorld, path.to);
-        if (!path.on || path.end != end || moved > kJump || (path.time >= path.duration && moved > kMoved)) {
+        const float moved = math::distance(goalWorld, path.to);  // m in one tick
+        if (!path.on || path.end != end || moved > muscleTiming_.goalJump ||
+            (path.time >= path.duration && moved > muscleTiming_.goalMoved)) {
             path.from = path.on && path.end == end ? path.at
                                                    : root_.transformPoint(math::Vec3(physicsModels_[static_cast<size_t>(end)][3]));
             path.end = end;
@@ -362,7 +368,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         path.to = goalWorld;
         path.time += dt;
         const float s = std::clamp(path.time / std::max(path.duration, 1e-3f), 0.0f, 1.0f);
-        path.at = math::lerp(path.from, path.to, s * s * s * (10.0f + s * (6.0f * s - 15.0f)));  // minimum jerk
+        path.at = math::lerp(path.from, path.to, math::minimumJerk(s));
         return math::inverse(root_).transformPoint(path.at);
     };
     // A path's end (character space) and its time left, for the sync formula.
@@ -498,8 +504,9 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
         const float k = supportShare_ * onFeet;
         world.setSupportLimits(support_, c.supportMaxForce * k, c.supportMaxTorque * k);
         // The real pelvis off the hold's target (level): small is nothing;
-        // past medium for a while the planner is asked for a recovery step
-        // (reported); past large the hold lets go (when the release is on).
+        // past medium for a while it is marked Medium (pelvisError_; nothing
+        // reads that yet: no recovery step is asked for); past large the hold
+        // lets go (when the release is on).
         const math::Vec3 real = world.transform(humanBody_.parts()[0].body).position;
         const math::Vec3 off = real - pelvis.position;
         pelvisErrorNow_ = std::sqrt(off.x * off.x + off.z * off.z);

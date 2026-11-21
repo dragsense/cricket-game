@@ -159,6 +159,14 @@ struct BodyDeciderSettings {
     // ratio). Driven faster than its frequency (quicker steps) it lags and
     // turns less, opposite to the pelvis; slowly, with it (BIOMECHANICS 4.3).
     float trunkTurnFrequency = 2.5f, trunkTurnDamping = 0.5f;
+    // The chest's turn against the pelvis stays within this (rad) each way:
+    // the thoracic turn's range (BIOMECHANICS 2); decider.trunkTurn.maxDeg.
+    float trunkMaxTwist = 0.5236f;  // 30 deg
+    // A Driven foot this close (m) above where it was pinned still stands on
+    // the ground (it has not lifted yet: the weight shift before a step).
+    float onGround = 0.02f;
+    // The most steps a hips path longer than a step reaches is shared by.
+    int mostSteps = 4;
     // A limb reaches at most its span with the knee or elbow bent this much
     // (rad): quiet standing knee 0-5 deg (BIOMECHANICS 2); the two-bone
     // solve's soften keeps it from snapping.
@@ -270,7 +278,7 @@ private:
     // Target k's pose for the blend: the given one while Driven, else the
     // last given (fading out).
     const Target& given(const TargetSet& t, int k) const;
-    void pinFeet(const TargetSet& t);
+    void pinFeet(const TargetSet& t, const BodyDeciderSettings& s);
     void supportAndHips(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void desiredPose(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void limitOutput(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
@@ -402,6 +410,7 @@ private:
     BodyDeciderJoints joints_;
     Plan desired_, output_;
     bool seeded_ = false;
+    bool warnedNoGravity_ = false;  // the "no gravity: no balance step" warning, logged once
     float armLength_[2]{};  // upper arm + forearm
     float legLength_[2]{};  // thigh + shin
     float thighLength_[2]{}, shinLength_[2]{};
