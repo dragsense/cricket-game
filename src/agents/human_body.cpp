@@ -183,6 +183,14 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     }
     for (size_t i = 0; i < parts_.size(); ++i) parts_[i].body = bodies[i];
     rotations_.assign(parts_.size(), math::identityQuat());
+    lastTarget_.assign(parts_.size(), math::identityQuat());
+    velocity_.assign(parts_.size(), math::Vec3(0.0f));
+    leadReady_ = false;
+    activationTime_ = std::max(muscles.activationTime, 1e-3f);
+    lead_.assign(parts_.size(), 0.0f);
+    for (size_t i = 0; i < parts_.size() && i < ragdoll.size(); ++i)
+        if (ragdoll[i].parent >= 0 && ragdoll[i].motor.stiffness > 0.0f)
+            lead_[i] = ragdoll[i].motor.damping / ragdoll[i].motor.stiffness;
     beyondMass_.assign(parts_.size(), 0.0f);
     beyondMoment_.assign(parts_.size(), math::Vec3(0.0f));
     hold_.assign(parts_.size(), math::Vec3(0.0f));
@@ -232,7 +240,9 @@ ik::JointLimit HumanBody::limitNow(const physics::PhysicsWorld& world, int part)
 }
 
 void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
-                          int headJoint) const {
+                          int headJoint, float dt) const {
+    const bool lead = leadReady_ && dt > 0.0f;
+    const float follow = dt > 0.0f ? dt / (activationTime_ + dt) : 0.0f;
     for (size_t i = 0; i < parts_.size(); ++i) {
         const Part& p = parts_[i];
         if (p.parent < 0) continue;
@@ -253,11 +263,27 @@ void HumanBody::drivePose(physics::PhysicsWorld& world, const std::vector<math::
         } else {
             rotations_[i] = math::inverse(partPose(p.parent, models).rotation) * child;
         }
+        // The lead along the pose's own motion (not the head's reflex).
+        math::Quat now = math::normalize(rotations_[i]);
+        if (lead && p.joint != headJoint) {
+            math::Quat last = lastTarget_[i];
+            if (math::dot(now, last) < 0.0f) last = -last;
+            const math::Vec3 w = math::rotationVector(math::normalize(now * math::inverse(last))) / dt;
+            velocity_[i] += (w - velocity_[i]) * follow;
+            const math::Vec3 ahead = velocity_[i] * lead_[i];
+            const float angle = math::length(ahead);
+            if (angle > 1e-6f) rotations_[i] = math::normalize(math::fromAxisAngle(ahead / angle, angle) * now);
+        } else {
+            velocity_[i] = math::Vec3(0.0f);
+        }
+        lastTarget_[i] = now;
     }
+    leadReady_ = true;
     world.driveRagdollToPose(ragdoll_, rotations_.data(), static_cast<int>(rotations_.size()));
 }
 
 void HumanBody::reset(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root) const {
+    leadReady_ = false;  // the pose jumps: no motion to lead from
     for (size_t i = 0; i < parts_.size(); ++i)
         world.resetBody(parts_[i].body, root * partPose(static_cast<int>(i), models));
 }

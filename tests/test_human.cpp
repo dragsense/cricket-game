@@ -689,6 +689,71 @@ TEST_CASE("measure: foot moved on the ground, it steps" * doctest::skip()) {
     }
 }
 
+// Measurement (on demand, 2026-11-21): W held (the hips pushed forward), then
+// let go. Per step: when it lands, its length (plan), the real ankle off the
+// plan's pinned spot at landing and the most it is off (level) through that
+// foot's stance: the slide the user sees. Prints only.
+TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
+    const float hold = std::getenv("CRICKET_HOLD") ? static_cast<float>(std::atof(std::getenv("CRICKET_HOLD"))) : 4.0f;
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const math::Vec3 fwd = h.root().transformDirection(math::kForward);
+    std::vector<math::Mat4> real(static_cast<size_t>(h.rig().numJoints()));
+    math::Vec3 spot[2], lastSpot[2];
+    bool stance[2] = {false, false}, had[2] = {false, false};
+    bool wasPlanUp[2] = {false, false}, wasRealUp[2] = {false, false};
+    float worst[2] = {0.0f, 0.0f}, landedAt[2] = {0.0f, 0.0f}, worstAll = 0.0f;
+    auto levelDist = [](math::Vec3 a, math::Vec3 b) { return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)); };
+    const int ticks = static_cast<int>((hold + 2.0f) * 120.0f);
+    for (int i = 0; i < ticks; ++i) {
+        const float time = i * kDt;
+        h.setWalkInput(time < hold);
+        h.tick(kDt);
+        world.step(kDt);
+        if (!h.physicalModels(world, 1.0f, real)) continue;
+        const std::vector<math::Mat4>& p = *h.bodyQueue().plan;
+        for (int f = 0; f < 2; ++f) {
+            const bool left = f == 0;
+            const math::Vec3 r = h.ankle(left, real, h.root());
+            if (stance[f] && h.stepFoot() == f) {  // its next step started: the stance ends
+                std::printf("    %s stance %.2f-%.2f s: real ankle off its spot at most %.1f cm\n", left ? "L" : "R", landedAt[f],
+                            time, 100.0f * worst[f]);
+                worstAll = std::max(worstAll, worst[f]);
+                stance[f] = false;
+            }
+            if (h.bodyQueue().landed[f]) {
+                spot[f] = h.ankle(left, p, h.root());
+                const float length = had[f] ? 100.0f * math::dot(spot[f] - lastSpot[f], fwd) : 0.0f;
+                std::printf("  %.2f s %s lands | step %.1f cm | real ankle %.1f cm off (behind %.1f)\n", time,
+                            left ? "L" : "R", length, 100.0f * levelDist(r, spot[f]), 100.0f * math::dot(spot[f] - r, fwd));
+                lastSpot[f] = spot[f];
+                had[f] = stance[f] = true;
+                worst[f] = 0.0f;
+                landedAt[f] = time;
+            }
+            if (stance[f]) worst[f] = std::max(worst[f], levelDist(r, spot[f]));
+            // The plan's lift (its swing starts) and the real ankle leaving /
+            // reaching the ground (more / less than 1 cm above its standing height).
+            const bool planUp = h.bodyTargets().foot[f].swing > 0.0f;
+            const bool realUp = had[f] ? r.y > spot[f].y + 0.01f : r.y > h.ankle(left, p, h.root()).y + 0.01f;
+            if (planUp != wasPlanUp[f])
+                std::printf("      %.2f s plan %s %s\n", time, left ? "L" : "R", planUp ? "lifts" : "down");
+            if (realUp != wasRealUp[f])
+                std::printf("      %.2f s REAL %s %s\n", time, left ? "L" : "R", realUp ? "lifts" : "touches down");
+            wasPlanUp[f] = planUp;
+            wasRealUp[f] = realUp;
+        }
+    }
+    std::printf("worst slide in a stance %.1f cm\n", 100.0f * worstAll);
+}
+
 // Measurement (on demand, 2026-11-16, muscles A1): each muscle's stiffness as
 // built (K = inertia beyond the joint x (1 / activationTime)^2, damping 2 sqrt(K I))
 // against the research values (BIOMECHANICS 14: K = relaxed + slope x |torque

@@ -104,9 +104,18 @@ public:
     // from the posed one (the vestibulo-collic reflex keeps the head stable
     // in space, Pozzo et al. 1990), within its range. `headJoint`: the rig
     // joint of the head.
+    // The drive leads a moving pose (muscle plan P3): a motor's damper pulls
+    // toward no motion, so a target moving at w is followed D / K x w behind
+    // (PROGRESS D2); each target is set that far ahead along its own motion
+    // (the pose's joint velocity, eased over the activation time), so the
+    // muscle pulls toward where the pose is going (equilibrium point leads,
+    // Feldman; Flash 1987). Not the head (its target is a reflex from the
+    // real body, not the plan's motion). `dt`: s since the last drive.
     // No allocations.
     void drivePose(physics::PhysicsWorld& world, const std::vector<math::Mat4>& models, const math::Transform& root,
-                   int headJoint) const;
+                   int headJoint, float dt) const;
+    // The pose jumps (the plan starts over): the lead waits for its motion.
+    void restartDrive() const { leadReady_ = false; }
     // A part's joint range now: the plan's, a coupled bound set by the real
     // body's coupled joint (as JointLimits::limitIn reads the pose's).
     ik::JointLimit limitNow(const physics::PhysicsWorld& world, int part) const;
@@ -138,6 +147,14 @@ private:
     mutable std::vector<float> beyondMass_;         // scratch per part: mass of it and every part beyond it
     mutable std::vector<math::Vec3> beyondMoment_;  // scratch per part: their mass x centre of mass (world)
     mutable std::vector<math::Vec3> hold_;          // scratch per part: the torque its weight needs (world)
+    // The drive's lead: per part D / K (s), the target last tick (before its
+    // lead), its eased angular velocity (rad/s, parent's frame); none yet
+    // after a reset.
+    std::vector<float> lead_;
+    float activationTime_ = 0.03f;
+    mutable std::vector<math::Quat> lastTarget_;
+    mutable std::vector<math::Vec3> velocity_;
+    mutable bool leadReady_ = false;
 };
 
 } // namespace agents

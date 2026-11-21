@@ -6,6 +6,9 @@
     "ToggleDebugDraw": ["F2"],
     "ReloadConfig": ["F5"],
     "Quit": ["Escape"],
+    // Held: the hips are pushed forward (locomotion.json "move"); the body's
+    // decider steps after them. Let go: the hips stop, the last step lands.
+    "StepForward": ["W"],
     // Held modifier: Shift (limb test: arrows go up/down).
     "ModShift": ["LeftShift", "RightShift"],
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the

@@ -85,6 +85,9 @@ public:
     void setPoseHand(bool left, math::Vec3 world);
     void setPoseFoot(motion::Foot foot, math::Vec3 world);
     void clearPose();
+    // W held: the hips are pushed forward (locomotion.json "move"); the
+    // decider steps after them. Let go: they stop once the last step lands.
+    void setWalkInput(bool forward) { walkInput_ = forward; }
     // The rig joint a target moves (its bone: wrist, ankle, pelvis, chest, head).
     int goalJoint(motion::Goal goal) const;
     // Every part back at the planned standing pose, at rest, the hold on
@@ -153,6 +156,12 @@ private:
         bool on = false;
     };
     GoalPath handPath_, footPath_, hipsPath_;
+    // W: the hips target pushed forward (world, from the plan's hips when it
+    // starts) at walkSpeed_, eased to moveSpeed_ at moveAccel_; held until
+    // the last step has landed after a stop.
+    bool walkInput_ = false, hipsDriven_ = false;
+    math::Vec3 hipsGoal_{0.0f};
+    float walkSpeed_ = 0.0f, moveSpeed_ = 1.2f, moveAccel_ = 1.0f;
     // The decider's balance step's shape (locomotion.json "step").
     motion::StepSettings stepSettings_;
     float toeOffPitch_ = 0.0f;  // rad, the foot's plantarflexion at toe-off (step.toeOffPitchDeg)

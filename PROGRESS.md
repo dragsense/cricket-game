@@ -102,10 +102,18 @@ Pieces (pass numbers in brackets):
     48.8 -> 62.5 N m (the plan's girdle turn takes the arm forward; with the turn but no
     girdle body 85.9 N m; P4 / P6). Standing and one foot unchanged (10.6, 67.1 N m).
   - Cost (release, one human): ~192 -> ~208 us per tick (21 parts, was 19; noise ~10 %).
-- [ ] P3 Drive feedforward (internal model; equilibrium point leads, Feldman, Flash 1987;
-  Wolpert & Kawato 1998): the target led by D / K x the plan's joint velocity, plus each
-  joint's inertia torque for the plan's acceleration [moving tracking < 1.5 deg; hand lag
-  forward / across / up / down < 2 cm].
+- [x] P3 Drive feedforward, the lead only (2026-11-21, the user checked it in the game:
+  the slide is fixed; DECISIONS): each part's drive target led by D / K (0.06 s) x the
+  pose's joint velocity, eased over the activation time; not the head; no inertia torque.
+  Measure `measure: W walk, the feet slide`: the real ankle at the plan's landing 27 cm
+  behind -> 7-8 cm ahead (the easing overshoots; predicted 2-5); it lands with the plan
+  (was 0.1 s early, short, then dragged). Arrow-key, real off plan worst: forward 4.7 ->
+  3.8, back 4.6 -> 3.8, out 4.0 -> 3.1, up 17.0 -> 10.6, down 4.7 -> 4.7, across 4.5 ->
+  5.5 cm; feet on the ground 64-74 cm (unchanged, A1).
+- [x] W1 Walk: W pushes the hips target forward (locomotion.json "move": 1.2 m/s, 1 m/s^2;
+  forward only, held until the last step lands); the decider steps (no decider change).
+  Measured: steps 58 cm, ~0.48 s (~124/min). Open: the real other foot lifts 0.02-0.05 s
+  after the first lands (real double support ~0.1 s); the user: the step looks a bit big.
 - [ ] P4 Stance hold: the plan's statics, the ground push inside the foot's functional
   base of support (Sloot 2025) [spring vertical ~0 in standing, one foot, squat; static
   leg motors < 5 N m].

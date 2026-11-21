@@ -53,6 +53,7 @@ struct InputState {
 
 enum class Action : uint8_t {
     ToggleOverlay, ToggleDebugDraw, ReloadConfig, Quit,
+    StepForward,  // held (W): the hips are pushed forward; the body steps after them
     ModShift,  // held modifier (limb test: up/down)
     ToggleMouseLook,
     ResetPose,   // limb test: drop the targets, the body back at its standing pose

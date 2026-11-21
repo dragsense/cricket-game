@@ -32,6 +32,8 @@ void Human::loadLocomotion(const core::Config& c) {
     // Load-time only (builds path strings): the decider's balance step
     // (locomotion.json "step": its shape, its passive shares; its timing is
     // the decider's own, per step).
+    moveSpeed_ = c.getFloat("move.speed", moveSpeed_);
+    moveAccel_ = c.getFloat("move.acceleration", moveAccel_);
     toeClearance_ = c.getFloat("step.toeClearance", toeClearance_);
     stepSettings_.stepHeight = c.getFloat("step.stepHeight", stepSettings_.stepHeight);
     stepSettings_.peakAt = c.getFloat("step.swingPeakAt", stepSettings_.peakAt);
@@ -457,6 +459,32 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     } else {
         footPath_.on = false;
     }
+    // W: the hips target goes forward at the eased speed, forward only (across
+    // and up stay the body's own: the sway over the standing foot, the legs'
+    // height). Stopped, it holds until the last step has landed, then lets go
+    // (the hips settle between the feet). The decider makes the steps.
+    {
+        const float want = walkInput_ ? moveSpeed_ : 0.0f;
+        walkSpeed_ += std::clamp(want - walkSpeed_, -moveAccel_ * dt, moveAccel_ * dt);
+        const bool moving = walkSpeed_ > 1e-3f;
+        const bool settling = hipsDriven_ && (decider_.stepFoot() >= 0 || queue_.step.wanted);
+        if ((moving || settling) && joints_.pelvis >= 0 && g != static_cast<int>(motion::Goal::Hips)) {
+            if (!hipsDriven_) {
+                const std::vector<math::Mat4>& plan = decider_.outputModels();
+                hipsGoal_ = root_.transformPoint(math::Vec3(plan[static_cast<size_t>(joints_.pelvis)][3]));
+                hipsDriven_ = true;
+            }
+            hipsGoal_ += (root_.rotation * math::kForward) * (walkSpeed_ * dt);
+            t.hips.mode = motion::TargetMode::Driven;
+            t.hips.position = math::inverse(root_).transformPoint(hipsGoal_);
+            t.hips.velocity = math::kForward * walkSpeed_;
+            t.hips.weightRotation = 0.0f;
+            t.hips.directions[0] = math::kForward;
+            t.hips.directionCount = 1;
+        } else {
+            hipsDriven_ = false;
+        }
+    }
     // The decider decides the whole body, its balance steps too (a foot
     // moves only by a step, never slides; none in the limb test's foot case:
     // that foot is placed by hand), and gives the muscles its plan. A step
@@ -477,7 +505,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     // The muscles: they carry the weight beyond each joint, and Jolt's pose
     // drive corrects toward this tick's pose.
     humanBody_.holdWeight(world);
-    humanBody_.drivePose(world, target, root_, joints_.head);
+    humanBody_.drivePose(world, target, root_, joints_.head, dt);
     // The capsule is as tall as the pose's pelvis is high (crouch, stride).
     const float pelvisY = target[static_cast<size_t>(joints_.pelvis)][3].y;
     world.setCharacterHeight(capsule_, rig_.height() * std::clamp(pelvisY / restPelvisHeight_, 0.0f, 1.0f));
@@ -574,6 +602,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     humanBody_.boneModels(world, 1.0f, rig_, current_, root_, physicsModels_);
     rig_.modelToLocal(physicsModels_, physicsPose_);
     decider_.seed(physicsPose_);
+    humanBody_.restartDrive();
     supportShare_ = 0.0f;
     world.setSupportLimits(support_, 0.0f, 0.0f);
     world.setJointEnabled(support_, true);

@@ -26,6 +26,7 @@ constexpr NamedKey kNamedKeys[] = {
 
 constexpr const char* kActionNames[] = {
     "ToggleOverlay", "ToggleDebugDraw", "ReloadConfig", "Quit",
+    "StepForward",
     "ModShift",
     "ToggleMouseLook",
     "ResetPose",
@@ -80,6 +81,7 @@ ActionMap::ActionMap() {
     bind(Action::ToggleDebugDraw, Key::F2);
     bind(Action::ReloadConfig, Key::F5);
     bind(Action::Quit, Key::Escape);
+    bind(Action::StepForward, Key::W);
     bind(Action::ModShift, Key::LeftShift, Key::RightShift);
     bind(Action::ToggleMouseLook, Key::Tab);
     bind(Action::ResetPose, Key::R);

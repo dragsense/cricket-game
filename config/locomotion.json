@@ -4,6 +4,12 @@
 {
   // A balance step (motion::StepSettings): one foot at a time; the body
   // follows by the decider's shares.
+  // W pushes the hips forward at `speed` (m/s), reached and lost at
+  // `acceleration` (m/s^2). The decider steps after them (no walking timing
+  // here). Comfortable walking 1.2-1.4 m/s (BIOMECHANICS 4.2); gait
+  // initiation reaches its steady speed in about the first two steps
+  // (~1.2 s): ~1 m/s^2.
+  "move": { "speed": 1.2, "acceleration": 1.0 },
   "step": {
     // Its timing is the decider's per step: the weight shift by the capture
     // point (centre of pressure within the feet), the swing by Fitts' law for
