@@ -1037,6 +1037,7 @@ void weightCase(int which, const char* name) {
     constexpr int kTicks = 360, kLast = 120;  // 3 s, the last 1 s averaged
     math::Vec3 force(0.0f);
     float torque = 0.0f, dropY = 0.0f, offLevel = 0.0f;
+    math::Vec3 rootStart(0.0f);
     const int legJoint[3] = {h.rig().findJoint("thigh_l"), h.rig().findJoint("shin_l"), h.rig().findJoint("foot_l")};
     math::Quat lastLocal[3] = {math::identityQuat(), math::identityQuat(), math::identityQuat()};
     float jitterMax[3] = {0.0f, 0.0f, 0.0f}, jitterSum[3] = {0.0f, 0.0f, 0.0f};
@@ -1044,6 +1045,10 @@ void weightCase(int which, const char* name) {
         if (which == 1) h.setPoseFoot(motion::Foot::Left, a0 + math::Vec3(0.0f, 0.15f, 0.0f));
         if (which == 2) h.setPoseHand(true, toes);
         h.tick(kDt);
+        // CRICKET_NOHOLD (one-foot case): from 0.5 s the support spring's
+        // motors get no strength for this step (its free-down band stays),
+        // so the body can lean: does the plan follow it?
+        if (which == 1 && std::getenv("CRICKET_NOHOLD") && i * kDt >= 0.5f) world.setSupportLimits(h.supportJoint(), 0.0f, 0.0f);
         world.step(kDt);
         {
             // The plan's own motion per tick (what the drive's lead follows):
@@ -1077,6 +1082,17 @@ void weightCase(int which, const char* name) {
             for (const auto& part : hb.parts()) c += world.transform(part.body).position * part.mass;
             c /= hb.totalMass();
             const math::Vec3 off = math::inverse(h.root().rotation) * (c - hb.boneWorld(world, hb.partOf(h.rig().findJoint("foot_r"))).position);
+            {
+                // The plan's centre of mass (world, through the root) against
+                // the real one, and the root's drift since the start (cm, x).
+                math::Vec3 pc(0.0f);
+                for (size_t pi = 0; pi < hb.parts().size(); ++pi)
+                    pc += hb.parts()[pi].mass * h.root().transformPoint(hb.partPose(static_cast<int>(pi), *h.bodyQueue().plan).position);
+                pc /= hb.totalMass();
+                if (i == 0) rootStart = h.root().position;
+                std::printf("      real CoM x %.1f, plan CoM x %.1f, real - plan %.1f cm | root moved x %.1f cm\n",
+                            100.0f * c.x, 100.0f * pc.x, 100.0f * (c.x - pc.x), 100.0f * (h.root().position.x - rootStart.x));
+            }
             std::printf("    %.2f s spring %.0f N %.0f N m | foot_r off target %.1f deg | CoM off R ankle x %.1f z %.1f cm | weights %.2f %.2f\n",
                         i * kDt, math::length(sf), st, math::degrees(fs.tracking), 100.0f * off.x, 100.0f * off.z,
                         h.bodyQueue().supportWeight[0], h.bodyQueue().supportWeight[1]);
