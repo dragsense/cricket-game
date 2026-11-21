@@ -1037,11 +1037,32 @@ void weightCase(int which, const char* name) {
     constexpr int kTicks = 360, kLast = 120;  // 3 s, the last 1 s averaged
     math::Vec3 force(0.0f);
     float torque = 0.0f, dropY = 0.0f, offLevel = 0.0f;
+    const int legJoint[3] = {h.rig().findJoint("thigh_l"), h.rig().findJoint("shin_l"), h.rig().findJoint("foot_l")};
+    math::Quat lastLocal[3] = {math::identityQuat(), math::identityQuat(), math::identityQuat()};
+    float jitterMax[3] = {0.0f, 0.0f, 0.0f}, jitterSum[3] = {0.0f, 0.0f, 0.0f};
     for (int i = 0; i < kTicks; ++i) {
         if (which == 1) h.setPoseFoot(motion::Foot::Left, a0 + math::Vec3(0.0f, 0.15f, 0.0f));
         if (which == 2) h.setPoseHand(true, toes);
         h.tick(kDt);
         world.step(kDt);
+        {
+            // The plan's own motion per tick (what the drive's lead follows):
+            // each left-leg joint's local turn since the last tick (deg).
+            const std::vector<math::Mat4>& pm = *h.bodyQueue().plan;
+            for (int b = 0; b < 3; ++b) {
+                const int j = legJoint[b], pj = h.rig().parent(j);
+                const math::Quat q = math::normalize(math::inverse(math::toTransform(pm[static_cast<size_t>(pj)]).rotation) *
+                                                     math::toTransform(pm[static_cast<size_t>(j)]).rotation);
+                if (i >= kTicks - kLast) {
+                    math::Quat d = math::normalize(q * math::inverse(lastLocal[b]));
+                    if (d.w < 0.0f) d = -d;
+                    const float a = math::degrees(math::length(math::rotationVector(d)));
+                    jitterMax[b] = std::max(jitterMax[b], a);
+                    jitterSum[b] += a / static_cast<float>(kLast);
+                }
+                lastLocal[b] = q;
+            }
+        }
         if (i < kTicks - kLast) continue;
         math::Vec3 f(0.0f);
         float t = 0.0f;
@@ -1069,6 +1090,114 @@ void weightCase(int which, const char* name) {
         physics::PhysicsWorld::RagdollJointState st;
         REQUIRE(world.ragdollJointState(body.ragdoll(), body.partOf(h.rig().findJoint(bone)), kDt, st));
         std::printf(" %s %5.1f", bone, math::length(st.motor));
+    }
+    // What the motors pull toward: each joint's real angle off Jolt's target
+    // and the pose's target clamped by the range (deg); the real pelvis
+    // turned off the plan's (the spring's target).
+    std::printf("\n    off target / clamped deg:");
+    for (const char* bone : {"thigh_l", "shin_l", "foot_l", "thigh_r", "shin_r", "foot_r"}) {
+        physics::PhysicsWorld::RagdollJointState st;
+        REQUIRE(world.ragdollJointState(body.ragdoll(), body.partOf(h.rig().findJoint(bone)), kDt, st));
+        std::printf(" %s %.2f/%.2f", bone, math::degrees(st.tracking), math::degrees(st.clamped));
+    }
+    std::printf("\n    plan's own turn per tick (last 1 s), mean / most deg: thigh_l %.3f/%.3f shin_l %.3f/%.3f foot_l %.3f/%.3f",
+                jitterSum[0], jitterMax[0], jitterSum[1], jitterMax[1], jitterSum[2], jitterMax[2]);
+    // Each leg joint's real local turn off the plan's, by axis (the parent
+    // bone's frame, at rest the character's: x left (side), y up (twist), z
+    // forward), deg.
+    for (const char* bone : {"thigh_l", "shin_l", "foot_l"}) {
+        const int j = h.rig().findJoint(bone), pj = h.rig().parent(j);
+        auto local = [&](const std::vector<math::Mat4>& m) {
+            return math::normalize(math::inverse(math::toTransform(m[static_cast<size_t>(pj)]).rotation) *
+                                   math::toTransform(m[static_cast<size_t>(j)]).rotation);
+        };
+        const math::Vec3 off = math::rotationVector(math::normalize(local(real) * math::inverse(local(plan))));
+        std::printf("\n    %s real off plan: x %.2f y %.2f z %.2f deg", bone, math::degrees(off.x), math::degrees(off.y),
+                    math::degrees(off.z));
+    }
+    {
+        const math::Quat rq = math::normalize(math::inverse(h.root().rotation) * world.transform(body.parts()[0].body).rotation);
+        const math::Quat pq = math::normalize(body.partPose(0, plan).rotation);
+        const math::Vec3 off = math::rotationVector(math::normalize(rq * math::inverse(pq)));
+        std::printf("\n    real pelvis turned off plan: %.2f deg (x %.2f y %.2f z %.2f)", math::degrees(math::length(off)),
+                    math::degrees(off.x), math::degrees(off.y), math::degrees(off.z));
+    }
+    std::printf("\n");
+    // Computed only, not applied (2026-11-21): the stance hold by each foot's
+    // ground force (Winter 1995). Share between standing feet by the lever
+    // rule along the line between the foot centres; the force (share x M g,
+    // up) at its centre of pressure = the centre of mass below it, clamped
+    // inside the foot (decider.balanceStep foot outline). A joint's hold on
+    // its child side = the free-limb hold + the moment of that force about it.
+    core::Config hj;
+    REQUIRE(hj.load(CRICKET_CONFIG_DIR "/human_joints.json"));
+    const float halfW = hj.getFloat("decider.balanceStep.footHalfWidth", 0.045f);
+    const float halfL = hj.getFloat("decider.balanceStep.footHalfLength", 0.11f);
+    const float ahead = hj.getFloat("decider.balanceStep.footCentreAhead", 0.05f);
+    const auto& parts = body.parts();
+    const math::Vec3 g = world.world().gravity;
+    const float M = body.totalMass();
+    math::Vec3 com(0.0f);
+    for (const auto& p : parts) com += world.transform(p.body).position * p.mass;
+    com /= M;
+    const math::Vec3 fwdW = h.root().transformDirection(math::kForward), leftW = h.root().transformDirection(math::kRight);
+    const char* footBone[2] = {"foot_l", "foot_r"};
+    int footPart[2];
+    bool stands[2];
+    math::Vec3 centre[2], cop[2];
+    float share[2] = {0.0f, 0.0f};
+    for (int f = 0; f < 2; ++f) {
+        footPart[f] = body.partOf(h.rig().findJoint(footBone[f]));
+        stands[f] = h.bodyQueue().supportWeight[f] > 0.5f;
+        const math::Vec3 a = body.boneWorld(world, footPart[f]).position;
+        centre[f] = a + fwdW * ahead;
+        centre[f].y = h.root().position.y;
+        const math::Vec3 d = com - centre[f];
+        const float x = std::clamp(math::dot(d, leftW), -halfW, halfW), z = std::clamp(math::dot(d, fwdW), -halfL, halfL);
+        cop[f] = centre[f] + leftW * x + fwdW * z;
+    }
+    if (stands[0] && stands[1]) {
+        // Along the line between the feet the shares balance the centre of
+        // mass; across it each foot's centre of pressure moves with it.
+        const math::Vec3 line = centre[1] - centre[0];
+        const float len2 = line.x * line.x + line.z * line.z;
+        const math::Vec3 d = com - centre[0];
+        share[1] = len2 > 1e-6f ? std::clamp((d.x * line.x + d.z * line.z) / len2, 0.0f, 1.0f) : 0.5f;
+        share[0] = 1.0f - share[1];
+        const math::Vec3 across = len2 > 1e-6f ? math::Vec3(-line.z, 0.0f, line.x) / std::sqrt(len2) : fwdW;
+        const float off = math::dot(d, across);
+        for (int f = 0; f < 2; ++f) {
+            const math::Vec3 want = centre[f] + across * off - centre[f];
+            const float x = std::clamp(math::dot(want, leftW), -halfW, halfW), z = std::clamp(math::dot(want, fwdW), -halfL, halfL);
+            cop[f] = centre[f] + leftW * x + fwdW * z;
+        }
+    } else {
+        for (int f = 0; f < 2; ++f) share[f] = stands[f] ? 1.0f : 0.0f;
+    }
+    // What no foot can take: the centre of mass off the shared centre of pressure.
+    const math::Vec3 copAll = share[0] * cop[0] + share[1] * cop[1];
+    const math::Vec3 rest = math::cross(com - copAll, g * M);
+    std::printf("    computed: share L %.2f R %.2f | CoM ahead of ankles L %.1f R %.1f cm | moment no foot takes %.1f N m\n",
+                share[0], share[1], 100.0f * math::dot(com - body.boneWorld(world, footPart[0]).position, fwdW),
+                100.0f * math::dot(com - body.boneWorld(world, footPart[1]).position, fwdW), math::length(rest));
+    std::printf("    computed hold |N m|:");
+    for (int f = 0; f < 2; ++f) {
+        for (int u = footPart[f]; u >= 0 && parts[static_cast<size_t>(u)].parent >= 0; u = parts[static_cast<size_t>(u)].parent) {
+            // The child side: this part and every part below it.
+            float mb = 0.0f;
+            math::Vec3 mc(0.0f);
+            for (size_t i = 0; i < parts.size(); ++i) {
+                int k = static_cast<int>(i);
+                while (k >= 0 && k != u) k = parts[static_cast<size_t>(k)].parent;
+                if (k != u) continue;
+                mb += parts[i].mass;
+                mc += world.transform(parts[i].body).position * parts[i].mass;
+            }
+            const math::Vec3 pivot = body.boneWorld(world, u).position;
+            math::Vec3 hold = mb > 0.0f ? -math::cross(mc / mb - pivot, g * mb) : math::Vec3(0.0f);
+            hold -= math::cross(cop[f] - pivot, -g * (share[f] * M));
+            std::printf(" %s %5.1f", h.rig().jointName(parts[static_cast<size_t>(u)].joint).c_str(), math::length(hold));
+        }
     }
     std::printf("\n");
 }
