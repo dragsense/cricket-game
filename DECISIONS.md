@@ -943,3 +943,16 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** the shift by the LIP's fastest time (constant centre of pressure at the
   feet's edge): the long shift moved to the other foot; maxStepForward 0.9 (every other
   step landed 45-73 cm short); the swing's arc by the way gone (slide 6.5 -> 30 cm).
+
+## 2026-11-21: The hips' bounded motion lands on its target (standing plan still)
+- **Decision (the user's OK):** in `BodyDecider::limitOutput` the hips' speed toward the
+  desired pelvis is also at most d / dt (it lands on the target this tick), besides
+  hipsMaxSpeed and the stopping law sqrt(2 a d).
+- **Why:** measured standing: the reference stood still but the output pelvis chattered
+  +-0.17 mm in a 6-tick cycle (the continuous stopping law overshoots within a dt^2 of the
+  target); the knee flipped 4.5..5.5 deg, the drive's lead made a 5.5 deg target gap and
+  the support spring held 53.7 N m against the leg motors. After: plan still, 0.5 deg,
+  10.7 N m; walking unchanged.
+- **Rejected:** applying the stance hold first (computed, it is right, but the spring was
+  fighting the chatter, not gravity); a stance hold split 50/50 between the feet without
+  centres of pressure (measured worse: 105 N m, reverted).

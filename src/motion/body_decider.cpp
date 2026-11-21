@@ -1217,7 +1217,10 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
     if (dt > 0.0f) {
         const math::Vec3 d = wantPosition - have.position;
         const float dist = math::length(d);
-        const float speed = std::min(s.hipsMaxSpeed, std::sqrt(2.0f * std::max(s.hipsMaxAccel, 0.0f) * dist));
+        // Never faster than lands on the target this tick: the continuous
+        // law alone overshoots within a dt^2 of it and the standing plan
+        // chattered (pelvis +-0.17 mm in a 6-tick cycle, knee 4.5..5.5 deg).
+        const float speed = std::min({s.hipsMaxSpeed, std::sqrt(2.0f * std::max(s.hipsMaxAccel, 0.0f) * dist), dist / dt});
         const math::Vec3 vWant = dist > 1e-6f ? d * (speed / dist) : math::Vec3(0.0f);
         hipsVel_ += clampLength(vWant - hipsVel_, std::max(s.hipsMaxAccel, 0.0f) * dt);
         have.position += hipsVel_ * dt;

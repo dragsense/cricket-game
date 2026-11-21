@@ -141,6 +141,20 @@ Pieces (pass numbers in brackets):
     rest; the arc by the way gone was tried: slide 6.5 -> 30 cm, reverted; next idea: the
     swing starts at the foot's push-off speed); A's first steps 20 then 11 cm; the knee in
     swing 70 deg plan vs real people's 60-65.
+- [x] S1 Standing plan still (2026-11-21, awaiting the user's game check; DECISIONS).
+  Measured (`measure: stance legs carry the weight`): the legs carry the weight (spring
+  up-force 0), but standing the spring held 53.7 N m against the leg motors: the output
+  pelvis chattered +-0.17 mm in a 6-tick cycle around a still reference (knee 4.5..5.5
+  deg, shin 0.76 deg/tick), the drive's 0.06 s lead made it a 5.5 deg target gap. Cause:
+  `limitOutput`'s stopping law sqrt(2 a d) overshoots within a dt^2 (0.56 mm). Fix: the
+  speed also <= d / dt. Now: plan still (0.000 deg/tick), target gap 0.5 deg, spring
+  torque 53.7 -> 10.7 N m (predicted < 10). Walk slide 0.4 / 1.2 / 1.6 m/s 3.6 / 6.1 / 9.8
+  cm (was 3.6 / 6.1 / 9.5), A 2.9, S 8.9 (9.1); arrow-key limb test unchanged (hand down
+  6.9 -> 5.1 cm). One foot up 68.4 -> 67.2, squat 113.6 -> 122.5 N m: not this cause.
+  Also computed (not applied): the stance hold by each foot's ground force at its centre
+  of pressure (Winter 1995): standing ankle 1.4, knee 5.5, hip 0.4 N m; one foot knee 56,
+  hip 87. A first try that split the stance hold 50/50 without centres of pressure made
+  it worse (spring 105 N m, straight knee 38 N m) and was reverted.
 - [ ] P4 Stance hold: the plan's statics, the ground push inside the foot's functional
   base of support (Sloot 2025) [spring vertical ~0 in standing, one foot, squat; static
   leg motors < 5 N m].
