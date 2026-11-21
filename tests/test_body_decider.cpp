@@ -270,6 +270,31 @@ TEST_CASE("body decider: a pinned foot never moves in the plan while the other s
     CHECK(math::distance(f.planPos(f.joints.legs[0].end), from + Vec3(0.0f, 0.0f, 0.4f)) < 0.01f);
 }
 
+TEST_CASE("step planner: a sideways step has no toe-off, a forward one does") {
+    motion::StepPlannerSettings s;
+    s.duration = 0.6f;
+    s.liftAt = 0.25f;
+    s.toeOffPitch = math::radians(30.0f);
+    s.ballReach = 0.14f;
+    const Vec3 from(0.1f, 0.08f, 0.0f);
+    float sideMoved = 0.0f, forwardLift = 0.0f;
+    for (const Vec3 way : {Vec3(0.3f, 0.0f, 0.0f), Vec3(0.0f, 0.0f, 0.3f)}) {
+        motion::StepPlanner planner;
+        motion::TargetSet t;
+        planner.start(0, from, from + way);
+        for (int i = 0; i < 120 && planner.running(); ++i) {
+            planner.tick(kDt, s, t);
+            if (planner.phase() != motion::StepPlanner::Phase::Start) break;
+            if (way.x > 0.0f)
+                sideMoved = std::max(sideMoved, math::distance(t.foot[0].position, from));
+            else
+                forwardLift = std::max(forwardLift, t.foot[0].position.y - from.y);
+        }
+    }
+    CHECK(sideMoved < 1e-5f);    // the weight shift: the foot stays flat where it is
+    CHECK(forwardLift > 0.02f);  // the heel rises as before
+}
+
 TEST_CASE("body decider: a foot target out of reach is reported short, the leg keeps its bend") {
     Fixture f;
     motion::TargetSet t = f.standing();

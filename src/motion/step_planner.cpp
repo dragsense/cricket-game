@@ -105,11 +105,16 @@ bool StepPlanner::tick(float dt, const StepPlannerSettings& s, TargetSet& t) {
     // Push-off (the weight shift): the heel rises, the foot rolls over its
     // ball up to the toe-off pitch, so the trailing leg stays long and the
     // hips need not drop (a determinant of gait, Saunders 1953); the swing
-    // carries that lift away.
+    // carries that lift away. Only for the step's forward part (the foot
+    // points along +Z and rolls over its ball that way): a side or backward
+    // step has no toe-off.
     {
+        const math::Vec3 way(aim_.x - from_.x, 0.0f, aim_.z - from_.z);
+        const float len = math::length(way);
+        const float forward = len > 1e-4f ? std::max(0.0f, way.z / len) : 0.0f;
         const float r = std::clamp(share_ / std::max(lift, 1e-3f), 0.0f, 1.0f);
         const float pitch = s.toeOffPitch * r * r * (3.0f - 2.0f * r);
-        const float fade = 1.0f - lastAlong_;
+        const float fade = forward * (1.0f - lastAlong_);
         goal += normal_ * (fade * s.ballReach * std::sin(pitch));
         goal += math::Vec3(0.0f, 0.0f, fade * s.ballReach * (1.0f - std::cos(pitch)));
     }
