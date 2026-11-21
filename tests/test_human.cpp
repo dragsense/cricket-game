@@ -1063,6 +1063,24 @@ void weightCase(int which, const char* name) {
                 lastLocal[b] = q;
             }
         }
+        if (which == 1 && i % 30 == 0) {
+            // How the one-foot stance goes (every 0.25 s): the spring, the
+            // standing foot off its target, the centre of mass off the right
+            // ankle (character axes, cm), the support weights.
+            math::Vec3 sf(0.0f);
+            float st = 0.0f;
+            world.supportLoad(h.supportJoint(), kDt, sf, st);
+            physics::PhysicsWorld::RagdollJointState fs;
+            const agents::HumanBody& hb = h.humanBody();
+            world.ragdollJointState(hb.ragdoll(), hb.partOf(h.rig().findJoint("foot_r")), kDt, fs);
+            math::Vec3 c(0.0f);
+            for (const auto& part : hb.parts()) c += world.transform(part.body).position * part.mass;
+            c /= hb.totalMass();
+            const math::Vec3 off = math::inverse(h.root().rotation) * (c - hb.boneWorld(world, hb.partOf(h.rig().findJoint("foot_r"))).position);
+            std::printf("    %.2f s spring %.0f N %.0f N m | foot_r off target %.1f deg | CoM off R ankle x %.1f z %.1f cm | weights %.2f %.2f\n",
+                        i * kDt, math::length(sf), st, math::degrees(fs.tracking), 100.0f * off.x, 100.0f * off.z,
+                        h.bodyQueue().supportWeight[0], h.bodyQueue().supportWeight[1]);
+        }
         if (which == 0 && i >= kTicks - 10) {
             // Where the standing jitter starts: the plan's pelvis and left
             // ankle (character space, mm), the hip-to-ankle span, the knee,
