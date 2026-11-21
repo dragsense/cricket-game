@@ -33,14 +33,17 @@
       "visual": { "shape": "capsule", "material": "kit", "radius": 0.062 } },
     { "name": "spine_02", "parent": "spine_01", "offset": [0.0, 0.09, 0.0], "mass": 8.33,
       "visual": { "shape": "capsule", "material": "kit", "radius": 0.066 } },
-    { "name": "chest",    "parent": "spine_02", "offset": [0.0, 0.09, 0.0], "mass": 15.96,
+    // chest: de Leva's upper trunk 15.96 less both shoulder girdles (2 x 1.2, see clavicle).
+    { "name": "chest",    "parent": "spine_02", "offset": [0.0, 0.09, 0.0], "mass": 13.56,
       "visual": { "shape": "capsule", "material": "kit", "from": [-0.06, 0.02, 0.0], "to": [0.06, 0.02, 0.0], "radius": 0.065 } },
     { "name": "neck",     "parent": "chest",    "offset": [0.0, 0.065, 0.0], "mass": 0.0,
       "visual": { "shape": "capsule", "material": "skin", "radius": 0.03 } },
     { "name": "head",     "parent": "neck",     "offset": [0.0, 0.05, 0.0], "mass": 6.94, "tip": [0.0, 0.12, 0.0],
       "visual": { "shape": "capsule", "material": "skin", "from": [0.0, 0.0, 0.01], "to": [0.0, 0.065, 0.01], "radius": 0.055 } },
 
-    { "name": "clavicle",  "parent": "chest",     "mirror": true, "offset": [0.015, 0.035, 0.0], "mass": 0.0,
+    // Shoulder girdle (clavicle + scapula, one body): 0.156 + 0.705 kg = 1.2 % of body mass
+    // (Veeger et al. 1991, J Biomech 24:615, cadavers), part of de Leva's upper trunk.
+    { "name": "clavicle",  "parent": "chest",     "mirror": true, "offset": [0.015, 0.035, 0.0], "mass": 1.2,
       "visual": { "shape": "capsule", "material": "kit", "radius": 0.025 } },
     { "name": "upper_arm", "parent": "clavicle",  "mirror": true, "offset": [0.115, 0.015, -0.01], "mass": 2.71,
       "visual": { "shape": "capsule", "material": "kit", "radius": 0.03 } },

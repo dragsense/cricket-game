@@ -9,7 +9,7 @@
 // joint's angle follows the real body's joint each tick). Each axis's motor
 // is its muscle (human_joints.json "muscles": strength, activation time),
 // pulling the joint toward the pose. A bone without mass of its own (neck,
-// clavicles, fingers) rides its parent. The parts of one body do not collide
+// fingers) rides its parent. The parts of one body do not collide
 // with each other; they collide with the ground and with everything else.
 // Load-time allocation only.
 

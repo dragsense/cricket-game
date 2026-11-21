@@ -1823,9 +1823,10 @@ void BodyDecider::planTrunk(int e, math::Vec3 target, int first, int end, const 
                 p.rotation = math::normalize(turn * p.rotation);
                 p.position = hips + turn * (p.position - hips);
                 placePelvis(d, p);
-            } else if (o.joint == joints_.spine[0] || o.joint == joints_.spine[1] || o.joint == joints_.spine[2]) {
-                // A spine joint (the clavicle has no body yet: it rides the
-                // chest as built, so it is not planned).
+            } else if (o.joint == joints_.spine[0] || o.joint == joints_.spine[1] || o.joint == joints_.spine[2] ||
+                       o.joint == joints_.clavicles[0] || o.joint == joints_.clavicles[1]) {
+                // A spine joint or the shoulder girdle: it turns at its own
+                // joint, within its range.
                 const Swing sw = swingToward(planPos(d, o.joint), shoulder, target, reach);
                 turnPlanned(d, o.joint, math::fromAxisAngle(sw.axis, sw.angle * o.share));
             }

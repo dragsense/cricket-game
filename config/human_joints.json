@@ -248,6 +248,9 @@
     "maxTorque": {
       "spine_01": 270, "spine_02": 270, "chest": 270,  // trunk extension 268-283
       "head": 35,         // neck 28-41 (the head joint carries the neck)
+      "clavicle": 45,     // shoulder girdle about the SC joint: isometric protraction 13-16 kg, retraction
+                          // 16-24 kg at the arm (Williams 2009, NAJSPT 4:200, young women; men more)
+                          // = ~150-230 N x ~0.21 m (SC joint to shoulder, our skeleton) = 31-48 N m
       "upper_arm": 120,   // shoulder flexion 77, extension 164
       "forearm": 55,      // elbow flexion 51-56
       "hand": 18,         // wrist flexion 21-25, extension 11-13
