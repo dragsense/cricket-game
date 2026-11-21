@@ -792,6 +792,12 @@ TEST_CASE("measure: W walk, the feet slide" * doctest::skip()) {
                         h.root().transformPoint(math::Vec3(real[0][3])).y - ground0, kneeOf(p, true), kneeOf(real, true),
                         kneeOf(p, false), kneeOf(real, false), h.bodyQueue().landed[0] ? "  <- L lands" : "",
                         h.bodyQueue().landed[1] ? "  <- R lands" : "");
+            // The hips' height: support's reference (character space) against
+            // the plan's output pelvis, a leg's reach holding them lower, and
+            // the feet's weights.
+            std::printf("        %.3f s hips ref y %.3f output %.3f%s | weights L %.2f R %.2f\n", time,
+                        h.bodyQueue().hipsReference.y, p[0][3].y, h.bodyQueue().heightClamped ? " | reach clamped" : "",
+                        h.bodyQueue().supportWeight[0], h.bodyQueue().supportWeight[1]);
         }
         for (int f = 0; f < 2; ++f) {
             const bool left = f == 0;
