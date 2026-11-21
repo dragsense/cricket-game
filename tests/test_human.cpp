@@ -1063,6 +1063,19 @@ void weightCase(int which, const char* name) {
                 lastLocal[b] = q;
             }
         }
+        if (which == 0 && i >= kTicks - 10) {
+            // Where the standing jitter starts: the plan's pelvis and left
+            // ankle (character space, mm), the hip-to-ankle span, the knee,
+            // the decider's hips reference and its height clamp.
+            const std::vector<math::Mat4>& pm = *h.bodyQueue().plan;
+            const math::Vec3 pel(pm[static_cast<size_t>(pelvis)][3]);
+            const math::Vec3 hip(pm[static_cast<size_t>(legJoint[0])][3]), ank(pm[static_cast<size_t>(legJoint[2])][3]);
+            const math::Vec3 ref = h.bodyQueue().hipsReference;
+            std::printf("    tick %d plan pelvis y %.2f z %.2f | ankle L y %.2f z %.2f | span %.2f mm | knee %.2f deg | ref y %.2f z %.2f | clamped %d\n",
+                        i, 1000.0f * pel.y, 1000.0f * pel.z, 1000.0f * ank.y, 1000.0f * ank.z, 1000.0f * math::length(hip - ank),
+                        flexionDeg(pm, h, "thigh_l", "shin_l", "foot_l"), 1000.0f * ref.y, 1000.0f * ref.z,
+                        h.bodyQueue().heightClamped ? 1 : 0);
+        }
         if (i < kTicks - kLast) continue;
         math::Vec3 f(0.0f);
         float t = 0.0f;
