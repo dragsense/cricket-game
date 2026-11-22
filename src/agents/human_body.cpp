@@ -282,7 +282,7 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world, const StanceFeet& feet)
     }
     const float sum = share[0] + share[1];
     for (int f = 0; f < 2 && sum > 1e-6f; ++f) {
-        const float m = total * share[f] / sum;
+        const float m = total * share[f] / sum * std::max(feet.load, 0.0f);
         if (m <= 0.0f) continue;
         for (int i = feet.part[f]; i >= 0 && parts_[static_cast<size_t>(i)].parent >= 0; i = parts_[static_cast<size_t>(i)].parent) {
             if (!parts_[static_cast<size_t>(i)].muscle) continue;

@@ -309,7 +309,8 @@ previous/current transform per body for interpolation, preallocated temp allocat
 The body moves only by forces. Nothing places a part while its physics is on. Two
 systems, strictly apart (DECISIONS 2026-11-10 "Whole-body decider on targets"):
 ```
-Planner (an action: idle, step, walk, reach, dive; `motion::StepPlanner` is the example)
+Planner (an action: idle, step, walk, reach, dive; `motion::StepPlanner` is the example,
+`motion::RunPlanner` the jog and run)
    knows the action; only places the 7 targets over time (`motion::TargetSet`):
    pose, mode (Free / Driven / Pinned), weights, feet's swing share and ground normal;
    gives the capsule its intent velocity; reads the decider's reports

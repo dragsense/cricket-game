@@ -37,6 +37,7 @@ struct StanceFeet {
     float halfWidth = 0.045f;                  // m, the foot's outline: half its width
     float halfLength = 0.11f;                  // m, half its length
     float ahead = 0.05f;                       // m, the foot's centre ahead of the ankle
+    float load = 1.0f;                         // the ground's push, x the body's weight (a run's stance: over 1)
 };
 
 struct MuscleSettings {

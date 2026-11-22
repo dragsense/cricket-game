@@ -14,14 +14,38 @@
   // E / Q change `speed` by `speedStep` per press, within minSpeed .. maxSpeed:
   // a slow walk 0.4. Real people walk up to the walk-run transition, Froude
   // 0.5 = ~2.16 m/s with our leg (BIOMECHANICS 5), but our body walks only to
-  // 1.6 (measured 2026-11-21, `measure: W walk, the feet slide`): its steps
+  // 1.6, faster it runs ("run" below) (measured 2026-11-21, `measure: W walk, the feet slide`): its steps
   // stop at maxStepForward 0.6 m, so faster means quicker swings, and from
   // 1.8 m/s the swing's hip muscle sits at its torque limit most of the
   // swing; the foot lands ~55 cm short and slides (1.6: 8.6 cm).
   // S pushes them back at `backSpeed`: backward walking is slower than forward
   // (BIOMECHANICS 4.6, no number there); 0.7 m/s [E], about the usual 0.6-0.9.
   "move": { "speed": 1.2, "backSpeed": 0.7, "sideSpeed": 0.35, "acceleration": 1.0,
-            "speedStep": 0.2, "minSpeed": 0.4, "maxSpeed": 1.6 },
+            "speedStep": 0.2, "minSpeed": 0.4, "maxSpeed": 5.0 },
+  // Jog and run (motion::RunPlanner, 2026-11-22), E past 1.6 m/s. A leg's
+  // swing takes its own time (swingTime, s) and its stance ends once the hips
+  // have gone stanceWay + stanceWayPerSpeed x speed (m) over the foot; as the
+  // stance gets shorter than the swing, both feet are off the ground between.
+  // 2 m/s: stance 0.29 s, flight 0.09 s; 3: 0.22, 0.12 (176 steps a minute);
+  // 4: 0.19, 0.14 (187). [E] near usual contact times (3 m/s ~0.25 s) and
+  // cadence 160-190. 5: 0.16, 0.15. Measured to 5 m/s (2026-11-22);
+  // at 4.6 the standing foot slides most (12 cm).
+  "run": {
+    "enterSpeed": 1.7,     // m/s of the hips; back to walking below exitSpeed
+    "exitSpeed": 1.6,
+    "swingTime": 0.46,
+    "stanceWay": 0.42,
+    "stanceWayPerSpeed": 0.08,
+    "stanceAhead": 0.4,    // the share of that way the foot lands ahead of the hips [E]
+    "heelShare": 0.35,     // the heel rises in this last share of the stance [E]
+    "toeOffDeg": 35,       // by this (the foot rolls over its ball) [E]
+    "liftPerSpeed": 0.06,  // m of swing height (ankle) per m/s: 3 m/s 0.18, 4 m/s 0.24 [E]
+    "peakAt": 0.4,         // the swing share of its top [E]
+    "width": 0.6,          // the feet across, share of their hips' (near the middle line) [E]
+    "legReach": 0.93,      // share of the straight leg at touchdown (the knee a little bent) [E]
+    "blendTime": 0.2,      // s, the hips' height goes over to it
+    "hipsAccel": 400       // m/s^2, the decider's hips bound meanwhile: the path is a fall and a push already
+  },
   "step": {
     // Its timing is the decider's per step: the weight shift by the capture
     // point (centre of pressure within the feet), the swing by Fitts' law for

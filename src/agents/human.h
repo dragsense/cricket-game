@@ -13,6 +13,7 @@
 #include "motion/foot_stepper.h"
 #include "motion/target_set.h"
 #include "motion/body_decider.h"
+#include "motion/run_planner.h"
 #include "rig/rig.h"
 #include "rig/skeleton_def.h"
 
@@ -197,6 +198,11 @@ private:
     motion::BodyDeciderSettings deciderSettings_;
     motion::BodyQueue queue_;
     motion::TargetSet bodyTargets_;
+    // Jog and run (locomotion.json "run"): the feet's and hips' targets.
+    motion::RunPlanner run_;
+    motion::RunPlannerSettings runSettings_;
+    float hipsMaxAccel_ = 8.0f;  // the decider's bound, walking (human_joints.json)
+    motion::RunBody runBody() const;
     MuscleTiming muscleTiming_;
     std::vector<math::Mat4> physicsModels_;   // the physics body now (character space)
     rig::Pose physicsPose_;                   // scratch: the physics body's locals (a get-up seeds the plan from it)

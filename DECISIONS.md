@@ -971,3 +971,13 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** the anchor on the real hips (no gap, holds nothing: the 11-09 loop; the
   body falls, CRICKET_NOHOLD); a tight hold at the plan's hips (the spring would carry the
   weight, not the legs).
+
+## 2026-11-22: Jog and run are an action of their own (RunPlanner)
+- **Decision (the user's rule):** nothing of the run is in the decider. `motion::RunPlanner`
+  (own file) only places the feet's and the hips' targets; `Human` uses it from 1.7 m/s of
+  the hips' move (W, E / Q) and the decider's own steps wait meanwhile (`balanceSteps`).
+- A leg's swing takes its own time, a stance ends once the hips have gone so far over the
+  foot: at speed the stance is the shorter and the flight comes of itself. Hips: a free fall
+  in the flight, the standing leg's half-sine push in the stance (`StanceFeet::load`).
+- In a run's flight the hold does not let go (an exception to 2026-11-21 "both feet in the
+  air"): no push, it only keeps the body upright. A fall that is no run lets go as before.

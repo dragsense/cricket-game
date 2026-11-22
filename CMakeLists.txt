@@ -61,6 +61,7 @@ cricket_warnings(cricket_ik)
 add_library(cricket_motion STATIC
     src/motion/body_decider.cpp
     src/motion/foot_stepper.cpp
+    src/motion/run_planner.cpp
     src/motion/step_planner.cpp
 )
 target_link_libraries(cricket_motion PUBLIC cricket_ik)

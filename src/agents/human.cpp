@@ -48,6 +48,20 @@ void Human::loadLocomotion(const core::Config& c) {
     stepPassive_.hands = c.getFloat("step.passive.hands", stepPassive_.hands);
     stepPassive_.hips = c.getFloat("step.passive.hips", stepPassive_.hips);
     stepPassive_.chest = c.getFloat("step.passive.chest", stepPassive_.chest);
+    runSettings_.enterSpeed = c.getFloat("run.enterSpeed", runSettings_.enterSpeed);
+    runSettings_.exitSpeed = c.getFloat("run.exitSpeed", runSettings_.exitSpeed);
+    runSettings_.swingTime = c.getFloat("run.swingTime", runSettings_.swingTime);
+    runSettings_.stanceWay = c.getFloat("run.stanceWay", runSettings_.stanceWay);
+    runSettings_.stanceWayPerSpeed = c.getFloat("run.stanceWayPerSpeed", runSettings_.stanceWayPerSpeed);
+    runSettings_.stanceAhead = c.getFloat("run.stanceAhead", runSettings_.stanceAhead);
+    runSettings_.heelShare = c.getFloat("run.heelShare", runSettings_.heelShare);
+    runSettings_.toeOffPitch = math::radians(c.getFloat("run.toeOffDeg", math::degrees(runSettings_.toeOffPitch)));
+    runSettings_.liftPerSpeed = c.getFloat("run.liftPerSpeed", runSettings_.liftPerSpeed);
+    runSettings_.peakAt = c.getFloat("run.peakAt", runSettings_.peakAt);
+    runSettings_.width = c.getFloat("run.width", runSettings_.width);
+    runSettings_.legReach = c.getFloat("run.legReach", runSettings_.legReach);
+    runSettings_.blendTime = c.getFloat("run.blendTime", runSettings_.blendTime);
+    runSettings_.hipsAccel = c.getFloat("run.hipsAccel", runSettings_.hipsAccel);
     motion::StepPlannerSettings& shape = deciderSettings_.stepShape;
     shape.height = stepSettings_.stepHeight;
     shape.peakAt = stepSettings_.peakAt;
@@ -120,6 +134,7 @@ void Human::followCapsule(float dt) {
     stepper_.rebase(before, root_);
     const math::Transform toNew = math::inverse(root_) * before;
     decider_.rebase(toNew);
+    run_.rebase(toNew);
 }
 
 void Human::plantFeet() {
@@ -258,6 +273,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.supportBlendTime = dv("decider.supportBlendTime", deciderSettings_.supportBlendTime);
         deciderSettings_.hipsMaxSpeed = dv("decider.hipsMaxSpeed", deciderSettings_.hipsMaxSpeed);
         deciderSettings_.hipsMaxAccel = dv("decider.hipsMaxAccel", deciderSettings_.hipsMaxAccel);
+        hipsMaxAccel_ = deciderSettings_.hipsMaxAccel;
         deciderSettings_.hipsMaxTurnRate = dv("decider.hipsMaxTurnRate", deciderSettings_.hipsMaxTurnRate);
         deciderSettings_.trunkMaxRate = dv("decider.trunkMaxRate", deciderSettings_.trunkMaxRate);
         deciderSettings_.headMaxRate = dv("decider.headMaxRate", deciderSettings_.headMaxRate);
@@ -354,6 +370,21 @@ bool Human::capsuleDebug(math::Vec3& feet, float& height, float& radius, math::V
     }
     hips = physics_->transform(humanBody_.parts()[0].body).position;
     return true;
+}
+
+motion::RunBody Human::runBody() const {
+    const std::vector<math::Mat4>& plan = decider_.outputModels();
+    auto at = [&](int j) { return math::Vec3(plan[static_cast<size_t>(j)][3]); };
+    motion::RunBody b;
+    b.pelvis = at(joints_.pelvis);
+    const ik::TwoBoneChain* legs[2] = {&joints_.legL, &joints_.legR};
+    for (int i = 0; i < 2; ++i) {
+        b.hip[i] = at(legs[i]->start);
+        b.legLength[i] = math::distance(at(legs[i]->start), at(legs[i]->mid)) + math::distance(at(legs[i]->mid), at(legs[i]->end));
+    }
+    b.ankleUp = liftedAnkleMin_ - toeClearance_;
+    b.gravity = deciderSettings_.gravity;
+    return b;
 }
 
 const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
@@ -508,6 +539,27 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     // that foot is placed by hand), and gives the muscles its plan. A step
     // that landed: the foot stays on its spot from now on.
     t.balanceSteps = !poseFoot;
+    // Jog and run: from its speed on, once the step under way has landed, the
+    // run planner gives the feet's and the hips' targets; the decider's own
+    // steps wait meanwhile.
+    runSettings_.ballReach = ballReach_;
+    const bool mayRun = hipsDriven_ && !poseFoot && joints_.legL.end >= 0 && joints_.legR.end >= 0;
+    if (run_.on() && !mayRun) run_.stop();
+    if (mayRun && (run_.on() || math::length(walkVelocity_) >= runSettings_.enterSpeed)) {
+        t.balanceSteps = false;
+        const motion::RunBody body = runBody();
+        if (!run_.on() && decider_.stepFoot() < 0) {
+            const math::Vec3 feet[2] = {t.foot[0].position, t.foot[1].position};
+            run_.start(body, feet, walkVelocity_);
+        }
+        if (run_.on()) {
+            run_.tick(walkVelocity_, body, runSettings_, t);
+            for (int i = 0; i < 2; ++i)
+                if (run_.landed(i)) stepper_.place(static_cast<motion::Foot>(i), run_.spot(i));
+            hipsGoal_ = root_.transformPoint(run_.hips());
+        }
+    }
+    deciderSettings_.hipsMaxAccel = run_.on() && !run_.ending() ? runSettings_.hipsAccel : hipsMaxAccel_;
     decider_.decide(t, deciderSettings_, queue_);
     for (int i = 0; i < 2; ++i) {
         if (!queue_.landed[i]) continue;
@@ -533,6 +585,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     stance.halfWidth = deciderSettings_.footHalfWidth;
     stance.halfLength = deciderSettings_.footHalfLength;
     stance.ahead = deciderSettings_.footCentreAhead;
+    stance.load = run_.on() ? run_.load() : 1.0f;
     humanBody_.holdWeight(world, stance);
     humanBody_.drivePose(world, target, root_, joints_.head, dt);
     // The capsule is as tall as the pose's pelvis is high (crouch, stride).
@@ -559,7 +612,9 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
         // Both feet in the air (no weight on either): the hold lets go and the
         // body falls by physics alone (the user's rule, DECISIONS 2026-11-21);
         // whatever the release setting. At rest the capsule takes it again.
-        if (queue_.supportWeight[0] + queue_.supportWeight[1] < 1e-3f) {
+        // A run's flight is no fall: the hold only keeps the body upright
+        // through it, with no push.
+        if (!run_.on() && queue_.supportWeight[0] + queue_.supportWeight[1] < 1e-3f) {
             world.setJointEnabled(support_, false);
             supportOn_ = false;
             restTime_ = 0.0f;
@@ -567,7 +622,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
             return;
         }
         const float k = supportShare_ * onFeet;
-        world.setSupportLimits(support_, c.supportMaxForce * k, c.supportMaxTorque * k);
+        world.setSupportLimits(support_, c.supportMaxForce * k, c.supportMaxTorque * (run_.on() ? supportShare_ : k));
         // The real pelvis off the hold's target (level): small is nothing;
         // past medium for a while it is marked Medium (pelvisError_; nothing
         // reads that yet: no recovery step is asked for); past large the hold
@@ -629,6 +684,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     humanBody_.boneModels(world, 1.0f, rig_, current_, root_, physicsModels_);
     rig_.modelToLocal(physicsModels_, physicsPose_);
     decider_.seed(physicsPose_);
+    run_.stop();
     humanBody_.restartDrive();
     supportShare_ = 0.0f;
     world.setSupportLimits(support_, 0.0f, 0.0f);
@@ -683,6 +739,7 @@ void Human::resetPhysicsBody() {
     pelvisError_ = PelvisError::Small;
     pelvisErrorNow_ = pelvisErrorTime_ = 0.0f;
     decider_.seed(current_);  // the plan starts over from the standing pose
+    run_.stop();
     const physics::CharacterSettings& c = physics_->settings().character;
     physics_->setSupportLimits(support_, c.supportMaxForce, c.supportMaxTorque);
 }
