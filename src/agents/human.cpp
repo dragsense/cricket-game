@@ -78,6 +78,44 @@ void Human::loadLocomotion(const core::Config& c) {
     deciderSettings_.stepPassive = stepPassive_;
 }
 
+void Human::loadThrow(const core::Config& c) {
+    motion::ThrowPlannerSettings& s = throwSettings_;
+    auto angle = [&](const char* key, float& v) { v = math::radians(c.getFloat(key, math::degrees(v))); };
+    s.slotRadius = c.getFloat("circles.slotRadius", s.slotRadius);
+    s.swingRadius = c.getFloat("circles.swingRadius", s.swingRadius);
+    angle("circles.slotMinDeg", s.slotMin);
+    angle("circles.slotMaxDeg", s.slotMax);
+    angle("circles.releaseMinDeg", s.releaseMin);
+    angle("circles.releaseMaxDeg", s.releaseMax);
+    s.pullMax = c.getFloat("force.pullMax", s.pullMax);
+    s.pullReach = c.getFloat("force.pullReach", s.pullReach);
+    s.pullSpeed = c.getFloat("force.pullSpeed", s.pullSpeed);
+    s.accelMin = c.getFloat("swing.accelMin", s.accelMin);
+    s.accelMax = c.getFloat("swing.accelMax", s.accelMax);
+    angle("swing.followDeg", s.follow);
+    angle("swing.followMaxDeg", s.followMax);
+}
+
+motion::ThrowBody Human::throwBody() const {
+    const std::vector<math::Mat4>& plan = decider_.outputModels();
+    motion::ThrowBody b;
+    b.restChest = restChest_;
+    b.restShoulder = restShoulder_;
+    b.restHand = restHand_;
+    const ik::TwoBoneChain& arm = joints_.armR;
+    if (arm.start < 0 || plan.size() != static_cast<size_t>(rig_.numJoints())) return b;
+    b.hand = modelPos(plan, arm.end);
+    b.armLength = math::distance(modelPos(plan, arm.start), modelPos(plan, arm.mid)) +
+                  math::distance(modelPos(plan, arm.mid), b.hand);
+    return b;
+}
+
+void Human::throwToSlot(float slotAngle) {
+    if (!physics_) return;
+    poseLast_ = -1;  // no limb test goal meanwhile
+    throw_.toSlot(slotAngle, throwBody(), throwSettings_);
+}
+
 void Human::changeWalkSpeed(int direction) {
     moveSpeed_ = std::clamp(moveSpeed_ + static_cast<float>(direction) * speedStep_, minSpeed_, maxSpeed_);
     LOG_INFO("walk speed {:.1f} m/s", moveSpeed_);
@@ -109,7 +147,12 @@ bool Human::setHeight(float height) {
     current_ = rig_.restPose();
     previous_ = current_;
     models_.assign(static_cast<size_t>(rig_.numJoints()), math::Mat4(1.0f));
-    plantFeet();
+    plantFeet();  // models_: the rest pose
+    if (joints_.chest >= 0 && joints_.armR.start >= 0) {
+        restChest_ = modelPos(models_, joints_.chest);
+        restShoulder_ = modelPos(models_, joints_.armR.start);
+        restHand_ = modelPos(models_, joints_.armR.end);
+    }
     return true;
 }
 
@@ -144,6 +187,7 @@ void Human::followCapsule(float dt) {
     const math::Transform toNew = math::inverse(root_) * before;
     decider_.rebase(toNew);
     run_.rebase(toNew);
+    throw_.rebase(toNew);
 }
 
 void Human::turnToHeading(float dt) {
@@ -167,6 +211,7 @@ void Human::turnToHeading(float dt) {
     const math::Transform toNew = math::inverse(root_) * before;
     decider_.rebase(toNew);
     run_.rebase(toNew);
+    throw_.rebase(toNew);
 }
 
 void Human::plantFeet() {
@@ -284,6 +329,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.fittsA = muscleTiming_.fittsA;
         deciderSettings_.fittsB = muscleTiming_.fittsB;
         deciderSettings_.fittsWidth = muscleTiming_.fittsWidth;
+        throwSettings_.fittsA = muscleTiming_.fittsA;
+        throwSettings_.fittsB = muscleTiming_.fittsB;
+        throwSettings_.fittsWidth = muscleTiming_.fittsWidth;
         deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
         deciderSettings_.armCancel = jointsConfig_->getFloat("decider.armCancel", deciderSettings_.armCancel);
         deciderSettings_.passiveHead = jointsConfig_->getFloat("decider.passiveInfluence.head", deciderSettings_.passiveHead);
@@ -545,6 +593,8 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     } else {
         footPath_.on = false;
     }
+    // The throw: its hand.
+    if (throw_.on()) throw_.tick(throwBody(), throwSettings_, t);
     // W / A / D: the hips target goes at the eased velocity, driven only along
     // the way it goes (the rest stays the body's own: across a forward walk
     // the sway over the standing foot, up the legs' height). Stopped, it holds
@@ -730,6 +780,7 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     rig_.modelToLocal(physicsModels_, physicsPose_);
     decider_.seed(physicsPose_);
     run_.stop();
+    throw_.stop();
     humanBody_.restartDrive();
     supportShare_ = 0.0f;
     world.setSupportLimits(support_, 0.0f, 0.0f);
@@ -785,6 +836,7 @@ void Human::resetPhysicsBody() {
     pelvisErrorNow_ = pelvisErrorTime_ = 0.0f;
     decider_.seed(current_);  // the plan starts over from the standing pose
     run_.stop();
+    throw_.stop();
     const physics::CharacterSettings& c = physics_->settings().character;
     physics_->setSupportLimits(support_, c.supportMaxForce, c.supportMaxTorque);
 }

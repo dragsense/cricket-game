@@ -34,6 +34,7 @@
 
 #include "ik/limb_ik.h"
 #include "math/math.h"
+#include "motion/arm_fit.h"
 #include "motion/step_planner.h"
 #include "motion/target_set.h"
 #include "rig/rig.h"
@@ -331,7 +332,7 @@ private:
     // How short (m) the driven hands stay of their paths' ends with the body
     // bent toward them on these feet, the hips turned to `turn` (further than
     // the feet let: a leg gone round with its hip); the trunk's own solve,
-    // nothing of it kept.
+    // nothing of it kept but shortTurn_: the turn still missing there.
     float shortStanding(const TargetSet& t, const BodyDeciderSettings& s, float turn);
     void startStep(int i, math::Vec3 from, float yaw);
     math::Quat pelvisBase() const { return math::fromAxisAngle(math::kUp, stanceYaw_) * restPelvis_.rotation; }
@@ -379,6 +380,18 @@ private:
     // its plan on the desired pose.
     void handTrunk(int h, math::Vec3 target, const BodyDeciderSettings& s, BodyQueue& out);
     void trunkOrders(int h, math::Vec3 target, math::Vec3 velocity, const BodyDeciderSettings& s, BodyQueue& out);
+    // Hand h's arm off plan p's chest, for its range (arm_fit.h).
+    ArmShape armShape(int h, const Plan& p, const BodyDeciderSettings& s) const;
+    ArmHang armHang(int h, const Plan& p) const;
+    math::Quat armFrame(int h, const Plan& p) const;
+    // How far (m) hand h stays off `target` from the desired pose's trunk (its
+    // reach and its shoulder's range).
+    float armMiss(int h, math::Vec3 target, const BodyDeciderSettings& s) const;
+    // A hand within the arm's length but out of its shoulder's range: the trunk
+    // and the pelvis turn toward it by their shares (desired pose), as little
+    // as lets it get there, each within its range. Returns what they cannot
+    // give (rad, + to the left). `hint`: its turn a moment ago, kept.
+    float turnTrunk(int h, math::Vec3 target, const BodyDeciderSettings& s, float& hint);
     // A lifted foot out of reach: the stance leg lowers the hips, the pelvis
     // tilts on the stance hip.
     void footTrunk(int i, math::Vec3 target, math::Vec3 velocity, const BodyDeciderSettings& s, BodyQueue& out);
@@ -512,6 +525,8 @@ private:
     // pelvis's range counts from it.
     float anchorYaw_[2] = {0.0f, 0.0f}, stepYawFrom_[2] = {0.0f, 0.0f}, stepYaw_[2] = {0.0f, 0.0f};
     float stanceYaw_ = 0.0f;
+    float shortTurn_ = 0.0f;
+    float turnHint_[2] = {0.0f, 0.0f};  // rad, each hand's trunk turn last tick (turnTrunk)
     Plan query_;            // shortStanding's copy of the desired pose
     BodyQueue queryQueue_;  // and its queue
     // Each hand path's end and time left last tick (negative: none), and the

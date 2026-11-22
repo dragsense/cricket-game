@@ -1052,3 +1052,20 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Reason:** the user's go. Cricketers use the same arm with and without a run-up, only the
   feet differ (Dutton 2022, BIOMECHANICS 10.5).
 - **Rejected:** the ball's speed from the coil by formula (10-31 m/s, M5).
+
+## 2026-11-22: The throw is poses only for now; a hand out of its shoulder's range brings the body
+- **Decision:** no ball or speed yet, only the body's poses. Height: a click on the circle
+  round the chest. Force: the mouse draws the hand back from there, a click keeps it (a body
+  intent: how far the hand is drawn back, seen on the body at once). Release: a click on the
+  throw circle (the whole arm's length round the standing shoulder); the hand swings out onto
+  it and through the point. The body follows by one general rule: a hand within the arm's length but out of the shoulder's range
+  is short like one too far. The elbow goes round first, then the trunk and pelvis turn about
+  the vertical by the queue's shares (no leftovers at its end: what one at its range cannot
+  take the others do in the same shares), then a leg goes round with its hip. The way it
+  turns: behind the shoulder to the hand's own side, ahead toward the target.
+- **Reason:** the user: the hand must get to any point, the elbow is not always bent. Measured:
+  without it the trunk never turned for such a point (11-76 cm short); with elbow, spine 35
+  and pelvis 30 every point to 90 deg back is reached.
+- **Rejected:** a cocked arm by formula (arm 20 deg back, elbow 90); an elbow direction in the
+  hand's target; the trunk turned both ways by the least angle (it turned the wrong way
+  behind the back); the real hand's velocity / ball release of the entry above (later).

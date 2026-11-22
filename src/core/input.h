@@ -66,6 +66,7 @@ enum class Action : uint8_t {
     PoseGo,            // limb test: the body goes to the target as it is set now
     PoseAway, PoseNear, PoseLeft, PoseRight,  // limb test: move the target (camera-relative; Shift: up/down)
     PoseTurn,          // held (Ctrl): the limb test's arrows turn the target
+    ThrowMode,         // the throw's circles on / off
     Count
 };
 

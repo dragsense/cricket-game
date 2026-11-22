@@ -2,22 +2,39 @@
 
 ## Current milestone: M4 Throw, on the physics body (branch throw, 2026-11-22)
 
-Goal: the player throws on the physics body: three clicks on the circles (hand height, coil,
-release point; M5's "perfect" controls), the feet step by the situation. Targets only, from
-`motion/throw_planner` (as the run planner; nothing throw-specific in the decider); the ball
-leaves with the real hand's velocity and is a Jolt body. Plan (the user's go, 2026-11-22;
-DECISIONS); stop for the game check after each piece. Out of scope: pick, catch, dive,
-off-balance throws. M6 waits.
+Goal: the throw's poses and body motion on the physics body, player-driven by clicks on
+circles round the body, the feet stepping by the situation. Targets only, from
+`motion/throw_planner` (as the run planner; nothing throw-specific in the decider). The
+user's scope (2026-11-22): no ball, no ball physics, no release, no speed for now. Stop for
+the game check after each piece. Out of scope too: pick, catch, dive, off-balance throws.
+M6 waits.
 
-- [x] T0 Research (BIOMECHANICS 10.5) and measure (10.6); no game change. The hand reaches
-  14.8 m/s standing (real fielder ~30); the drive is too soft, the strength allows ~20; the
-  decider's hand arc gives 8-12.6 and its arm jumps. Open before T2: the fast arm (below).
-- [ ] T1 Ball in the hand, the circles, click 1 (height) and click 2 (coil).
-- [ ] T2 Standing throw, no step. Needs: the arm's own shoulder twist in the plan, and the
-  user's call on the soft drive.
-- [ ] T3 One step (coil >= 30 %).
-- [ ] T4 W: shuffle, then the step.
-- [ ] T5 From a walk or a run.
+- [x] T0 Research (BIOMECHANICS 10.5) and measure (10.6); no game change.
+- [ ] P1 + P2 (built, uncommitted until the user's game check; the user's design, 2026-11-22):
+  T: the throw on / off. Click 1, cyan height circle (slots -60 underarm .. +35): the hand
+  goes there. The mouse down: the hand is drawn back from there (the force, up to 0.9 m):
+  straight back to 0.95 of the arm's length, then round the shoulder; click 2 keeps it. The
+  yellow circle (the whole arm, round the standing shoulder): click 3 is the release point:
+  the hand comes forward and out onto it by the release (the direction is the circle's
+  there), evenly faster, on past it 60 deg, then back to standing. The wheel leans the yellow
+  circle about the hand (the shoulder-hand line), R: back to standing; no walking meanwhile. Dropped on the way: a cocked pose by
+  formula, a force point clicked on the yellow circle.
+  The body follows by the general mechanism (decider, any hand; `motion/arm_fit`): a hand
+  within the arm's length but out of the shoulder's range counts as short: the elbow goes
+  round as little as brings it in, then chest, spine_02, spine_01 and pelvis turn by their
+  shares (behind: to the hand's own side), then a leg goes round (planReach).
+  Measured (release): held, slots -60..35 and every pull: plan 0.1, real 0.1-0.2 cm off; at
+  0.2 / 0.6 / 0.9 m the chest 0-18 / 2-41 / 48-56 deg back, the pelvis 0-1 / 0-6 / 13-21;
+  feet still. Release: real hand 1-5 cm off the point, 3.5-6.5 m/s, direction 1-13 deg. Walk
+  and run bit-identical to HEAD; limb test: hand back 21.9 -> 0.1 cm, up 4.0 -> 0.2, across
+  21.5 -> 17.5 (a step now). Cost +160 us per tick while a hand is out of range. Tests pass.
+  Open: slots 40+ the real arm can stick (the shoulder's singular place near overhead), hence
+  +35; underarm at 0.75+ the plan's hand lags 15-19 cm on the way; the swing is slow (6-12
+  m/s^2): the decider's rates (limbs 12, trunk 4 rad/s).
+- [ ] P3 A big coil side-on, the back foot turned, the weight on it.
+- [ ] P4 The front foot's step.
+- [ ] P5 W: shuffle, then the step.
+- [ ] P6 From a walk or a run.
 
 ## Waiting: M6 Bowling rework — in progress (branch milestone-6)
 

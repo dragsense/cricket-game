@@ -46,6 +46,11 @@
     "PoseNear": ["Down"],
     "PoseLeft": ["Left"],
     "PoseRight": ["Right"],
-    "PoseTurn": ["LeftCtrl", "RightCtrl"]
+    "PoseTurn": ["LeftCtrl", "RightCtrl"],
+    // T: the throw on / off (the player stands). Click the cyan circle: the
+    // throw's height, the hand goes there; move the mouse down: the hand goes
+    // back (the force), a click keeps it; click the yellow circle: the release
+    // point, the hand swings through it; the wheel leans it. R: back to standing.
+    "ThrowMode": ["T"]
   }
 }

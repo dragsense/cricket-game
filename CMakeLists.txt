@@ -59,10 +59,13 @@ cricket_warnings(cricket_ik)
 
 # ---- motion: procedural body motion (own code) ------------------------------------
 add_library(cricket_motion STATIC
+    src/motion/arm_fit.cpp
     src/motion/body_decider.cpp
     src/motion/foot_stepper.cpp
     src/motion/run_planner.cpp
     src/motion/step_planner.cpp
+    src/motion/throw_arc.cpp
+    src/motion/throw_planner.cpp
 )
 target_link_libraries(cricket_motion PUBLIC cricket_ik)
 cricket_warnings(cricket_motion)

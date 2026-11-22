@@ -923,6 +923,22 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         if (last - now < kProgress) break;
         last = now;
     }
+    // A hand the shoulder's range still keeps off its target: the trunk turns
+    // to it.
+    bool trunkTurned = false;
+    for (int h = 0; h < 2; ++h) {
+        if (endOn[h] && armMiss(h, endTarget[h], s) >
+                            std::max(0.0f, math::distance(planPos(d, joints_.arms[h].start), endTarget[h]) - limbReach(h, s)) + kProgress) {
+            turnTrunk(h, endTarget[h], s, turnHint_[h]);
+            trunkTurned = true;
+        } else {
+            turnHint_[h] = 0.0f;
+        }
+    }
+    if (trunkTurned) {
+        balanceStanding(t, s);
+        solveLegs(d, t, s, out);
+    }
 
     // Driven chest and head: the chain turns by its blended weight, shared by
     // place along it (chest: chest, spine_02, spine_01, pelvis; head: head,
@@ -1066,11 +1082,14 @@ void BodyDecider::planReach(const TargetSet& t, const BodyDeciderSettings& s) {
     // The trunk at its ranges and the hand still short: the hips turn.
     const bool swinging = steps_[0].running() || steps_[1].running();
     reach_.turn = yawNow + facing;
-    if (need <= s.stepMargin && !swinging && spreadTurn != 0.0f && shortStanding(t, s, reach_.turn) > s.stepMargin) {
-        // As little as lets the body reach it, toward the bend's way.
+    if (need <= s.stepMargin && !swinging && shortStanding(t, s, reach_.turn) > s.stepMargin) {
+        // As little as lets the body reach it, toward the bend's way (or the
+        // way the trunk still has to turn, past what the hips turn on the feet).
+        if (shortTurn_ != 0.0f)
+            spreadTurn = facing + shortTurn_ + std::copysign(s.pelvisMax.y, shortTurn_);
         constexpr int kTurns = 8;
         float best = 1e9f;
-        for (int k = 1; k <= kTurns; ++k) {
+        for (int k = 1; k <= kTurns && spreadTurn != 0.0f; ++k) {
             const float turn = yawNow + facing + (spreadTurn - facing) * static_cast<float>(k) / kTurns;
             const float left = shortStanding(t, s, turn);
             if (left < best - 1e-3f) {
@@ -1234,7 +1253,17 @@ float BodyDecider::shortStanding(const TargetSet& t, const BodyDeciderSettings& 
         if (last - now < 1e-3f) break;
         last = now;
     }
-    const float missing = left();
+    float missing = left();
+    shortTurn_ = 0.0f;
+    for (int h = 0; h < 2; ++h) {
+        if (lastHandLeft_[h] < 0.0f) continue;
+        if (armMiss(h, target[h], s) > missing + 1e-3f) {
+            float hint = 0.0f;
+            const float more = turnTrunk(h, target[h], s, hint);
+            if (std::abs(more) > std::abs(shortTurn_)) shortTurn_ = more;
+        }
+        missing = std::max(missing, armMiss(h, target[h], s));
+    }
     anchor_[0] = anchor[0], anchor_[1] = anchor[1];
     reachFrom_[0] = reachFrom[0], reachFrom_[1] = reachFrom[1];
     anchorRot_[0] = rot0, anchorRot_[1] = rot1;
@@ -1558,7 +1587,9 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
     // (the elbow keeps its bend). The elbow's side (the solve's pole): the
     // arm turns from hanging relaxed off the chest to the target by the
     // shortest swing, adding no twist, and the elbow's bend turns with it
-    // (no fixed direction, so none the arm can line up with). Free hands
+    // (no fixed direction, so none the arm can line up with); out of the
+    // shoulder's range, the elbow goes round as little as brings it in
+    // (fitPole). Free hands
     // keep what freeArms placed on the desired pose.
     const rig::Pose& rest = rig_->restPose();
     const bool isOutput = &p == &output_;
@@ -1597,12 +1628,11 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
         const math::Vec3 from = planPos(p, arm.start);
         const float reach = limbReach(h, s);
         const math::Vec3 target = clampToReach(from, math::lerp(restWorld, hand.position, k), reach);
-        const math::Vec3 hang = chest * hangDir_[h], bend = chest * hangBend_[h];
-        const math::Vec3 dir = math::safeNormalize(target - from, hang);
-        const math::Quat swing = math::dot(hang, dir) < -0.9999f
-                                     ? math::fromAxisAngle(math::safeNormalize(math::cross(hang, -bend), math::kRight), math::kPi)
-                                     : math::fromTo(hang, dir);
-        if (ik::solveTwoBone(arm, p.models, target, swing * bend, 1.0f, p.pose)) {
+        const ArmHang hang = armHang(h, p);
+        math::Vec3 pole = relaxedPole(hang, math::safeNormalize(target - from, hang.down));
+        float miss = 0.0f;
+        if (limits_) pole = fitPole(armShape(h, p, s), hang, armFrame(h, p), from, target, miss);
+        if (ik::solveTwoBone(arm, p.models, target, pole, 1.0f, p.pose)) {
             math::Quat& upper = p.pose.locals[static_cast<size_t>(arm.start)].rotation;
             math::Quat& fore = p.pose.locals[static_cast<size_t>(arm.mid)].rotation;
             if (fading) {
@@ -2092,6 +2122,107 @@ void BodyDecider::handTrunk(int h, math::Vec3 target, const BodyDeciderSettings&
     //    spine_01, pelvis tilt, hips.
     if (math::distance(planPos(desired_, arm.start), target) > limbReach(h, s))
         trunkOrders(h, target, math::Vec3(0.0f), s, out);
+}
+
+ArmShape BodyDecider::armShape(int h, const Plan& p, const BodyDeciderSettings& s) const {
+    const ik::TwoBoneChain& arm = joints_.arms[h];
+    ArmShape a;
+    a.upper = upperArmLength_[h];
+    a.fore = forearmLength_[h];
+    a.reach = limbReach(h, s);
+    if (limits_) {
+        a.least = bentSpan(a.upper, a.fore, std::max(0.0f, -limits_->limit(arm.mid).swing1Min));
+        a.shoulder = limits_->limitIn(arm.start, p.pose);
+    }
+    return a;
+}
+
+ArmHang BodyDecider::armHang(int h, const Plan& p) const {
+    const math::Quat chest = joints_.spine[2] >= 0 ? planRot(p, joints_.spine[2]) : math::identityQuat();
+    return ArmHang{chest * hangDir_[h], chest * hangBend_[h]};
+}
+
+math::Quat BodyDecider::armFrame(int h, const Plan& p) const {
+    const int parent = rig_->parent(joints_.arms[h].start);
+    return parent >= 0 ? planRot(p, parent) : math::identityQuat();
+}
+
+float BodyDecider::armMiss(int h, math::Vec3 target, const BodyDeciderSettings& s) const {
+    const Plan& d = desired_;
+    const math::Vec3 shoulder = planPos(d, joints_.arms[h].start);
+    float miss = std::max(0.0f, math::distance(shoulder, target) - limbReach(h, s));
+    if (limits_) fitPole(armShape(h, d, s), armHang(h, d), armFrame(h, d), shoulder, target, miss);
+    return miss;
+}
+
+float BodyDecider::turnTrunk(int h, math::Vec3 target, const BodyDeciderSettings& s, float& hint) {
+    if (!limits_ || joints_.spine[2] < 0 || act_[ChestW] > 0.0f) return 0.0f;
+    Plan& d = desired_;
+    const rig::Pose& rest = rig_->restPose();
+    // Turning toward a point is mostly thoracic, the pelvis last (BIOMECHANICS
+    // 9.3); about the trunk's own long axis.
+    const int joint[4] = {joints_.spine[2], joints_.spine[1], joints_.spine[0], joints_.pelvis};
+    // Behind the shoulder to the hand's own side (a right hand: to the right);
+    // ahead toward the target's side.
+    const math::Vec3 way = math::inverse(planRot(d, joint[0])) * (target - planPos(d, joints_.arms[h].start));
+    const float sign = way.z < 0.0f ? (h == 0 ? 1.0f : -1.0f) : way.x >= 0.0f ? 1.0f : -1.0f;
+    float missing = 0.0f;
+    constexpr int kRounds = 2;  // the turned shoulder is elsewhere: once more from there
+    for (int round = 0; round < kRounds; ++round) {
+        const math::Vec3 axis = planRot(d, joint[0]) * (math::kUp * sign);
+        const float turn = turnToReach(armShape(h, d, s), armHang(h, d), armFrame(h, d), planPos(d, joints_.arms[h].start),
+                                       target, planPos(d, joint[0]), axis, round == 0 ? hint : 0.0f);
+        if (round == 0) hint = turn;
+        missing = turn;
+        if (turn <= kMinAngle) return 0.0f;
+        // Each one's room, then its share of the whole turn by place; what one
+        // at its range cannot take goes to the others in the same shares.
+        float room[4], give[4] = {0.0f, 0.0f, 0.0f, 0.0f}, weight[4], w = 1.0f;
+        for (int k = 0; k < 4; ++k) {
+            weight[k] = w;
+            w *= s.queueShare;
+            room[k] = 0.0f;
+            if (joint[k] < 0) continue;
+            if (k == 3) {
+                const float now = math::rotationVector(math::normalize(pelvisOf(d).rotation * math::inverse(pelvisBase()))).y;
+                room[k] = sign > 0.0f ? s.pelvisMax.y - now : now - s.pelvisMin.y;
+                weight[k] *= 1.0f - act_[HipsW];
+            } else {
+                const ik::JointLimit l = limits_->limitIn(joint[k], d.pose);
+                const size_t j = static_cast<size_t>(joint[k]);
+                const float now = math::rotationVector(math::normalize(d.pose.locals[j].rotation * math::inverse(rest.locals[j].rotation))).y;
+                room[k] = sign > 0.0f ? l.twistMax - now : now - l.twistMin;
+            }
+            room[k] = std::max(0.0f, room[k]);
+        }
+        float left = turn;
+        for (int pass = 0; pass < 4 && left > kMinAngle; ++pass) {
+            float sum = 0.0f;
+            for (int k = 0; k < 4; ++k)
+                if (room[k] - give[k] > kMinAngle) sum += weight[k];
+            if (sum <= 1e-6f) break;
+            const float now = left;
+            for (int k = 0; k < 4; ++k) {
+                if (room[k] - give[k] <= kMinAngle) continue;
+                const float take = std::min(now * weight[k] / sum, room[k] - give[k]);
+                give[k] += take;
+                left -= take;
+            }
+        }
+        missing = std::max(0.0f, left);
+        if (give[3] > 0.0f) {
+            math::Transform p = pelvisOf(d);
+            const math::Vec3 hips = p.position + p.rotation * hipCentre_;
+            const math::Quat by = math::fromAxisAngle(math::kUp, sign * give[3]);
+            p.rotation = math::normalize(by * p.rotation);
+            p.position = hips + by * (p.position - hips);
+            placePelvis(d, p);
+        }
+        for (int k = 2; k >= 0; --k)
+            if (give[k] > 0.0f) turnPlanned(d, joint[k], math::fromAxisAngle(planRot(d, joint[k]) * math::kUp, sign * give[k]));
+        if (missing > kMinAngle) break;  // at their ranges
+    }
+    return sign * missing;
 }
 
 void BodyDecider::trunkOrders(int h, math::Vec3 target, math::Vec3 velocity, const BodyDeciderSettings& s,

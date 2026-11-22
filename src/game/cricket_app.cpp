@@ -102,6 +102,7 @@ bool CricketApp::init() {
     const agents::Human& fielder = sim_.fielder();
     humanVisual_.build(world_, *renderer_, fielder.def(), fielder.rig(), cfg_.humanSkeleton);
     fielderModels_.assign(static_cast<size_t>(fielder.rig().numJoints()), math::Mat4(1.0f));
+    sim_.fielder().loadThrow(cfg_.throwing);
     limbTest_ = e.getBool("debug.limbTest", false);
     debugSettings_.shadows = e.getBool("render.shadows", false);
     debugSettings_.debugDraw = e.getBool("debug.debugDraw", true);
@@ -158,6 +159,9 @@ void CricketApp::reloadConfig(const std::vector<std::string>& files) {
         } else if (name == "locomotion.json") {
             cfg_.locomotion = std::move(fresh);
             sim_.fielder().loadLocomotion(cfg_.locomotion);
+        } else if (name == "throw.json") {
+            cfg_.throwing = std::move(fresh);
+            sim_.fielder().loadThrow(cfg_.throwing);
         } else {
             continue;  // not a file this app uses
         }
@@ -216,7 +220,13 @@ bool CricketApp::pumpEvents() {
                        (actions_.down(input_, core::Action::StepRight) ? 1.0f : 0.0f);
     const float ahead = (actions_.down(input_, core::Action::StepForward) ? 1.0f : 0.0f) -
                         (actions_.down(input_, core::Action::StepBack) ? 1.0f : 0.0f);
-    sim_.fielder().setWalkInput(math::Vec2(side, ahead));
+    if (actions_.pressed(input_, core::Action::ThrowMode)) {
+        throwMode_ = !throwMode_;
+        if (!throwMode_) sim_.fielder().cancelThrow();
+        LOG_INFO("Throw {}", throwMode_ ? "on" : "off");
+    }
+    // Thrown standing for now: no walking meanwhile.
+    sim_.fielder().setWalkInput(throwMode_ ? math::Vec2(0.0f) : math::Vec2(side, ahead));
     // The player turns to the camera's heading as they move, unless free view
     // (V) holds it.
     if (actions_.pressed(input_, core::Action::FreeView)) {
@@ -233,7 +243,7 @@ bool CricketApp::pumpEvents() {
     // Live config: saved files are re-applied to the running game; F5 forces all.
     changedConfigs_.clear();
     if (actions_.pressed(input_, core::Action::ReloadConfig))
-        changedConfigs_ = {"engine.json", "input.json", "scene.json", "human_skeleton.json", "locomotion.json",
+        changedConfigs_ = {"engine.json", "input.json", "scene.json", "human_skeleton.json", "locomotion.json", "throw.json",
                           "physics_world.json"};
     else if (cfg_.liveReload)
         configWatcher_.poll(changedConfigs_);
@@ -315,6 +325,7 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     auto frameStart = std::chrono::steady_clock::now();
 
     // --- Cameras (render-side, real frame time); the orbit follows the controlled player ---
+    updateThrow(alpha);  // takes the wheel from the camera while it leans a circle
     camera_.setFollowPoint(sim_.fielder().interpolatedRoot(alpha).position);
     camera_.setMouseLook(mouseLook_);
     camera_.update(input_, static_cast<float>(frameSeconds));
@@ -341,11 +352,12 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
     // --- Interpolated sim state -> entities -> renderer scene ---
     math::Transform probe = sim_.probeTransform(alpha);
     for (auto e : world_.registry().view<FollowsProbe>()) world_.setTransform(e, probe);
-    if (limbTest_) updatePose(static_cast<float>(frameSeconds));
+    if (limbTest_ && !throwMode_) updatePose(static_cast<float>(frameSeconds));
     updateFielder(alpha);
     world_.syncToRenderer(*renderer_);
 
     if (debugSettings_.debugDraw) drawDebugGeometry(alpha);
+    if (throwMode_) drawThrow();
 
     // --- Debug UI ---
     platform::imguiPlatformNewFrame();
@@ -369,6 +381,82 @@ void CricketApp::renderFrame(double frameSeconds, float alpha) {
         double spent = std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count();
         platform::preciseSleep(targetFrameSeconds_ - spent - 0.0005);
     }
+}
+
+void CricketApp::mouseRay(math::Vec3& origin, math::Vec3& direction) const {
+    const camera::CameraPose pose = camera_.pose();
+    const float w = static_cast<float>(std::max(1, window_.width()));
+    const float h = static_cast<float>(std::max(1, window_.height()));
+    const float x = mouseLook_ ? 0.0f : 2.0f * input_.mouseX / w - 1.0f;
+    const float y = mouseLook_ ? 0.0f : 1.0f - 2.0f * input_.mouseY / h;
+    const float tanHalf = std::tan(0.5f * math::radians(cfg_.engine.getFloat("camera.fovY", 50.0f)));
+    const math::Vec3 ahead = math::safeNormalize(pose.target - pose.eye, -math::kForward);
+    const math::Vec3 right = math::safeNormalize(math::cross(ahead, pose.up), math::kRight);
+    const math::Vec3 up = math::cross(right, ahead);
+    origin = pose.eye;
+    direction = math::normalize(ahead + right * (x * tanHalf * w / h) + up * (y * tanHalf));
+}
+
+void CricketApp::updateThrow(float alpha) {
+    if (!throwMode_) return;
+    agents::Human& fielder = sim_.fielder();
+    const motion::ThrowPlanner& thrower = fielder.thrower();
+    if (actions_.pressed(input_, core::Action::ResetPose)) fielder.cancelThrow();
+    if (thrower.held() && input_.wheel != 0.0f && !input_.uiWantsMouse) {
+        const float most = math::radians(cfg_.throwing.getFloat("circles.maxTiltDeg", 30.0f));
+        const float step = math::radians(cfg_.throwing.getFloat("circles.tiltStepDeg", 5.0f));
+        throwTilt_ = math::clamp(throwTilt_ + input_.wheel * step, -most, most);
+        fielder.setThrowTilt(throwTilt_);
+        input_.wheel = 0.0f;
+    }
+    const math::Transform root = fielder.interpolatedRoot(alpha);
+    slotArc_ = fielder.throwSlotArc().in(root);
+    swingArc_ = fielder.throwSwingArc().in(root);
+    if (input_.uiWantsMouse || thrower.swinging()) return;
+    const bool click = input_.pressed(core::MouseButton::Left);
+    if (thrower.pulling()) {
+        // The mouse down (toward the player) draws the hand back, up lets it
+        // forward again; a click keeps it.
+        if (!mouseLook_ && !input_.down(core::MouseButton::Right))
+            fielder.throwPull(input_.mouseDy * cfg_.throwing.getFloat("force.pullPerPixel", 0.0015f));
+        if (click) fielder.throwHold();
+        return;
+    }
+    math::Vec3 eye, dir;
+    mouseRay(eye, dir);
+    const bool held = thrower.held();
+    if (!(held ? swingArc_ : slotArc_).rayAngle(eye, dir, throwAim_)) return;
+    throwAim_ = held ? motion::ThrowPlanner::releaseOf(throwAim_, fielder.throwSettings())
+                     : motion::ThrowPlanner::slotOf(throwAim_, fielder.throwSettings());
+    if (!click) return;
+    if (held) {
+        fielder.throwSwing(throwAim_);
+    } else {
+        throwTilt_ = 0.0f;
+        fielder.setThrowTilt(0.0f);
+        fielder.throwToSlot(throwAim_);
+    }
+}
+
+void CricketApp::drawThrow() {
+    // The height circle (cyan); the chosen slot (magenta) and the hand's target
+    // (white) with the line between them (the force); the force set, the throw
+    // circle (yellow). Red: the mouse's point on the circle to click, then the
+    // release point.
+    render::DebugDraw& dd = renderer_->debugDraw();
+    const agents::Human& fielder = sim_.fielder();
+    const motion::ThrowPlanner& thrower = fielder.thrower();
+    const bool circle = thrower.held() || thrower.swinging();
+    dd.circle(slotArc_.centre, slotArc_.normal, slotArc_.radius, render::colors::kCyan, 64);
+    if (thrower.pulling() || circle) {
+        const math::Vec3 slot = fielder.root().transformPoint(thrower.slotPoint()), at = fielder.root().transformPoint(thrower.at());
+        dd.sphere(slot, 0.04f, render::colors::kMagenta);
+        dd.sphere(at, 0.04f, render::colors::kWhite);
+        dd.line(slot, at, render::colors::kWhite);
+    }
+    if (circle) dd.circle(swingArc_.centre, swingArc_.normal, swingArc_.radius, render::colors::kYellow, 64);
+    if (thrower.swinging()) dd.sphere(swingArc_.point(thrower.releaseAngle()), 0.04f, render::colors::kRed);
+    else if (!thrower.pulling()) dd.sphere((circle ? swingArc_ : slotArc_).point(throwAim_), 0.03f, render::colors::kRed);
 }
 
 void CricketApp::updateFielder(float alpha) {

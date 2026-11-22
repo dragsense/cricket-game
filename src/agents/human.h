@@ -14,6 +14,7 @@
 #include "motion/target_set.h"
 #include "motion/body_decider.h"
 #include "motion/run_planner.h"
+#include "motion/throw_planner.h"
 #include "rig/rig.h"
 #include "rig/skeleton_def.h"
 
@@ -93,6 +94,21 @@ public:
     // The way the body turns to while it moves (world yaw, 0: +Z; the
     // camera's heading): locomotion.json "move" turnRateDeg, turnAccel.
     void setHeading(float yaw) { heading_ = yaw; headingOn_ = true; }
+    // The throw's poses (config/throw.json; motion::ThrowPlanner), physics
+    // only: click 1, the mouse's pull and click 2, click 3, the throw circle's
+    // lean, back to standing.
+    void loadThrow(const core::Config& throwing);
+    void throwToSlot(float slotAngle);
+    void throwPull(float by) { throw_.pull(by, throwSettings_); }
+    void throwHold() { throw_.hold(); }
+    void throwSwing(float angle) { throw_.swing(angle, throwBody(), throwSettings_); }
+    void setThrowTilt(float tilt) { throw_.setTilt(tilt); }
+    void cancelThrow() { throw_.cancel(throwBody(), throwSettings_); }
+    const motion::ThrowPlanner& thrower() const { return throw_; }
+    const motion::ThrowPlannerSettings& throwSettings() const { return throwSettings_; }
+    // The circles, character space.
+    motion::ThrowArc throwSlotArc() const { return throw_.slotArc(throwBody(), throwSettings_); }
+    motion::ThrowArc throwSwingArc() const { return throw_.swingArc(throwBody(), throwSettings_); }
     // E / Q: the forward push's speed one move.speedStep up (+1) or down
     // (-1), within move.minSpeed .. move.maxSpeed.
     void changeWalkSpeed(int direction);
@@ -210,6 +226,10 @@ private:
     motion::RunPlannerSettings runSettings_;
     float hipsMaxAccel_ = 8.0f;  // the decider's bound, walking (human_joints.json)
     motion::RunBody runBody() const;
+    motion::ThrowPlanner throw_;
+    motion::ThrowPlannerSettings throwSettings_;
+    math::Vec3 restChest_{0.0f}, restShoulder_{0.0f}, restHand_{0.0f};  // the throwing arm's (right), rest pose
+    motion::ThrowBody throwBody() const;
     MuscleTiming muscleTiming_;
     std::vector<math::Mat4> physicsModels_;   // the physics body now (character space)
     rig::Pose physicsPose_;                   // scratch: the physics body's locals (a get-up seeds the plan from it)

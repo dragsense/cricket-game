@@ -27,6 +27,7 @@ struct AppConfigs {
     core::Config humanSkeleton;  // config/human_skeleton.json
     core::Config humanJoints;    // config/human_joints.json
     core::Config locomotion;       // config/locomotion.json
+    core::Config throwing;         // config/throw.json
     core::Config physicsWorld;     // config/physics_world.json
     std::string dir = "config";    // where the files above were loaded from
     bool liveReload = false;       // dev builds: watch `dir` and re-apply changes
@@ -55,6 +56,12 @@ private:
     // up/down), C sends the body there; R resets the pose.
     void updatePose(float seconds);
 
+    // The throw (T): its circles follow the fielder, the mouse picks a point on
+    // the one to click (cyan: hand height, yellow: back), each click acts at once.
+    void updateThrow(float alpha);
+    void drawThrow();
+    void mouseRay(math::Vec3& origin, math::Vec3& direction) const;
+
     AppConfigs cfg_;
     platform::Window window_;
     std::unique_ptr<render::Renderer> renderer_;
@@ -82,6 +89,9 @@ private:
     bool poseSent_ = false;        // the body goes to the chosen target as it is now (C)
     math::Vec3 poseTarget_{0.0f};  // world
     math::Quat poseTurn_ = math::identityQuat();  // world
+    bool throwMode_ = false;       // T
+    motion::ThrowArc slotArc_, swingArc_;  // world
+    float throwAim_ = 0.0f, throwTilt_ = 0.0f;  // rad, the mouse's point on the circle to click, the yellow one's lean
     bool slowMotion_ = false;      // I: the whole game in slow motion
     bool mouseLook_ = false;  // off: right-drag rotates; Tab toggles mouse-look (cursor hidden)
     debug::DebugSettings appliedSettings_;  // last values pushed to the renderer
