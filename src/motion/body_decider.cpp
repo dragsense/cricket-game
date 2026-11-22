@@ -2156,7 +2156,7 @@ float BodyDecider::armMiss(int h, math::Vec3 target, const BodyDeciderSettings& 
 }
 
 float BodyDecider::turnTrunk(int h, math::Vec3 target, const BodyDeciderSettings& s, float& hint) {
-    if (!limits_ || joints_.spine[2] < 0 || act_[ChestW] > 0.0f) return 0.0f;
+    if (!limits_ || joints_.spine[2] < 0) return 0.0f;
     Plan& d = desired_;
     const rig::Pose& rest = rig_->restPose();
     // Turning toward a point is mostly thoracic, the pelvis last (BIOMECHANICS

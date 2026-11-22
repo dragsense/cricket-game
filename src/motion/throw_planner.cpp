@@ -9,7 +9,14 @@ namespace {
 
 constexpr bool kLeft = false;  // the throwing hand: the right one
 constexpr int kHand = kLeft ? 0 : 1;
+constexpr float kLeastSwing = 0.1f;  // rad, off the chest the hand goes at least this far to the release
 constexpr float kAhead = 0.15f;  // m, a hand this far ahead of the chest is clear of the body
+
+// A part's turn about the vertical (rad, + left).
+float yawOf(math::Quat q) {
+    const math::Vec3 ahead = q * math::kForward;
+    return std::atan2(ahead.x, ahead.z);
+}
 
 // Round `arc` from `from` to `to` (never through the body): the angle, the
 // distance from the centre and the depth, each by the same share.
@@ -72,18 +79,53 @@ void ThrowPlanner::hold() {
 
 void ThrowPlanner::swing(float angle, const ThrowBody& body, const ThrowPlannerSettings& s) {
     if (stage_ != Stage::Held) return;
-    const ThrowArc arc = swingArc(body, s);
-    from_ = at_;
-    begin_ = arc.angleOf(at_);
-    release_ = std::max(releaseOf(angle, s), begin_);
-    end_ = std::min(release_ + s.follow, std::max(release_, s.followMax));
-    accel_ = math::lerp(s.accelMin, s.accelMax, force(s));
-    const float way = (release_ - begin_) * arc.radius, past = (end_ - release_) * arc.radius;
-    speed_ = std::sqrt(2.0f * accel_ * way);
+    release_ = releaseOf(angle, s);
+    toRelease_ = std::max(math::lerp(s.timeNone, s.timeFull, force(s)), 0.05f);
+    chestFrom_ = yawOf(body.chest.rotation);
+    hipsFrom_ = yawOf(body.pelvis.rotation);
+    past_ = (kLeft ? -1.0f : 1.0f) * s.chestPast * force(s);
+    riding_ = math::inverse(body.chest.rotation) * (at_ - body.chest.position);
+    off_ = false;
+    lastAngle_ = swingArc(body, s).angleOf(at_);
+    rate_ = 0.0f;
     time_ = 0.0f;
-    duration_ = speed_ > 1e-3f ? speed_ / accel_ + 2.0f * past / speed_ : 0.0f;
-    goal_ = arc.point(end_);
+    duration_ = 1e9f;  // known once the hand is off the chest
     stage_ = Stage::Swing;
+}
+
+math::Vec3 ThrowPlanner::swung(const ThrowBody& body, const ThrowPlannerSettings& s, float dt) {
+    ThrowArc arc = swingArc(body, s);
+    if (time_ < s.ride * toRelease_) {
+        const math::Vec3 p = body.chest.position + body.chest.rotation * riding_;
+        const float a = arc.angleOf(p);
+        if (dt > 0.0f) rate_ = std::remainder(a - lastAngle_, math::kTwoPi) / dt;
+        lastAngle_ = a;
+        return p;
+    }
+    if (!off_) {
+        // Off the chest, from where it is as it goes: evenly faster to be at the
+        // release on time, out onto the circle meanwhile.
+        off_ = true;
+        offAt_ = time_;
+        const math::Vec3 d = at_ - arc.centre;
+        depth_ = math::dot(d, arc.normal);
+        radius_ = math::length(d - depth_ * arc.normal);
+        angle_ = lastAngle_;
+        const float left = std::max(toRelease_ - offAt_, 1e-2f);
+        release_ = std::max(release_, angle_ + kLeastSwing);
+        rate_ = std::clamp(rate_, 0.0f, (release_ - angle_) / left);
+        accel_ = 2.0f * (release_ - angle_ - rate_ * left) / (left * left);
+        end_ = std::max(release_, std::min(release_ + s.follow, s.followMax));
+        const float fast = rate_ + accel_ * left;
+        duration_ = toRelease_ + (fast > 1e-3f ? 2.0f * (end_ - release_) / fast : 0.0f);
+    }
+    const float left = std::max(toRelease_ - offAt_, 1e-2f);
+    const float t = time_ - offAt_, before = std::min(t, left), after = std::max(0.0f, t - left);
+    const float fast = rate_ + accel_ * left, past = std::max(duration_ - toRelease_, 1e-3f);
+    const float angle = angle_ + rate_ * before + 0.5f * accel_ * before * before + fast * after * (1.0f - 0.5f * after / past);
+    const float out = math::minimumJerk(std::clamp(t / (left * s.elbowBy), 0.0f, 1.0f));
+    arc.radius = math::lerp(radius_, arc.radius, out);
+    return arc.point(angle) + (1.0f - out) * depth_ * arc.normal;
 }
 
 void ThrowPlanner::cancel(const ThrowBody& body, const ThrowPlannerSettings& s) {
@@ -111,18 +153,7 @@ void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, Ta
         const float len = math::length(way), most = s.pullSpeed * t.dt;
         at_ += len > most ? way * (most / len) : way;
     } else if (stage_ == Stage::Swing) {
-        // Round the throw circle: evenly faster to the release, then evenly
-        // slower; out onto it (from the bent arm) by the release.
-        ThrowArc arc = swingArc(body, s);
-        const float toRelease = speed_ / accel_, past = duration_ - toRelease;
-        const float after = std::max(0.0f, time_ - toRelease), before = std::min(time_, toRelease);
-        const float way = 0.5f * accel_ * before * before + speed_ * after * (1.0f - 0.5f * after / std::max(past, 1e-3f));
-        const float u = std::min(1.0f, before * before / std::max(toRelease * toRelease, 1e-6f));  // of the way to the release
-        const float angle = begin_ + way / arc.radius;
-        const math::Vec3 d = from_ - arc.centre;
-        const float depth = math::dot(d, arc.normal);
-        arc.radius = math::lerp(math::length(d - depth * arc.normal), arc.radius, u);
-        at_ = arc.point(angle) + (1.0f - u) * depth * arc.normal;
+        at_ = swung(body, s, t.dt);
     } else {
         const float u = math::minimumJerk(std::clamp(time_ / duration_, 0.0f, 1.0f));
         const bool ahead = stage_ == Stage::Return && from_.z - body.restChest.z > kAhead;
@@ -134,6 +165,19 @@ void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, Ta
     hand.mode = TargetMode::Driven;
     hand.position = at_;
     hand.weightRotation = 0.0f;  // the wrist straight on the forearm
+    if (stage_ == Stage::Swing) {
+        // The hips first, then the chest, from where the pull left them.
+        const auto turned = [&](float from, float to, float by) {
+            const float u = math::minimumJerk(std::clamp(time_ / std::max(by * toRelease_, 1e-3f), 0.0f, 1.0f));
+            return math::fromAxisAngle(math::kUp, math::lerp(from, to, u));
+        };
+        t.hips.mode = TargetMode::Driven;
+        t.hips.weightPosition = 0.0f;
+        t.hips.rotation = turned(hipsFrom_, 0.0f, s.hipsBy);
+        t.chest.mode = TargetMode::Driven;
+        t.chest.weightPosition = 0.0f;
+        t.chest.rotation = turned(chestFrom_, past_, s.chestBy);
+    }
 }
 
 } // namespace motion

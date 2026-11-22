@@ -21,8 +21,26 @@
   // straight back to pullReach x the arm's length from the shoulder, then round
   // it, at most pullMax (m), no faster than pullSpeed (m/s) [E].
   "force": { "pullMax": 0.9, "pullReach": 0.95, "pullPerPixel": 0.002, "pullSpeed": 2.0 },
-  // Click 3: the hand comes forward along the throw circle, evenly faster to the
-  // release point (m/s^2: no force .. pullMax), then goes on past
-  // it, slowing down. Values the body follows today [E].
-  "swing": { "accelMin": 6, "accelMax": 12, "followDeg": 60, "followMaxDeg": 140 }
+  // Click 3: the hips turn forward, then the chest (by these shares of the time
+  // to the release, s: no force .. pullMax; peaks about halfway: hips 25-42 %,
+  // upper trunk 50-60 %, BIOMECHANICS 10.5), the chest chestPast beyond square
+  // with all the force (22-28 at release). The hand rides the chest, the arm
+  // bent, for `ride` of the time, then comes out onto the throw circle (the elbow
+  // opens late: ~91 %; not quite straight at the release, ~24 deg: elbowBy) and
+  // goes on past the release, slowing down. Rates: the decider's bounds meanwhile
+  // (rad/s; a trunk joint's: the upper trunk turns ~19 over its joints). [E]
+  "swing": {
+    "timeNone": 0.5,
+    "timeFull": 0.36,
+    "ride": 0.7,
+    "hipsBy": 0.66,
+    "chestBy": 0.9,
+    "elbowBy": 1.2,
+    "chestPastDeg": 20,
+    "followDeg": 60,
+    "followMaxDeg": 140,
+    "limbRate": 40,
+    "trunkRate": 10,
+    "hipsRate": 10
+  }
 }

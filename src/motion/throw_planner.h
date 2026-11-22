@@ -7,9 +7,11 @@
 // - Pull: the mouse draws the hand back from there (how far back: the force):
 //   straight back, then, the arm out at its length, round the shoulder; Held: a
 //   click keeps it.
-// - Swing: the hand comes forward, speeding up, out onto the throw circle (the
-//   whole arm's length) by the clicked release point (the throw's direction is
-//   the circle's there), and slows down past it.
+// - Swing: the hips turn forward, then the chest; the hand rides the chest, the
+//   arm still bent, and late comes out onto the throw circle (the whole arm's
+//   length) through the clicked release point (the throw's direction is the
+//   circle's there), and slows down past it (proximal to distal, BIOMECHANICS
+//   10.5).
 // - Return: the hand back to hanging.
 // Character space. No allocations. BIOMECHANICS 10.
 
@@ -27,9 +29,17 @@ struct ThrowPlannerSettings {
     float pullMax = 0.9f;    // m, the whole force
     float pullReach = 0.95f; // x the arm's length: from here on round the shoulder
     float pullSpeed = 2.0f;  // m/s, the hand no faster after the mouse
-    // The swing: the hand's acceleration along the circle (m/s^2) from no force
-    // to all of it, and how far it goes on past the release (rad).
-    float accelMin = 6.0f, accelMax = 12.0f, follow = 1.047f, followMax = 2.443f;
+    // The swing: its time to the release (s) from no force to all of it; the
+    // share of it the hand rides the chest; by which share the hips, the chest
+    // and (a share of the rest) the elbow have turned; how far past square the
+    // chest goes with all the force, how far the hand goes on past the release
+    // (rad).
+    float timeNone = 0.5f, timeFull = 0.36f, ride = 0.7f;
+    float hipsBy = 0.66f, chestBy = 0.9f, elbowBy = 1.2f;
+    float chestPast = 0.349f, follow = 1.047f, followMax = 2.443f;
+    // The decider's rates meanwhile (rad/s; Human sets them): a limb's, a trunk
+    // joint's, the hips'.
+    float limbRate = 40.0f, trunkRate = 10.0f, hipsRate = 10.0f;
     // The hand's time to a point: Fitts' law (human_joints.json "muscles").
     float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
 };
@@ -40,6 +50,7 @@ struct ThrowBody {
     math::Vec3 restChest{0.0f}, restShoulder{0.0f}, restHand{0.0f};
     float armLength = 0.0f;  // m
     math::Vec3 hand{0.0f};
+    math::Transform chest, pelvis;  // in the plan now
 };
 
 class ThrowPlanner {
@@ -90,10 +101,16 @@ private:
     Stage stage_ = Stage::Off;
     float time_ = 0.0f, duration_ = 0.0f;            // s, this stage
     float slot_ = 0.0f, tilt_ = 0.0f, pull_ = 0.0f;  // rad, rad, m
-    // The swing: where round the circle it begins, the release and the end
-    // (rad), the hand's acceleration to the release and its speed there (along
-    // the arc).
-    float begin_ = 0.0f, release_ = 0.0f, end_ = 0.0f, accel_ = 0.0f, speed_ = 0.0f;
+    // The swing: the time to the release, the chest's and the hips' turn where
+    // it began, the hand in the chest's frame (riding it); off it: since when,
+    // where round the circle (angle, rate, distance, depth), the release and the
+    // end (rad), the rate there.
+    float toRelease_ = 0.0f, chestFrom_ = 0.0f, hipsFrom_ = 0.0f, past_ = 0.0f;
+    math::Vec3 riding_{0.0f};
+    bool off_ = false;
+    float offAt_ = 0.0f, angle_ = 0.0f, rate_ = 0.0f, radius_ = 0.0f, depth_ = 0.0f, lastAngle_ = 0.0f;
+    float release_ = 0.0f, end_ = 0.0f, accel_ = 0.0f;
+    math::Vec3 swung(const ThrowBody& body, const ThrowPlannerSettings& s, float dt);
     math::Vec3 at_{0.0f}, from_{0.0f}, goal_{0.0f};  // the hand's target now, where the stage began, where it ends
     math::Vec3 slotPoint_{0.0f};
 };

@@ -10,7 +10,7 @@ the game check after each piece. Out of scope too: pick, catch, dive, off-balanc
 M6 waits.
 
 - [x] T0 Research (BIOMECHANICS 10.5) and measure (10.6); no game change.
-- [ ] P1 + P2 (built, uncommitted until the user's game check; the user's design, 2026-11-22):
+- [x] P1 + P2 (the user checked it in the game; the user's design, 2026-11-22):
   T: the throw on / off. Click 1, cyan height circle (slots -60 underarm .. +35): the hand
   goes there. The mouse down: the hand is drawn back from there (the force, up to 0.9 m):
   straight back to 0.95 of the arm's length, then round the shoulder; click 2 keeps it. The
@@ -31,6 +31,16 @@ M6 waits.
   Open: slots 40+ the real arm can stick (the shoulder's singular place near overhead), hence
   +35; underarm at 0.75+ the plan's hand lags 15-19 cm on the way; the swing is slow (6-12
   m/s^2): the decider's rates (limbs 12, trunk 4 rad/s).
+- [x] A + C (the user checked it in the game, 2026-11-22; their report was no snap at the release): the
+  swing proximal to distal. The planner drives the hips', then the chest's turn forward; the
+  hand rides the chest, the arm bent, for 0.7 of the time, then comes out onto the yellow
+  circle through the release; Human raises the decider's rates meanwhile (`throw.json` swing:
+  limb 40, trunk joint 10, hips 10 rad/s). The decider: a hand's trunk turn goes on under a
+  chest target (it blends in, no jump). Measured, real body, pull 0.9, % of the way to the
+  release: hips 38-43 (real 25-42), chest 48-51 (51-60), upper arm 75-87, elbow 85 (90-95;
+  before 55), wrist 81-91 by physics alone, hand 7-9 m/s (before 5-6). Open: the real hand
+  lags the path up to 28-40 cm on the way, 2-15 cm off the release (underarm worst): the
+  muscle drive's softness (D, a session of its own); hips only ~100 deg/s (P3).
 - [ ] P3 A big coil side-on, the back foot turned, the weight on it.
 - [ ] P4 The front foot's step.
 - [ ] P5 W: shuffle, then the step.

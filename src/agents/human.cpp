@@ -90,8 +90,16 @@ void Human::loadThrow(const core::Config& c) {
     s.pullMax = c.getFloat("force.pullMax", s.pullMax);
     s.pullReach = c.getFloat("force.pullReach", s.pullReach);
     s.pullSpeed = c.getFloat("force.pullSpeed", s.pullSpeed);
-    s.accelMin = c.getFloat("swing.accelMin", s.accelMin);
-    s.accelMax = c.getFloat("swing.accelMax", s.accelMax);
+    s.timeNone = c.getFloat("swing.timeNone", s.timeNone);
+    s.timeFull = c.getFloat("swing.timeFull", s.timeFull);
+    s.ride = c.getFloat("swing.ride", s.ride);
+    s.hipsBy = c.getFloat("swing.hipsBy", s.hipsBy);
+    s.chestBy = c.getFloat("swing.chestBy", s.chestBy);
+    s.elbowBy = c.getFloat("swing.elbowBy", s.elbowBy);
+    angle("swing.chestPastDeg", s.chestPast);
+    s.limbRate = c.getFloat("swing.limbRate", s.limbRate);
+    s.trunkRate = c.getFloat("swing.trunkRate", s.trunkRate);
+    s.hipsRate = c.getFloat("swing.hipsRate", s.hipsRate);
     angle("swing.followDeg", s.follow);
     angle("swing.followMaxDeg", s.followMax);
 }
@@ -103,8 +111,10 @@ motion::ThrowBody Human::throwBody() const {
     b.restShoulder = restShoulder_;
     b.restHand = restHand_;
     const ik::TwoBoneChain& arm = joints_.armR;
-    if (arm.start < 0 || plan.size() != static_cast<size_t>(rig_.numJoints())) return b;
+    if (joints_.chest < 0 || joints_.pelvis < 0 || arm.start < 0 || plan.size() != static_cast<size_t>(rig_.numJoints())) return b;
     b.hand = modelPos(plan, arm.end);
+    b.chest = math::toTransform(plan[static_cast<size_t>(joints_.chest)]);
+    b.pelvis = math::toTransform(plan[static_cast<size_t>(joints_.pelvis)]);
     b.armLength = math::distance(modelPos(plan, arm.start), modelPos(plan, arm.mid)) +
                   math::distance(modelPos(plan, arm.mid), b.hand);
     return b;
@@ -363,6 +373,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.trunkMaxRate = dv("decider.trunkMaxRate", deciderSettings_.trunkMaxRate);
         deciderSettings_.headMaxRate = dv("decider.headMaxRate", deciderSettings_.headMaxRate);
         deciderSettings_.limbMaxRate = dv("decider.limbMaxRate", deciderSettings_.limbMaxRate);
+        limbMaxRate_ = deciderSettings_.limbMaxRate;
+        trunkMaxRate_ = deciderSettings_.trunkMaxRate;
+        hipsMaxTurnRate_ = deciderSettings_.hipsMaxTurnRate;
         deciderSettings_.legMaxRate = dv("decider.legMaxRate", deciderSettings_.legMaxRate);
         deciderSettings_.twoLegKneeMax =
             math::radians(dv("decider.twoLegKneeMaxDeg", math::degrees(deciderSettings_.twoLegKneeMax)));
@@ -654,6 +667,11 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         }
     }
     deciderSettings_.hipsMaxAccel = run_.on() && !run_.ending() ? runSettings_.hipsAccel : hipsMaxAccel_;
+    // A throw's swing is faster than the everyday bounds (config/throw.json).
+    const bool swing = throw_.swinging();
+    deciderSettings_.limbMaxRate = swing ? throwSettings_.limbRate : limbMaxRate_;
+    deciderSettings_.trunkMaxRate = swing ? throwSettings_.trunkRate : trunkMaxRate_;
+    deciderSettings_.hipsMaxTurnRate = swing ? throwSettings_.hipsRate : hipsMaxTurnRate_;
     decider_.decide(t, deciderSettings_, queue_);
     for (int i = 0; i < 2; ++i) {
         if (!queue_.landed[i]) continue;

@@ -224,7 +224,8 @@ private:
     // Jog and run (locomotion.json "run"): the feet's and hips' targets.
     motion::RunPlanner run_;
     motion::RunPlannerSettings runSettings_;
-    float hipsMaxAccel_ = 8.0f;  // the decider's bound, walking (human_joints.json)
+    // The decider's bounds outside a run or a throw (human_joints.json).
+    float hipsMaxAccel_ = 8.0f, limbMaxRate_ = 12.0f, trunkMaxRate_ = 4.0f, hipsMaxTurnRate_ = 4.0f;
     motion::RunBody runBody() const;
     motion::ThrowPlanner throw_;
     motion::ThrowPlannerSettings throwSettings_;
