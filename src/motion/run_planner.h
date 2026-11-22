@@ -27,6 +27,11 @@ struct RunPlannerSettings {
     float blendTime = 0.2f;       // s, the hips' height goes over to it
     float hipsAccel = 400.0f;     // m/s^2, the decider's hips bound meanwhile (its path is physics already)
     float ballReach = 0.0f;       // m, ankle to the ball of the foot, level (the skeleton's)
+    // The arms: the upper arm swings armSwing (rad) each way about armMid
+    // (forward +) against the legs, the elbow bent; the trunk leans.
+    float armSwing = 0.6f, armMid = -0.15f, elbowBend = 1.5f, handIn = 0.05f;
+    float leanPerSpeed = 0.026f;  // rad per m/s
+    float poseBlend = 0.4f;       // s, the arms and the lean come in and go
 };
 
 // The body the run goes with (the decider's plan), character space.
@@ -35,6 +40,8 @@ struct RunBody {
     math::Vec3 hip[2]{};         // left, right hip joint
     float legLength[2] = {0.0f, 0.0f};  // hip to ankle, straight
     float ankleUp = 0.0f;        // a standing ankle's height above the ground
+    math::Vec3 shoulder[2]{};    // left, right
+    float upperArm = 0.0f, forearm = 0.0f;  // m
     float gravity = 0.0f;        // m/s^2 down
 };
 
@@ -63,6 +70,7 @@ private:
     math::Vec3 landingSpot(int foot, float left, math::Vec3 velocity, const RunBody& body, const RunPlannerSettings& s) const;
     float height(const RunBody& body, const RunPlannerSettings& s);
     void moveFoot(int i, const RunPlannerSettings& s, TargetSet& t);
+    void pose(const RunBody& body, const RunPlannerSettings& s, TargetSet& t) const;
 
     bool on_ = false, ending_ = false;
     // A foot's step: the heel rises over the ball (for `heel` s), then the swing.
@@ -81,6 +89,7 @@ private:
     float speed_ = 0.0f;  // m/s the stance is planned for
     float blend_ = 0.0f, from_ = 0.0f, load_ = 1.0f, groundY_ = 0.0f;
     math::Vec3 hips_{0.0f};
+    float poseWeight_ = 0.0f;
     math::Vec3 way_ = math::kForward;
 };
 

@@ -217,6 +217,17 @@ bool CricketApp::pumpEvents() {
     const float ahead = (actions_.down(input_, core::Action::StepForward) ? 1.0f : 0.0f) -
                         (actions_.down(input_, core::Action::StepBack) ? 1.0f : 0.0f);
     sim_.fielder().setWalkInput(math::Vec2(side, ahead));
+    // The player turns to the camera's heading as they move, unless free view
+    // (V) holds it.
+    if (actions_.pressed(input_, core::Action::FreeView)) {
+        freeView_ = !freeView_;
+        LOG_INFO("Free view {}", freeView_ ? "on" : "off");
+    }
+    if (!freeView_) {
+        const camera::CameraPose view = camera_.pose();
+        const math::Vec3 look(view.target.x - view.eye.x, 0.0f, view.target.z - view.eye.z);
+        if (math::length(look) > 1e-3f) sim_.fielder().setHeading(std::atan2(look.x, look.z));
+    }
     if (actions_.pressed(input_, core::Action::WalkFaster)) sim_.fielder().changeWalkSpeed(1);
     if (actions_.pressed(input_, core::Action::WalkSlower)) sim_.fielder().changeWalkSpeed(-1);
     // Live config: saved files are re-applied to the running game; F5 forces all.
@@ -243,6 +254,12 @@ void CricketApp::updatePose(float /*seconds: the target jumps per press, not per
         poseActive_ = false;
     }
     if (input_.uiWantsKeyboard) return;
+    // C: the body goes to the target as it is set now; until then the arrows
+    // only set it.
+    if (poseActive_ && actions_.pressed(input_, core::Action::PoseGo)) {
+        fielder.setPoseGoal(kPoseOrder[poseLimb_], poseTarget_, poseTurn_, poseTurned_);
+        poseSent_ = true;
+    }
     // Each press jumps the target one step (no slide).
     auto axis = [&](core::Action pos, core::Action neg) {
         return (actions_.pressed(input_, pos) ? 1.0f : 0.0f) - (actions_.pressed(input_, neg) ? 1.0f : 0.0f);
@@ -287,7 +304,7 @@ void CricketApp::updatePose(float /*seconds: the target jumps per press, not per
         // the part reaches as near as the body allows.
         poseTarget_.y = std::max(poseTarget_.y, 0.0f);
     }
-    fielder.setPoseGoal(goal, poseTarget_, poseTurn_, poseTurned_);
+    poseSent_ = false;
 }
 
 void CricketApp::fixedUpdate(double dt) {
@@ -375,17 +392,16 @@ void CricketApp::drawDebugGeometry(float alpha) {
     // Player's local axes at its root: X red (left), Y green (up), Z blue (forward).
     dd.axes(sim_.fielder().interpolatedRoot(alpha), 0.5f);
 
-    // Limb test: the chosen limb's target (red once moved, yellow at the
-    // limb before that).
     const agents::Human& fielder = sim_.fielder();
     if (limbTest_) {
-        // The chosen target (yellow at its part until moved, red after) and,
-        // once turned, its axes.
+        // The chosen target (yellow at its part until moved, red while only
+        // set, green once the body is sent there) and, once turned, its axes.
         const int joint = fielder.goalJoint(kPoseOrder[poseLimb_]);
         if (joint >= 0) {
             const math::Transform bone =
                 fielder.interpolatedRoot(alpha) * math::toTransform(fielderModels_[static_cast<size_t>(joint)]);
-            dd.sphere(poseActive_ ? poseTarget_ : bone.position, 0.05f, poseActive_ ? render::colors::kRed : render::colors::kYellow);
+            dd.sphere(poseActive_ ? poseTarget_ : bone.position, 0.05f,
+                      !poseActive_ ? render::colors::kYellow : poseSent_ ? render::colors::kGreen : render::colors::kRed);
             if (poseActive_ && poseTurned_) dd.axes(math::Transform{poseTarget_, poseTurn_}, 0.2f);
         }
     }

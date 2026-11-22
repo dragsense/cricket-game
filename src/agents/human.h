@@ -90,6 +90,9 @@ public:
     // x left, y forward, each -1..1; locomotion.json "move"); the decider
     // steps after them. Let go: they stop once the last step lands.
     void setWalkInput(math::Vec2 move) { walkInput_ = move; }
+    // The way the body turns to while it moves (world yaw, 0: +Z; the
+    // camera's heading): locomotion.json "move" turnRateDeg, turnAccel.
+    void setHeading(float yaw) { heading_ = yaw; headingOn_ = true; }
     // E / Q: the forward push's speed one move.speedStep up (+1) or down
     // (-1), within move.minSpeed .. move.maxSpeed.
     void changeWalkSpeed(int direction);
@@ -167,6 +170,10 @@ private:
     // along the way it goes (hipsDirection_, kept while it settles); held
     // until the last step has landed after a stop.
     math::Vec2 walkInput_{0.0f};
+    float heading_ = 0.0f, turnVelocity_ = 0.0f;  // rad, rad/s
+    bool headingOn_ = false;
+    float turnRate_ = 1.047f, turnAccel_ = 3.0f, turnEase_ = 0.15f;  // rad/s, m/s^2, s
+    void turnToHeading(float dt);
     bool hipsDriven_ = false;
     math::Vec3 hipsGoal_{0.0f}, walkVelocity_{0.0f}, hipsDirection_{0.0f, 0.0f, 1.0f};
     float moveSpeed_ = 1.2f, backSpeed_ = 0.7f, sideSpeed_ = 0.35f, moveAccel_ = 1.0f;

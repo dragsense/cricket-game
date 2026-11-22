@@ -53,10 +53,11 @@
     "showOverlay": true,
     "debugDraw": true,
     // Limb test: F chooses a hand or foot and the arrows move its target
-    // (input.json "PoseLimb") to study how the body follows. Restart to apply.
+    // (input.json "PoseLimb"); C sends the body there ("PoseGo"), to study how
+    // it follows. Restart to apply.
     "limbTest": true,
     // Limb test: each arrow press jumps the target this far (m) to its new
-    // point at once (no slide), so the body shows what it does for that point.
+    // point at once (no slide); the body goes there on C.
     "limbTestStep": 0.1,
     "limbTestTurnDeg": 15,  // deg per Ctrl+arrow press (the limb test turns its target)
     // I: slow motion, the whole game at this share of real speed.

@@ -21,7 +21,12 @@
   // S pushes them back at `backSpeed`: backward walking is slower than forward
   // (BIOMECHANICS 4.6, no number there); 0.7 m/s [E], about the usual 0.6-0.9.
   "move": { "speed": 1.2, "backSpeed": 0.7, "sideSpeed": 0.35, "acceleration": 1.0,
-            "speedStep": 0.2, "minSpeed": 0.4, "maxSpeed": 5.0 },
+            "speedStep": 0.2, "minSpeed": 0.4, "maxSpeed": 5.0,
+            // Moving, the player turns to the camera's heading (V: free view,
+            // they keep theirs): at most turnRateDeg (deg/s) and, at speed, as
+            // the ground turns the body's motion (v x w within turnAccel,
+            // m/s^2); turnEase s in and out. [E]
+            "turnRateDeg": 60, "turnAccel": 3.0, "turnEase": 0.15 },
   // Jog and run (motion::RunPlanner, 2026-11-22), E past 1.6 m/s. A leg's
   // swing takes its own time (swingTime, s) and its stance ends once the hips
   // have gone stanceWay + stanceWayPerSpeed x speed (m) over the foot; as the
@@ -44,6 +49,12 @@
     "width": 0.6,          // the feet across, share of their hips' (near the middle line) [E]
     "legReach": 0.93,      // share of the straight leg at touchdown (the knee a little bent) [E]
     "blendTime": 0.2,      // s, the hips' height goes over to it
+    "armSwingDeg": 35,     // the upper arm swings so far each way, against the legs [E]
+    "armMidDeg": -10,      // about this (forward +) [E]
+    "elbowBendDeg": 88,    // ~90 deg running
+    "handIn": 0.05,        // m, the hands in toward the middle [E]
+    "leanDegPerSpeed": 1.5,  // trunk lean per m/s: 4.5 deg at 3, 7.5 at 5 (steady running 5-7)
+    "poseBlend": 0.4,      // s, the arms and the lean come in and go
     "hipsAccel": 400       // m/s^2, the decider's hips bound meanwhile: the path is a fall and a push already
   },
   "step": {

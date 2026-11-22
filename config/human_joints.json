@@ -110,10 +110,20 @@
     // leg ahead of the hip, so a foot right under the hip keeps the knee
     // forward. [E] design value.
     "kneeForwardBias": 0.25,
-    // A body standing reaches a hand this share of its height past the arm
-    // (level; functional reach, young adults 0.22-0.24 H, Moriyama 2022); a
-    // hand further takes the hips after it by the rest (the body steps).
+    // How far a body reaches standing; a hand further takes a step. At
+    // shoulder height past the arm, level, this share of its height fore-aft
+    // (functional reach, young adults 0.22-0.24 H, Moriyama 2022) and this
+    // one sideways (lateral reach 20-28 cm, Tedla 2019, Azukizawa 2021: 0.13
+    // H = 23 cm); on the floor this far from the feet's middle (m: NIOSH's
+    // largest lifting distance, further the balance is lost). Between them in
+    // proportion to the height [E: no measured values found].
     "standingReachShare": 0.23,
+    "standingReachSideShare": 0.13,
+    "floorReach": 0.63,
+    // A hand down beside the body: the body turns to face it and bends forward
+    // (Lavender 1995, Marras 2000), all the way once the hand is this share of
+    // its hanging height lower (about the knee). [E] design value.
+    "facingDrop": 0.5,
     // The chest's turn follows the pelvis's through the trunk's axial
     // spring-damper (Prins et al. 2019): natural frequency (rad/s) and damping
     // ratio. Quick steps drive it faster than its frequency: the chest lags,

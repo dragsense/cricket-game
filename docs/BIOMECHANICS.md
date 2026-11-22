@@ -971,6 +971,38 @@ healthy controls (n = 18), mean in degrees
   lunge pelvis travel (only the preferred forward lunge step, ~90 cm,
   [PubMed 23584319](https://pubmed.ncbi.nlm.nih.gov/23584319/)) **[P]**.
 
+### 9.8 Reaching with a step (added 2026-11-22)
+- **Which foot.** Reaching further forward (arm's length + 5-20 % H), trunk and pelvis
+  turn the same way (right hand: both to the left; the pelvis at the furthest targets), and
+  hip flexion and pelvic tilt join
+  ([Bohannon 2020](https://doi.org/10.1016/j.jbmt.2020.03.003)) **[P]**; so the hand-side
+  foot ahead turns the pelvis with the reach. People preferred the support leg on the
+  hand's side while picking up
+  ([Cockell 1995](https://doi.org/10.1177/003151259508100232)) **[P]**; a later study of
+  walking found no clear preference
+  ([Bellinger 2020](https://doi.org/10.1123/mc.2018-0053)) **[P]**.
+- **When.** Pointing with a rapid step (the opposite leg by instruction): the arm's
+  acceleration peaks around foot-off
+  ([Yiou 2007](https://doi.org/10.1016/j.humov.2007.03.003)) **[P]**.
+- **How far without a step.** Shoulder height: 0.22-0.24 H past the arm forward (Moriyama
+  2022, DECISIONS 2026-11-15). Sideways 19.8 cm, young adults, n = 240
+  ([Tedla 2019](https://pmc.ncbi.nlm.nih.gov/articles/PMC6686713/)) and ~28 cm, n = 62
+  ([Azukizawa 2021](https://doi.org/10.1080/07853890.2021.1968483)) **[P]**. On the floor:
+  NIOSH's largest lifting distance, 63 cm from the ankles' middle, further the balance is
+  lost ([NIOSH](https://stacks.cdc.gov/view/cdc/110725/cdc_110725_DS1.pdf)) **[T]** (two
+  hands, a load). Forward reach in the same studies: 25-32 cm.
+- **A target to the side.** Feet free to move, people bend sideways to a target at 90 deg no
+  more than to one straight ahead ([Lavender 1995](https://doi.org/10.1518/001872095778995562))
+  **[P]**; stepping to a load 65 cm away at 60 deg: 3.9 deg sideways (1.4 straight ahead), 3.9
+  deg of twist ([Marras 2000](https://doi.org/10.1080/001401300184314)) **[P]**. Turning, the
+  foot on the side opposite the turn is ahead
+  ([Konz & Bhasin 1974](https://doi.org/10.1080/0002889748507100)) **[P]** (abstract). Boxes, two hands.
+- **Picking from the floor:** people use several strategies, no single one
+  ([Gilles 2018](https://doi.org/10.1016/j.apergo.2018.02.002)) **[P]**.
+- **Not found:** the step length, trunk and pelvis angles of a standing step-and-reach; the
+  foot used for a low one-hand pickup; the reach limit between floor and shoulder height.
+  Several papers were read as abstracts only.
+
 ### Implementation notes (`config/human_joints.json` "reach")
 - Each tick (late update, after foot repositioning), every stage reduces the error and
   passes the rest on: arm → clavicle → spine → pelvis → body translation → lunge → hold.

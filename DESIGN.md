@@ -355,7 +355,9 @@ stepping can come later inside the planner, without touching the decider.
 reported (`BodyQueue::reach`), never snapped. Both feet unpinned: support 0, the hips'
 reference carries on ballistically, the pin fades to nothing. A foot moving while it is
 the support: its weight ramps off over supportBlendTime; the hips shift before it lifts.
-Re-target or cancel mid-step: paths continue from the current target (`StepPlanner::
+A hand further than standing: planned
+once on its path's event, a step first, the trunk by the feet's progress (DECISIONS
+2026-11-22). Re-target or cancel mid-step: paths continue from the current target (`StepPlanner::
 retarget` / `cancel`), the output pose from the current plan. A hand needing the trunk:
 the reach queue, limited to what the hips (if driven) leave; still short → reported. Leg
 near straight: never (reachClamp). Slopes / stairs: feet pin with the ground normal, the

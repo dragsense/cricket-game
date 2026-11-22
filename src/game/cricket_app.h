@@ -52,7 +52,7 @@ private:
     void reloadConfig(const std::vector<std::string>& files);
     void applyEngineConfig();
     // Limb test: F chooses the limb, the arrows move its target (Shift:
-    // up/down) over `seconds`; R resets the pose.
+    // up/down), C sends the body there; R resets the pose.
     void updatePose(float seconds);
 
     AppConfigs cfg_;
@@ -78,6 +78,8 @@ private:
     int poseLimb_ = 0;
     bool poseActive_ = false;      // poseTarget_ / poseTurn_ belong to the chosen target
     bool poseTurned_ = false;      // the chosen target was turned
+    bool freeView_ = false;        // V: the camera moves freely, the player keeps their heading
+    bool poseSent_ = false;        // the body goes to the chosen target as it is now (C)
     math::Vec3 poseTarget_{0.0f};  // world
     math::Quat poseTurn_ = math::identityQuat();  // world
     bool slowMotion_ = false;      // I: the whole game in slow motion

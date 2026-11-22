@@ -44,6 +44,66 @@ Swing swingToward(math::Vec3 pivot, math::Vec3 end, math::Vec3 target, float rea
     return s;
 }
 
+// The smallest turn about `axis` through the origin that brings `p` within
+// `reach` of `q` (as near as it comes, if it never does).
+float turnAbout(math::Vec3 axis, math::Vec3 p, math::Vec3 q, float reach) {
+    const math::Vec3 along = axis * math::dot(p, axis), across = p - along, turned = math::cross(axis, across);
+    const float a = math::dot(across, q), b = math::dot(turned, q);
+    const float c = 0.5f * (math::dot(p, p) + math::dot(q, q) - reach * reach) - math::dot(along, q);
+    const float r = std::sqrt(a * a + b * b);
+    if (r < math::kEpsilon) return 0.0f;
+    float nearest = std::atan2(b, a);
+    if (nearest < -0.5f * math::kPi) nearest += math::kTwoPi;
+    return std::max(0.0f, nearest - (c < r ? std::acos(std::max(c / r, -1.0f)) : 0.0f));
+}
+
+// The easiest turn of a joint that brings `end` within `reach` of `target`:
+// the least sum of (turn / room left)^2 about its own axes (x forward, y turn,
+// z sideways; `frame` takes them to the model, `at` its turn now, min..max its
+// range). From a forward bend (the way a body has most room) to where each
+// axis turns by room^2 x what it gives (the least-effort condition).
+Swing easiestSwing(math::Vec3 pivot, math::Vec3 end, math::Vec3 target, float reach, math::Quat frame, math::Vec3 at,
+                   math::Vec3 min, math::Vec3 max) {
+    Swing s;
+    if (math::distance(end, target) - reach <= kReachEpsilon) return s;
+    const math::Vec3 p = math::inverse(frame) * (end - pivot), q = math::inverse(frame) * (target - pivot);
+    math::Vec3 axis = math::kRight;
+    float angle = turnAbout(axis, p, q, reach);
+    constexpr int kPasses = 3;
+    for (int pass = 0; pass < kPasses; ++pass) {
+        const math::Vec3 g = math::fromAxisAngle(axis, -0.5f * angle) * math::cross(math::fromAxisAngle(axis, angle) * p, q);
+        math::Vec3 v(0.0f);
+        for (int a = 0; a < 3; ++a) {
+            const float room = std::max(0.0f, g[a] > 0.0f ? max[a] - at[a] : at[a] - min[a]);
+            v[a] = g[a] * room * room;
+        }
+        const float l = math::length(v);
+        if (l < 1e-9f) return Swing{};
+        axis = v / l;
+        angle = turnAbout(axis, p, q, reach);
+    }
+    s.axis = frame * axis;
+    s.angle = angle;
+    return s;
+}
+
+// The shortest swing with a hand up, the easiest one with a hand down (`deep`
+// 0..1: between them). The shortest alone bent sideways: right under the
+// shoulder it is the shoulder's side offset that decides (Davis 2002: people
+// bend forward, 1-4 deg sideways).
+Swing blendSwing(float deep, math::Vec3 pivot, math::Vec3 end, math::Vec3 target, float reach, math::Quat frame, math::Vec3 at,
+                 math::Vec3 min, math::Vec3 max) {
+    const Swing shortest = swingToward(pivot, end, target, reach);
+    if (deep <= 0.0f) return shortest;
+    const Swing easy = easiestSwing(pivot, end, target, reach, frame, at, min, max);
+    if (easy.angle <= 0.0f) return shortest;
+    const math::Vec3 v = math::lerp(shortest.axis * shortest.angle, easy.axis * easy.angle, deep);
+    Swing s;
+    s.angle = math::length(v);
+    if (s.angle > 1e-5f) s.axis = v / s.angle;
+    return s;
+}
+
 // How far (m, >= 0) `end` must go straight down so its distance to `target`
 // becomes `reach`: the smaller root of |target - end + d up| = reach (or, if
 // it cannot, down to the target's height). 0 when within reach or the target
@@ -129,6 +189,8 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
     output_.models.resize(n);
     desired_.pose = rig.restPose();
     desired_.models.resize(n);
+    query_.pose = rig.restPose();
+    query_.models.resize(n);
     lastCentre_.assign(n, math::Vec3(0.0f));
     armOf_.assign(n, -1);
     for (int j = 0; j < static_cast<int>(n); ++j)
@@ -165,6 +227,7 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
             const math::Vec3 back = -math::kForward - hang * math::dot(-math::kForward, hang);
             hangDir_[i] = chestInv * hang;
             hangBend_[i] = chestInv * math::safeNormalize(back, -math::kForward);
+            restShoulder_[i] = planPos(r, arm.start);
             restHandChest_[i] = chestInv * (planPos(r, arm.end) - chestPos);
         }
     }
@@ -213,6 +276,10 @@ void BodyDecider::seed(const rig::Pose& pose) {
     wasSwinging_[0] = wasSwinging_[1] = false;
     steps_[0] = steps_[1] = StepPlanner{};
     lastStarted_ = -1;
+    reach_ = ReachStep{};
+    anchorYaw_[0] = anchorYaw_[1] = stanceYaw_ = 0.0f;
+    lastHandLeft_[0] = lastHandLeft_[1] = -1.0f;
+    trunkOn_[0] = trunkOn_[1] = false;
     footEvent_ = false;
     lastGoalVelocity_ = math::Vec3(0.0f);
     lastPelvisYaw_ = lastPelvisRate_ = trunkTwist_ = trunkTwistRate_ = 0.0f;
@@ -235,13 +302,25 @@ void BodyDecider::rebase(const math::Transform& toNew) {
         for (math::Vec3& d : l.directions) d = toNew.rotation * d;
     }
     lastPathEnd_ = toNew.transformPoint(lastPathEnd_);
+    reach_.hips = toNew.transformPoint(reach_.hips);
+    for (int i = 0; i < 2; ++i)
+        for (math::Vec3* p : {&lastHandEnd_[i], &trunkTarget_[i], &trunkFrom_[i], &stepFrom_[i]})
+            *p = toNew.transformPoint(*p);
     hipsRef_ = toNew.transformPoint(hipsRef_);
     hipsRefVel_ = toNew.rotation * hipsRefVel_;
     hipsVel_ = toNew.rotation * hipsVel_;
     for (math::Vec3* p : {&dcmHips_, &dcmXi_, &dcmStart_}) *p = toNew.transformPoint(*p);
     dcmStartVel_ = toNew.rotation * dcmStartVel_;
-    for (math::Vec3& p : lastCentre_) p = toNew.transformPoint(p);
+    // (The free arms cancel the body's turning against its heading: a turn of
+    // the heading itself is meant.)
+    for (math::Vec3& p : lastCentre_) p += toNew.position;
     for (StepPlanner& p : steps_) p.rebase(toNew);
+    // A foot keeps its turn on the ground too.
+    const math::Vec3 ahead = toNew.rotation * math::kForward;
+    const float turned = std::atan2(ahead.x, ahead.z);
+    for (float* yaw : {&anchorYaw_[0], &anchorYaw_[1], &stepYawFrom_[0], &stepYawFrom_[1], &stepYaw_[0], &stepYaw_[1],
+                       &stanceYaw_, &reach_.turn})
+        *yaw += turned;
     lastGoalVelocity_ = toNew.rotation * lastGoalVelocity_;
     if (!seeded_) return;
     placePelvis(output_, toNew * pelvisOf(output_));
@@ -340,7 +419,7 @@ math::Vec3 BodyDecider::centreOfMass(const Plan& p) const {
 
 math::Quat BodyDecider::restFootLevel(int i) const {
     // Flat on its ground, heading as it stands.
-    return math::normalize(math::fromTo(math::kUp, anchorNormal_[i]) * restFoot_[i]);
+    return math::normalize(math::fromTo(math::kUp, anchorNormal_[i]) * math::fromAxisAngle(math::kUp, anchorYaw_[i]) * restFoot_[i]);
 }
 
 float BodyDecider::reachableHeight(const Plan& p, int i, const BodyDeciderSettings& s, bool& valid) const {
@@ -426,6 +505,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
         stepNow_[i] = nextStep_;
         if (f.pathLeft > 0.0f) stepNow_[i].duration = f.pathLeft;
         timeWeightShift(i, f.position, f.pathLeft > 0.0f, s);
+        startStep(i, from, anchorYaw_[i]);
         steps_[i].start(i, from, f.position, f.contactNormal);
         lastStarted_ = i;
         footEvent_ = true;
@@ -434,10 +514,14 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
         StepPlanner& p = steps_[i];
         if (!p.running()) continue;
         p.tick(t.dt, stepNow_[i], work_);
+        const float yaw = math::lerp(stepYawFrom_[i], stepYaw_[i], p.along());
+        work_.foot[i].rotation = math::fromAxisAngle(math::kUp, yaw) * work_.foot[i].rotation;
         stepping = true;
         if (p.landed()) {
             out.landed[i] = true;
             out.landedSpot[i] = p.landing();
+            anchorYaw_[i] = stepYaw_[i];
+            if (reach_.on) reach_.stepped = true;
             footEvent_ = true;
         }
     }
@@ -469,6 +553,13 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
             stepNow_[a.foot] = nextStep_;
             if (a.time > 0.0f) stepNow_[a.foot].duration = a.time;  // on the hips' path: lands as they arrive
             timeWeightShift(a.foot, a.spot, a.time > 0.0f, s);
+            // A reach's step takes its own time, or its hand's path's if longer.
+            const float handLeft = reach_.on ? std::max(lastHandLeft_[0], lastHandLeft_[1]) : -1.0f;
+            if (a.time <= 0.0f && handLeft > stepNow_[a.foot].duration) {
+                stepNow_[a.foot].duration = handLeft;
+                timeWeightShift(a.foot, a.spot, true, s);
+            }
+            startStep(a.foot, anchor_[a.foot], reach_.on ? reach_.turn : 0.0f);
             steps_[a.foot].start(a.foot, anchor_[a.foot], a.spot, anchorNormal_[a.foot]);
             lastStarted_ = a.foot;
             footEvent_ = true;
@@ -519,6 +610,8 @@ void BodyDecider::timeSwings(const TargetSet& t, const BodyDeciderSettings& s) {
             // started (its weight shift keeps its share of the clock).
             left = pathStepTime(t, f, steps_[f].target(), steps_[f].landing(), pathSteps_[f], s);
             if (left < 0.0f) continue;  // the path has ended: the swing keeps its own time
+        } else if (reach_.on) {
+            continue;  // a reach's step keeps its own time (planned with it, its hips from it)
         } else if (!steps_[o].running() && grounded_[o] && t.foot[o].mode == TargetMode::Pinned) {
             left = std::min(steps_[f].timeLeft(stepNow_[f]), stanceLeft(o, s));
         } else {
@@ -586,6 +679,11 @@ void BodyDecider::pinFeet(const TargetSet& t, const BodyDeciderSettings& s) {
             const math::Vec3 at = planPos(output_, ankle);
             grounded_[i] = grounded_[i] && at.y <= groundY + s.onGround;
             anchor_[i] = math::Vec3(at.x, groundY, at.z);  // the ground under it
+            // In the air on a step it turns as its target does, and lands so.
+            if (!grounded_[i] && f.swing >= 0.0f) {
+                const math::Vec3 toes = f.rotation * math::kForward;
+                anchorYaw_[i] = std::atan2(toes.x, toes.z);
+            }
             // The leg reaches where it is solved to (solveLegs), the heel risen.
             const float k = act_[FootLW + i] * std::clamp(f.weightPosition, 0.0f, 1.0f);
             reachFrom_[i] = math::lerp(anchor_[i], f.position, k);
@@ -708,7 +806,17 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             markPlanned(j, out);
         }
     refresh(d);
-    const float pelvisYaw = pelvisTurn(t, s);
+    stanceYaw_ = 0.0f;
+    for (int i = 0; i < 2; ++i)
+        stanceYaw_ += 0.5f * (steps_[i].running() ? math::lerp(stepYawFrom_[i], stepYaw_[i], steps_[i].along()) : anchorYaw_[i]);
+    float pelvisYaw = stanceYaw_ + pelvisTurn(t, s);
+    {
+        // A reach turns the hips (planReach) as far as the feet under them let.
+        bool hand = false;
+        for (int h = 0; h < 2; ++h) hand = hand || (t.hand[h].mode == TargetMode::Driven && lastHandLeft_[h] >= 0.0f);
+        if (hand && act_[HipsW] <= 0.0f && reach_.turn != 0.0f)
+            pelvisYaw += std::clamp(reach_.turn - stanceYaw_, s.pelvisMin.y, s.pelvisMax.y);
+    }
     math::Quat pelvisRot = math::fromAxisAngle(math::kUp, pelvisYaw) * restPelvis_.rotation;
     {
         // Pelvic list: the side whose leg carries less weight drops, by the
@@ -733,10 +841,10 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         const float kr = act_[HipsW] * std::clamp(hips.weightRotation, 0.0f, 1.0f);
         if (kr > 0.0f) {
             const math::Quat want = math::normalize(math::slerp(pelvisRot, hips.rotation, kr));
-            math::Vec3 v = math::rotationVector(want * math::inverse(restPelvis_.rotation));
+            math::Vec3 v = math::rotationVector(want * math::inverse(pelvisBase()));
             for (int a = 0; a < 3; ++a) v[a] = std::clamp(v[a], s.pelvisMin[a], s.pelvisMax[a]);
             const float angle = math::length(v);
-            pelvisRot = (angle > 1e-6f ? math::fromAxisAngle(v / angle, angle) : math::identityQuat()) * restPelvis_.rotation;
+            pelvisRot = (angle > 1e-6f ? math::fromAxisAngle(v / angle, angle) : math::identityQuat()) * pelvisBase();
         }
     }
     placePelvis(d, math::Transform{out.hipsReference, pelvisRot});
@@ -755,31 +863,33 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         endTarget[h] = restWorld + drivenPart(hand, hand.position - restWorld) * k;
         endOn[h] = true;
     }
-    // A hand further than a body reaches standing (the arm and
-    // standingReachShare of the height past it, from the upright shoulder,
-    // level; Moriyama 2022) takes the whole body after it: the hips toward
-    // it by the rest, decided from where the hand's target is (it moves on
-    // its path: the hips with it, the sync formula). Balance keeps the centre
-    // of mass over the support moved on by that much, so once it leaves the
-    // support the balance step steps toward the hand. Both hands one way:
-    // the body goes once (the further one's).
-    reachShift_ = math::Vec3(0.0f);
-    if (act_[HipsW] < 1.0f && s.standingReachShare > 0.0f) {
-        const float standing = s.standingReachShare * rig_->height();
-        float most = 0.0f;
-        for (int h = 0; h < 2; ++h) {
-            if (!endOn[h] || joints_.arms[h].start < 0) continue;
-            math::Vec3 way = endTarget[h] - planPos(d, joints_.arms[h].start);
-            way.y = 0.0f;
-            const float level = math::length(way);
-            const float over = level - limbReach(h, s) - standing;
-            if (over > most && level > 1e-4f) {
-                most = over;
-                reachShift_ = way * (over * (1.0f - act_[HipsW]) / level);
-            }
-        }
-        if (most > 0.0f) movePelvis(d, reachShift_);
+    // A hand further than a body reaches standing: a step first (planReach),
+    // the trunk does only its own share: its target is the hand's less the
+    // way the hips still come, gone to from where it was by the feet's
+    // progress (so the body steps, then bends).
+    for (int h = 0; h < 2; ++h) {
+        if (endOn[h] && !trunkOn_[h]) trunkTarget_[h] = endTarget[h];
+        trunkOn_[h] = endOn[h];
     }
+    planReach(t, s);
+    if (reach_.on) {
+        const math::Vec3 coming = level(reach_.hips - out.hipsReference);
+        if (reach_.there) {
+            // No more steps: the hips go the rest themselves, standing balance
+            // (below) keeping the centre of mass within the feet.
+            movePelvis(d, coming);
+        } else {
+            math::Vec3 feet(0.0f);  // their middle, a foot on its way where its target is
+            for (int i = 0; i < 2; ++i)
+                feet += 0.5f * (t.foot[i].mode == TargetMode::Driven ? t.foot[i].position : anchor_[i]);
+            const float left = math::length(level(reach_.hips - feet));
+            const float k = std::clamp(1.0f - left / std::max(reach_.way, 1e-4f), 0.0f, 1.0f);
+            for (int h = 0; h < 2; ++h)
+                if (endOn[h]) endTarget[h] = math::lerp(trunkFrom_[h], endTarget[h] - coming, k);
+        }
+    }
+    for (int h = 0; h < 2; ++h)
+        if (endOn[h]) trunkTarget_[h] = endTarget[h];
     for (int h = 0; h < 2; ++h)
         if (endOn[h]) handTrunk(h, endTarget[h], s, out);
     for (int i = 0; i < 2; ++i) {
@@ -881,6 +991,336 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     solveArms(d, t, s, out);
 }
 
+void BodyDecider::planReach(const TargetSet& t, const BodyDeciderSettings& s) {
+    constexpr float kPathMoved = 0.01f;  // m
+    bool any = false, event = false;
+    for (int h = 0; h < 2; ++h) {
+        const Target& hand = t.hand[h];
+        if (hand.mode != TargetMode::Driven || hand.pathLeft < 0.0f || joints_.arms[h].start < 0) {
+            lastHandLeft_[h] = -1.0f;
+            continue;
+        }
+        any = true;
+        if (lastHandLeft_[h] < 0.0f || math::distance(hand.pathEnd, lastHandEnd_[h]) > kPathMoved) {
+            event = true;
+            lastHandEnd_[h] = hand.pathEnd;
+        }
+        lastHandLeft_[h] = hand.pathLeft;
+    }
+    bool held = false;  // a foot held up: no step
+    for (int i = 0; i < 2; ++i)
+        if (t.foot[i].mode == TargetMode::Driven && t.foot[i].swing < 0.0f) held = true;
+    if (!any || held || act_[HipsW] > 0.0f || !t.balanceSteps || !s.balanceStepOn || s.gravity <= 0.0f) {
+        reach_.on = false;
+        return;
+    }
+    if (!event) return;
+    const bool stepped = reach_.on && reach_.stepped;
+    reach_ = ReachStep{};
+    float spreadTurn = 0.0f;
+    // Measured from the stance the body stands in (a step under way: where
+    // it began), its hips between the feet, upright, turned as the feet turn
+    // it: never from a lean of the moment.
+    math::Vec3 feet[2];
+    for (int i = 0; i < 2; ++i) feet[i] = steps_[i].running() ? stepFrom_[i] : anchor_[i];
+    const math::Vec3 mid = 0.5f * (feet[0] + feet[1]);
+    const math::Quat yaw = math::fromAxisAngle(math::kUp, -s.pelvisTurnPerStep * (feet[0].z - feet[1].z));
+    const float groundY = mid.y - 0.5f * (restFootY_[0] + restFootY_[1]);
+    const float ahead = s.standingReachShare * rig_->height(), side = s.standingReachSideShare * rig_->height();
+    // A hand down beside the body: the body turns to face it and bends forward
+    // (people free to move their feet bend sideways there no more than straight
+    // ahead, Lavender 1995; 4 deg, Marras 2000; BIOMECHANICS 9.8).
+    const float yawNow = 0.5f * (anchorYaw_[0] + anchorYaw_[1]);
+    float facing = 0.0f;
+    for (int h = 0; h < 2; ++h) {
+        if (lastHandLeft_[h] < 0.0f) continue;
+        const float turn = facingTurn(h, t.hand[h].pathEnd, mid, yawNow, groundY, s);
+        if (std::abs(turn) > std::abs(facing)) facing = turn;
+    }
+    const math::Quat faced = math::fromAxisAngle(math::kUp, facing);
+    float need = 0.0f;  // m the hips must go, toward `dir`
+    math::Vec3 dir(0.0f), shoulder(0.0f);
+    for (int h = 0; h < 2; ++h) {
+        if (lastHandLeft_[h] < 0.0f) continue;
+        const math::Vec3 from = faced * level(yaw * (restShoulder_[h] - restPelvis_.position));
+        const math::Vec3 way = level(t.hand[h].pathEnd - mid) - from;
+        // The trunk's bend toward it, from standing (hips between the feet).
+        const math::Vec3 hipsAt(mid.x, restPelvis_.position.y + groundY, mid.z);
+        const float bend = bendWay(hipsAt + restPelvis_.rotation * hipCentre_, hipsAt + restShoulder_[h] - restPelvis_.position,
+                                   t.hand[h].pathEnd, limbReach(h, s));
+        if (std::abs(bend) > std::abs(spreadTurn)) spreadTurn = bend;
+        const float far = math::length(way);
+        if (far < 1e-4f) continue;
+        const math::Vec3 d = way / far;
+        const math::Vec3 dFaced = math::inverse(faced) * d;
+        const float ex = dFaced.x / std::max(side, 1e-3f), ez = dFaced.z / std::max(ahead, 1e-3f);
+        const float top = limbReach(h, s) + 1.0f / std::sqrt(ex * ex + ez * ez);
+        const float up = std::clamp((t.hand[h].pathEnd.y - groundY) / std::max(restShoulder_[h].y, 1e-3f), 0.0f, 1.0f);
+        const float over = far - math::lerp(std::min(s.floorReach, top), top, up);
+        if (over > need) {
+            need = over;
+            dir = d;
+            shoulder = from;
+        }
+    }
+    // The trunk at its ranges and the hand still short: the hips turn.
+    const bool swinging = steps_[0].running() || steps_[1].running();
+    reach_.turn = yawNow + facing;
+    if (need <= s.stepMargin && !swinging && spreadTurn != 0.0f && shortStanding(t, s, reach_.turn) > s.stepMargin) {
+        // As little as lets the body reach it, toward the bend's way.
+        constexpr int kTurns = 8;
+        float best = 1e9f;
+        for (int k = 1; k <= kTurns; ++k) {
+            const float turn = yawNow + facing + (spreadTurn - facing) * static_cast<float>(k) / kTurns;
+            const float left = shortStanding(t, s, turn);
+            if (left < best - 1e-3f) {
+                best = left;
+                reach_.turn = turn;
+            }
+            if (left <= s.stepMargin) break;
+        }
+    }
+    const bool turns = std::abs(reach_.turn - yawNow) > s.pelvisMax.y;
+    if (turns) {
+        // Further than the hips turn on these feet: a leg is freed and goes
+        // round with its hip (about the standing one); the other follows if
+        // that is not enough. Which: the one that takes the hips toward the
+        // hand (a target ahead, the turn's far foot comes forward: Konz &
+        // Bhasin 1974; behind, the near one goes back).
+        math::Vec3 ends[2];
+        for (int i = 0; i < 2; ++i) ends[i] = 0.5f * (feet[1 - i] + turnedFoot(i, reach_.turn));
+        float off[2] = {0.0f, 0.0f};
+        for (int i = 0; i < 2; ++i)
+            for (int h = 0; h < 2; ++h)
+                if (lastHandLeft_[h] >= 0.0f) off[i] += math::length(level(t.hand[h].pathEnd - ends[i]));
+        const int f = steps_[0].running() != steps_[1].running() ? (steps_[0].running() ? 0 : 1) : off[0] < off[1] ? 0 : 1;
+        reach_.on = true;
+        reach_.stepped = false;
+        reach_.foot = f;
+        reach_.hips = ends[f];
+        // Still further than a body reaches standing, turned: the step goes on
+        // toward it (what the turn itself does not bring).
+        if (need > s.stepMargin)
+            reach_.hips += dir * std::max(0.0f, need - math::dot(ends[f] - mid, dir));
+        math::Vec3 from(0.0f);
+        for (int i = 0; i < 2; ++i) {
+            from += 0.5f * (t.foot[i].mode == TargetMode::Driven ? t.foot[i].position : anchor_[i]);
+            trunkFrom_[i] = trunkTarget_[i];
+        }
+        reach_.way = math::length(level(reach_.hips - from));
+        return;
+    }
+    if (need <= s.stepMargin) return;
+    // The feet's middle goes that far, so a foot twice as far; its step turns
+    // the pelvis (pelvisTurnPerStep), which carries the shoulder on: that
+    // much less for the hips. The foot: one that gets there in a step (not
+    // crossing), then the one whose turn helps the reach (the hand's side:
+    // pelvis and trunk turn the same way, Bohannon 2020).
+    float gain[2], miss[2];
+    math::Vec3 hips[2];
+    for (int i = 0; i < 2; ++i) {
+        const float z = 2.0f * (mid.z + dir.z * need) - feet[1 - i].z;
+        const float turn = -s.pelvisTurnPerStep * (i == 0 ? z - feet[0].z : feet[1].z - z);
+        gain[i] = math::dot(math::fromAxisAngle(math::kUp, turn) * shoulder - shoulder, dir);
+        hips[i] = mid + dir * (need * need / std::max(need + gain[i], 0.5f * need));
+        stepSpot(i, hips[i], math::Vec3(0.0f), hips[i], true, s, miss[i]);
+    }
+    constexpr float kTie = 0.01f;  // m
+    if (steps_[0].running() != steps_[1].running()) reach_.foot = steps_[0].running() ? 0 : 1;
+    else if (std::abs(miss[0] - miss[1]) > kTie && std::min(miss[0], miss[1]) < kTie) reach_.foot = miss[0] < miss[1] ? 0 : 1;
+    else reach_.foot = gain[0] >= gain[1] ? 0 : 1;
+    reach_.on = true;
+    reach_.stepped = stepped;
+    reach_.hips = hips[reach_.foot];
+    math::Vec3 now(0.0f);
+    for (int i = 0; i < 2; ++i) {
+        now += 0.5f * (t.foot[i].mode == TargetMode::Driven ? t.foot[i].position : anchor_[i]);
+        trunkFrom_[i] = trunkTarget_[i];
+    }
+    reach_.way = math::length(level(reach_.hips - now));
+}
+
+float BodyDecider::bendWay(math::Vec3 hips, math::Vec3 shoulder, math::Vec3 target, float reach) const {
+    const Swing sw = swingToward(hips, shoulder, target, reach);
+    const math::Vec3 axis = level(sw.axis) * sw.angle;  // the bend, about a level axis
+    return math::length(axis) > kMinAngle ? std::atan2(-axis.z, axis.x) : 0.0f;
+}
+
+float BodyDecider::lowness(int h, math::Vec3 target, float groundY, const BodyDeciderSettings& s) const {
+    const float hang = groundY + restShoulder_[h].y - limbReach(h, s);
+    return std::clamp((hang - target.y) / std::max(s.facingDrop * (hang - groundY), 1e-3f), 0.0f, 1.0f);
+}
+
+float BodyDecider::facingTurn(int h, math::Vec3 target, math::Vec3 mid, float yaw, float groundY,
+                              const BodyDeciderSettings& s) const {
+    // The least turn that puts the target in front: between the body's midline
+    // and its shoulder. Comes in with how far the hand goes below where it
+    // hangs: all of it facingDrop of that height down.
+    const float down = lowness(h, target, groundY, s);
+    const math::Vec3 off = math::fromAxisAngle(math::kUp, -yaw) * level(target - mid);
+    const float far = math::length(off);
+    if (down <= 0.0f || far < 1e-3f) return 0.0f;
+    const float shoulder = restShoulder_[h].x - restPelvis_.position.x;
+    const float in = std::clamp(off.x, std::min(0.0f, shoulder), std::max(0.0f, shoulder));
+    if (off.z >= 0.0f && off.x == in) return 0.0f;
+    const float way = std::atan2(off.x, off.z);  // + to the left
+    // Turned, it lies at the nearest edge of that band (ahead of the body).
+    const float edge = way * shoulder > 0.0f ? shoulder : 0.0f;
+    const float at = std::asin(std::clamp(edge / far, -1.0f, 1.0f));
+    const float turn = way - at;
+    return turn * way > 0.0f ? turn * down : 0.0f;
+}
+
+float BodyDecider::hipTurn(const BodyDeciderSettings& s) const {
+    if (!limits_ || joints_.legs[0].start < 0) return s.pelvisMax.y;
+    const ik::JointLimit& hip = limits_->limit(joints_.legs[0].start);
+    return std::min(-hip.twistMin, hip.twistMax);
+}
+
+math::Vec3 BodyDecider::turnedFoot(int f, float turn) const {
+    math::Vec3 at = anchor_[1 - f] + math::fromAxisAngle(math::kUp, turn) * math::Vec3(2.0f * hipOffset_[f].x, 0.0f, 0.0f);
+    at.y = anchor_[f].y;
+    return at;
+}
+
+float BodyDecider::shortStanding(const TargetSet& t, const BodyDeciderSettings& s, float turn) {
+    Plan& d = desired_;
+    query_.pose.locals = d.pose.locals;  // same size: no allocation
+    query_.models = d.models;
+    queryQueue_.count = 0;
+    math::Vec3 anchor[2] = {anchor_[0], anchor_[1]}, reachFrom[2] = {reachFrom_[0], reachFrom_[1]};
+    const math::Vec3 ref = hipsRef_;
+    const float stance = stanceYaw_;
+    const math::Quat rot0 = anchorRot_[0], rot1 = anchorRot_[1];
+    const float yaw0 = anchorYaw_[0], yaw1 = anchorYaw_[1];
+    if (std::abs(turn - stanceYaw_) > s.pelvisMax.y) {
+        const int f = turn > stanceYaw_ ? 0 : 1;
+        anchor_[f] = reachFrom_[f] = turnedFoot(f, turn);
+        anchorYaw_[f] = turn;
+        anchorRot_[f] = restFootLevel(f);
+        if (std::abs(turn - anchorYaw_[1 - f]) > hipTurn(s)) {
+            anchorYaw_[1 - f] = turn;
+            anchorRot_[1 - f] = restFootLevel(1 - f);
+        }
+        stanceYaw_ = 0.5f * (anchorYaw_[0] + anchorYaw_[1]);
+    }
+    const math::Vec3 mid = 0.5f * (anchor_[0] + anchor_[1]);
+    hipsRef_ = math::Vec3(mid.x, ref.y, mid.z);
+    const float pelvis = stanceYaw_ + std::clamp(turn - stanceYaw_, s.pelvisMin.y, s.pelvisMax.y);
+    placePelvis(d, math::Transform{hipsRef_, math::fromAxisAngle(math::kUp, pelvis) * restPelvis_.rotation});
+    math::Vec3 target[2];
+    auto left = [&] {
+        float most = 0.0f;
+        for (int h = 0; h < 2; ++h)
+            if (lastHandLeft_[h] >= 0.0f)
+                most = std::max(most, math::distance(planPos(d, joints_.arms[h].start), target[h]) - limbReach(h, s));
+        return most;
+    };
+    for (int h = 0; h < 2; ++h) {
+        if (lastHandLeft_[h] < 0.0f) continue;
+        target[h] = t.hand[h].pathEnd;
+        handTrunk(h, target[h], s, queryQueue_);
+    }
+    balanceStanding(t, s);
+    solveLegs(d, t, s, queryQueue_);
+    float last = left();
+    for (int round = 0; round < 8 && last > 1e-3f; ++round) {
+        for (int h = 0; h < 2; ++h)
+            if (lastHandLeft_[h] >= 0.0f && trunkFirst_[h] >= 0)
+                planTrunk(h, target[h], trunkFirst_[h], trunkEnd_[h], s, queryQueue_);
+        balanceStanding(t, s);
+        solveLegs(d, t, s, queryQueue_);
+        const float now = left();
+        if (last - now < 1e-3f) break;
+        last = now;
+    }
+    const float missing = left();
+    anchor_[0] = anchor[0], anchor_[1] = anchor[1];
+    reachFrom_[0] = reachFrom[0], reachFrom_[1] = reachFrom[1];
+    anchorRot_[0] = rot0, anchorRot_[1] = rot1;
+    anchorYaw_[0] = yaw0, anchorYaw_[1] = yaw1;
+    stanceYaw_ = stance;
+    hipsRef_ = ref;
+    d.pose.locals = query_.pose.locals;
+    d.models = query_.models;
+    for (int e = 0; e < kEnds; ++e) trunkFirst_[e] = trunkEnd_[e] = -1;
+    return missing;
+}
+
+void BodyDecider::startStep(int i, math::Vec3 from, float yaw) {
+    stepFrom_[i] = from;
+    stepYawFrom_[i] = anchorYaw_[i];
+    stepYaw_[i] = yaw;
+}
+
+void BodyDecider::reachStep(int swing, const BodyDeciderSettings& s, BodyQueue& out) {
+    float miss[2];
+    if (swing >= 0) {  // under way: its spot for where the hips must end now
+        out.step.wanted = true;
+        out.step.foot = swing;
+        out.step.spot = stepSpot(swing, reach_.hips, math::Vec3(0.0f), reach_.hips, true, s, miss[0], nullptr, nullptr, reach_.turn);
+        return;
+    }
+    if (reach_.there) return;
+    // The feet stand where the hips must end; or, a step of the reach taken,
+    // the hips can go the rest: the centre of mass stays within the feet and
+    // no leg is left behind.
+    const math::Vec3 rest = level(reach_.hips - pelvisOf(output_).position);
+    const bool between = math::length(level(reach_.hips - 0.5f * (anchor_[0] + anchor_[1]))) <= s.stepMargin;
+    const math::Vec3 com = centreOfMass(output_) + rest;
+    const bool turned = std::abs(reach_.turn - 0.5f * (anchorYaw_[0] + anchorYaw_[1])) <= s.pelvisMax.y &&
+                        std::max(std::abs(reach_.turn - anchorYaw_[0]), std::abs(reach_.turn - anchorYaw_[1])) <= hipTurn(s);
+    if (turned && (between || (reach_.stepped && legLeftBehind(rest, s) < 0 &&
+                    outsideFeet(math::Vec3(com.x, anchor_[0].y, com.z), anchor_, 2, s) <= 0.0f))) {
+        reach_.there = true;
+        return;
+    }
+    // The planned foot; one that a step's reach (or the other foot in its
+    // way) leaves shorter than the other: the other one (a way longer than a
+    // step: they take turns).
+    math::Vec3 spot[2];
+    bool moves[2];
+    for (int i = 0; i < 2; ++i) {
+        spot[i] = stepSpot(i, reach_.hips, math::Vec3(0.0f), reach_.hips, true, s, miss[i], nullptr, nullptr, reach_.turn);
+        moves[i] = math::length(level(spot[i] - anchor_[i])) > s.stepMargin ||
+                   (!turned && std::abs(reach_.turn - anchorYaw_[i]) > hipTurn(s));
+    }
+    constexpr float kTie = 0.01f;  // m
+    // Still to turn: the foot that is further from it.
+    const float off[2] = {std::abs(reach_.turn - anchorYaw_[0]), std::abs(reach_.turn - anchorYaw_[1])};
+    int foot = !turned ? (std::abs(off[0] - off[1]) > 1e-3f ? (off[0] > off[1] ? 0 : 1) : reach_.foot)
+               : std::abs(miss[0] - miss[1]) > kTie ? (miss[0] < miss[1] ? 0 : 1) : reach_.foot;
+    if (!moves[foot]) foot = 1 - foot;
+    if (!moves[foot]) return;
+    out.step.wanted = true;
+    out.step.foot = foot;
+    out.step.spot = spot[foot];
+    pathSteps_[foot] = 1;
+}
+
+int BodyDecider::legLeftBehind(math::Vec3 way, const BodyDeciderSettings& s) const {
+    const math::Transform pelvis = pelvisOf(output_);
+    int behind = -1;
+    float worst = 0.0f;
+    for (int i = 0; i < 2; ++i) {
+        const math::Vec3 hip = pelvis.position + way + pelvis.rotation * hipOffset_[i];
+        const math::Vec3 restHip = restPelvis_.position + restPelvis_.rotation * hipOffset_[i];
+        // The leg's height allowed: reachDrop below standing, or where the
+        // plan holds the hips if lower (a crouch on purpose, a reach's
+        // bend: the leg is not at its reach there, no reason to step).
+        const float up = std::min(restHip.y - restFootY_[i] - s.reachDrop, hip.y - anchor_[i].y);
+        const float reach = limbReach(2 + i, s);
+        const float flatMax = up < reach ? std::sqrt(reach * reach - up * up) : 0.0f;
+        const float dx = hip.x - anchor_[i].x, dz = hip.z - anchor_[i].z;
+        const float over = std::sqrt(dx * dx + dz * dz) - flatMax;
+        if (over > worst) {
+            worst = over;
+            behind = i;
+        }
+    }
+    return behind;
+}
+
 void BodyDecider::trunkSpring(float pelvisYaw, float dt, const BodyDeciderSettings& s) {
     // The chest (its turn in the world c) on a rotational spring-damper to the
     // pelvis (p); its turn against the pelvis, q = c - p, is moved by the
@@ -911,7 +1351,8 @@ float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) 
         const bool swinging = f.mode == TargetMode::Driven && f.swing >= 0.0f;
         at[i] = swinging ? f.position : grounded_[i] ? anchor_[i] : planPos(output_, joints_.legs[i].end);
     }
-    const float ahead = at[0].z - at[1].z;  // left ahead of right
+    const math::Vec3 apart = math::fromAxisAngle(math::kUp, -stanceYaw_) * (at[0] - at[1]);
+    const float ahead = apart.z;  // left ahead of right, along the feet
     return -s.pelvisTurnPerStep * ahead;
 }
 
@@ -936,16 +1377,14 @@ void BodyDecider::balanceStanding(const TargetSet& t, const BodyDeciderSettings&
     // leans the body out to the toes, the hips staying: Moriyama 2022's
     // functional reach, the pressure 0.05 H forward, the pelvis +-0.01 H):
     // the hips go back only as far as keeps it within the feet. On one foot
-    // it stays over that foot's ankle (its outline is narrow). A hand past
-    // the standing reach moves it on by reachShift_ (out: the body steps).
+    // it stays over that foot's ankle (its outline is narrow).
     const bool bothFeet = grounded_[0] && grounded_[1];
-    const bool reaching = math::length(reachShift_) > 0.0f;
     constexpr int kPasses = 3;
     constexpr float kOver = 1e-3f;  // m: the centre of mass over the support
     for (int pass = 0; pass < kPasses; ++pass) {
         const math::Vec3 com = planCentreOfMass();
-        math::Vec3 off(hipsRef_.x + reachShift_.x - com.x, 0.0f, hipsRef_.z + reachShift_.z - com.z);
-        if (bothFeet && !reaching) {
+        math::Vec3 off(hipsRef_.x - com.x, 0.0f, hipsRef_.z - com.z);
+        if (bothFeet) {
             const float out = outsideFeet(math::Vec3(com.x, anchor_[0].y, com.z), anchor_, 2, s);
             if (out <= kOver) break;
             off = math::safeNormalize(off) * (out + kOver);  // back toward the support's centre, to its edge
@@ -1426,7 +1865,7 @@ math::Vec3 BodyDecider::stepHips(int timed, float dt, const BodyDeciderSettings&
 
 math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd, bool hipsGoal,
                                  const BodyDeciderSettings& s, float& miss, math::Vec3* idealOut,
-                                 bool* beyondReach) const {
+                                 bool* beyondReach, float yaw) const {
     if (beyondReach) *beyondReach = false;
     // The heel (the ankle over it: the foot lands heel first, its pressure
     // there) where the capture point will be, landingBehind short of it along
@@ -1455,16 +1894,18 @@ math::Vec3 BodyDecider::stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, ma
         // reaches (an ellipse: further fore-aft than across).
         const math::Vec3 other = anchor_[o];
         const float side = hipOffset_[i].x >= hipOffset_[o].x ? 1.0f : -1.0f;
-        if ((spot.x - other.x) * side < s.minFootGap) spot.x = other.x + side * s.minFootGap;
-        math::Vec3 d(spot.x - other.x, 0.0f, spot.z - other.z);
+        const math::Quat turned = math::fromAxisAngle(math::kUp, yaw);  // the body's way there
+        math::Vec3 d = math::inverse(turned) * level(spot - other);
+        if (d.x * side < s.minFootGap) d.x = side * s.minFootGap;
         const float ex = d.x / std::max(s.maxStepSide, 1e-3f), ez = d.z / std::max(s.maxStepForward, 1e-3f);
         const float over = std::sqrt(ex * ex + ez * ez);
         if (over > 1.0f) {
             d /= over;
-            spot.x = other.x + d.x;
-            spot.z = other.z + d.z;
             if (beyondReach) *beyondReach = true;
         }
+        d = turned * d;
+        spot.x = other.x + d.x;
+        spot.z = other.z + d.z;
     }
     miss = std::sqrt((spot.x - ideal.x) * (spot.x - ideal.x) + (spot.z - ideal.z) * (spot.z - ideal.z));
     return spot;
@@ -1545,6 +1986,10 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
         centre /= static_cast<float>(n);
         swingFor = math::fittsTime(math::length(level(xcom - centre)), s.fittsWidth, s.fittsA, s.fittsB);
     }
+    if (reach_.on) {  // a hand further than standing: its step, planned on its path
+        reachStep(swing, s, out);
+        return;
+    }
     float miss = 0.0f;
     if (swing >= 0) {
         // A step under way: its spot follows the capture point to the landing.
@@ -1586,28 +2031,7 @@ void BodyDecider::balanceStep(const TargetSet& t, const BodyDeciderSettings& s, 
     // reachDrop below standing; it steps (a leg's reach ends its stance:
     // the trailing leg's toe-off), under where the capture point will be.
     // General: whatever moves the hips away from a foot.
-    int behind = -1;
-    if (n == 2 && s.reachDrop > 0.0f) {
-        const math::Transform pelvisNow = pelvisOf(output_);
-        const math::Vec3 hipsThen = pelvisNow.position + lag + vGoal * (lead + swingFor);
-        float worst = 0.0f;
-        for (int i = 0; i < 2; ++i) {
-            const math::Vec3 hip = hipsThen + pelvisNow.rotation * hipOffset_[i];
-            const math::Vec3 restHip = restPelvis_.position + restPelvis_.rotation * hipOffset_[i];
-            // The leg's height allowed: reachDrop below standing, or where the
-            // plan holds the hips if lower (a crouch on purpose, a reach's
-            // bend: the leg is not at its reach there, no reason to step).
-            const float up = std::min(restHip.y - restFootY_[i] - s.reachDrop, hip.y - anchor_[i].y);
-            const float reach = limbReach(2 + i, s);
-            const float flatMax = up < reach ? std::sqrt(reach * reach - up * up) : 0.0f;
-            const float dx = hip.x - anchor_[i].x, dz = hip.z - anchor_[i].z;
-            const float over = std::sqrt(dx * dx + dz * dz) - flatMax;
-            if (over > worst) {
-                worst = over;
-                behind = i;
-            }
-        }
-    }
+    const int behind = n == 2 && s.reachDrop > 0.0f ? legLeftBehind(lag + vGoal * (lead + swingFor), s) : -1;
     // A step that would put the foot back where it stands (within the
     // margin) changes nothing: no step (it would be taken again and again).
     auto moves = [&](int foot, math::Vec3 spot) {
@@ -1796,8 +2220,8 @@ void BodyDecider::footHike(int i, math::Vec3 target, const BodyDeciderSettings& 
     const math::Vec3 forward = p.rotation * (math::inverse(restPelvis_.rotation) * math::kForward);
     const math::Quat want = math::normalize(math::fromAxisAngle(forward, side * excess) * p.rotation);
     const math::Quat rel =
-        clampRotationVector(math::normalize(want * math::inverse(restPelvis_.rotation)), s.pelvisMin, s.pelvisMax);
-    const math::Quat turn = math::normalize(rel * restPelvis_.rotation * math::inverse(p.rotation));
+        clampRotationVector(math::normalize(want * math::inverse(pelvisBase())), s.pelvisMin, s.pelvisMax);
+    const math::Quat turn = math::normalize(rel * pelvisBase() * math::inverse(p.rotation));
     p.rotation = math::normalize(turn * p.rotation);
     p.position = pivot + turn * (p.position - pivot);
     placePelvis(d, p);
@@ -1832,7 +2256,13 @@ void BodyDecider::planTrunk(int e, math::Vec3 target, int first, int end, const 
     constexpr int kPasses = 4;
     constexpr float kClose = 1e-3f;  // m: within reach
     const float reach = limbReach(e, s);
-    const math::Quat restInv = math::inverse(restPelvis_.rotation);
+    // The range counts in the hips' own frame (turned with the feet).
+    const math::Quat base = pelvisBase(), yawed = math::fromAxisAngle(math::kUp, stanceYaw_);
+    float deep = 0.0f;  // how far down a hand goes
+    if (e < 2) {
+        const float groundY = 0.5f * (anchor_[0].y + anchor_[1].y - restFootY_[0] - restFootY_[1]);
+        deep = lowness(e, target, groundY, s);
+    }
     for (int pass = 0; pass < kPasses; ++pass) {
         for (int k = first; k < end; ++k) {
             const PartOrder& o = out.orders[static_cast<size_t>(k)];
@@ -1855,11 +2285,14 @@ void BodyDecider::planTrunk(int e, math::Vec3 target, int first, int end, const 
                 // The pelvis tilts at the hips (the hips stay), within its
                 // range from standing (hip flexion, BIOMECHANICS 9.3).
                 const math::Vec3 hips = tiltPivot(e);
-                const Swing sw = swingToward(hips, shoulder, target, reach);
                 math::Transform p = pelvisOf(d);
+                const math::Quat now = math::normalize(math::inverse(yawed) * p.rotation * math::inverse(base) * yawed);
+                const Swing sw = e < 2 ? blendSwing(deep, hips, shoulder, target, reach, yawed, math::rotationVector(now), s.pelvisMin, s.pelvisMax)
+                                       : swingToward(hips, shoulder, target, reach);
                 const math::Quat want = math::normalize(math::fromAxisAngle(sw.axis, sw.angle * o.share) * p.rotation);
-                const math::Quat rel = clampRotationVector(math::normalize(want * restInv), s.pelvisMin, s.pelvisMax);
-                const math::Quat turn = math::normalize(rel * restPelvis_.rotation * math::inverse(p.rotation));
+                const math::Quat own = math::normalize(math::inverse(yawed) * want * math::inverse(base) * yawed);
+                const math::Quat rel = math::normalize(yawed * clampRotationVector(own, s.pelvisMin, s.pelvisMax) * math::inverse(yawed));
+                const math::Quat turn = math::normalize(rel * base * math::inverse(p.rotation));
                 p.rotation = math::normalize(turn * p.rotation);
                 p.position = hips + turn * (p.position - hips);
                 placePelvis(d, p);
@@ -1867,7 +2300,17 @@ void BodyDecider::planTrunk(int e, math::Vec3 target, int first, int end, const 
                        o.joint == joints_.clavicles[0] || o.joint == joints_.clavicles[1]) {
                 // A spine joint or the shoulder girdle: it turns at its own
                 // joint, within its range.
-                const Swing sw = swingToward(planPos(d, o.joint), shoulder, target, reach);
+                Swing sw;
+                if (e < 2 && limits_ && o.joint != joints_.clavicles[0] && o.joint != joints_.clavicles[1]) {
+                    const ik::JointLimit l = limits_->limitIn(o.joint, d.pose);
+                    const math::Quat local = d.pose.locals[static_cast<size_t>(o.joint)].rotation;
+                    const math::Quat rest = rig_->restPose().locals[static_cast<size_t>(o.joint)].rotation;
+                    sw = blendSwing(deep, planPos(d, o.joint), shoulder, target, reach, planRot(d, rig_->parent(o.joint)),
+                                      math::rotationVector(math::normalize(local * math::inverse(rest))),
+                                      math::Vec3(l.swing1Min, l.twistMin, l.swing2Min), math::Vec3(l.swing1Max, l.twistMax, l.swing2Max));
+                } else {
+                    sw = swingToward(planPos(d, o.joint), shoulder, target, reach);
+                }
                 turnPlanned(d, o.joint, math::fromAxisAngle(sw.axis, sw.angle * o.share));
             }
         }

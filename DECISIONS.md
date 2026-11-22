@@ -972,6 +972,59 @@ Dated log. Format: decision, reason, alternatives rejected.
   body falls, CRICKET_NOHOLD); a tight hold at the plan's hips (the spring would carry the
   weight, not the legs).
 
+## 2026-11-22: A hand further than standing: the step first, then the bend
+- **Decision (the user's OK):** on a hand path's event (it starts or its end moves more than
+  1 cm) the decider compares the way from the upright shoulder (hips between the feet) to
+  the path's end with how far a body reaches standing (BIOMECHANICS 9.8: floor 0.63 m;
+  shoulder height, the arm and 0.23 H fore-aft, 0.13 H sideways; in proportion between).
+  The rest is how far the hips must end from the feet's middle; the foot lands mirrored
+  about it (`stepSpot`), less what its pelvis turn (`pelvisTurnPerStep`) carries the shoulder
+  on; the foot is one that gets there in a step, then the hand's side. The step takes its own
+  time (weight shift and Fitts), the hand's path's if longer. The trunk's target goes from
+  where it was to the hand's, less the way the hips still come, by the feet's progress. A step
+  of the reach landed, the hips go on to their end themselves; another step only when the
+  centre of mass there leaves the feet or a leg is left behind. `reachShift_` removed.
+- **Why:** the body leaned first (trunk 79 deg) and stepped 160-360 ms after the press once
+  the centre of mass was out. The hips' end counts from the feet's middle, not from the hips
+  of the moment (leaning, they are 13 cm behind the ankles: a spot where the foot stood).
+- **Rejected (measured):** asking the trunk solve how far it reaches (low it reaches further
+  than people: pelvis 70 deg, lean 105); the step in the hand path's 0.2 s; the hips going
+  after any shortfall (hand down: 16 cm the wrong way and a step); no pacing of the trunk (it
+  bent 103 deg, the centre of mass 9 cm past the toes, before the foot lifted).
+
+## 2026-11-22: The hips turn when the trunk is at its ranges, a leg goes round with them
+- **Decision (the user's formula):** on a hand path's event, no far step needed and the trunk's
+  own solve (pelvis and spine at their ranges, the feet as they stand) still short of the
+  path's end by more than `stepMargin`: the hips turn about the vertical toward the trunk's
+  bend, as little as lets the body reach it (eighths of the way there). On both feet the pelvis
+  turns within its range (`pelvisMin/Max` 30 deg); further, or a standing foot past its hip's
+  twist range: a leg lifts and goes round with its hip about the other foot (a turn to the left,
+  the left leg back), landing turned, the other foot turning in place if its hip needs it.
+  Feet keep their turn (`anchorYaw_`); the pelvis's range counts from the feet's mean turn; a
+  step of anything else lands facing ahead again.
+- **Also (2026-11-22):** the bend sideways past the pelvis's and spine's side range turns the
+  hips (on both feet) until what is left is within it, coming in with how short the hand would
+  stay (all at 1 cm): the turn at once flipped the trunk from a side bend to a forward one.
+- **Why:** a hand down beside or behind the body stopped 10-18 cm short: the trunk bent to the
+  side and back into its ranges, and the hips could not turn the bend to the front.
+- **Rejected (measured):** the turn from the ranges alone (it stepped for balls the body already
+  reached); a fixed 90 deg.
+
+## 2026-11-22: A hand down beside the body: face it, then bend forward
+- **Decision (the user's ask):** on a hand path's event the body turns until the target is in
+  front (between the midline and the hand's shoulder), coming in with how far below the hanging
+  hand it is (`facingDrop`); past 30 deg a foot goes round, the one that takes the hips toward
+  the hand (target ahead: the turn's far foot forward); still further than standing reach, the
+  step goes on toward it. The trunk of a hand down turns each joint the easiest way for its
+  room per axis (`easiestSwing`) instead of the shortest, in by the same ramp. It replaces the
+  hips' turn once the side bend was past the trunk's range.
+- **Why:** right under the shoulder the shortest swing is the shoulder's 18 cm side offset, so
+  the trunk bent sideways (pelvis 20, spine 14-37); people face the target and bend forward
+  (Lavender 1995, Marras 2000, Konz 1974).
+- **Rejected (measured in scratch):** the easiest swing without the facing (a ball 0.9 m left
+  21 cm short, jerks); one least-effort solve for pelvis, spine and knees together (balls up to
+  15 cm short, a step on every ball, 782 deg/s); lifting a leg behind as a balance (the user: no).
+
 ## 2026-11-22: Jog and run are an action of their own (RunPlanner)
 - **Decision (the user's rule):** nothing of the run is in the decider. `motion::RunPlanner`
   (own file) only places the feet's and the hips' targets; `Human` uses it from 1.7 m/s of
@@ -981,3 +1034,11 @@ Dated log. Format: decision, reason, alternatives rejected.
   in the flight, the standing leg's half-sine push in the stance (`StanceFeet::load`).
 - In a run's flight the hold does not let go (an exception to 2026-11-21 "both feet in the
   air"): no push, it only keeps the body upright. A fall that is no run lets go as before.
+
+## 2026-11-22: Turning to the camera's heading, free view (V) again
+- **Decision (the user's ask):** while it moves the player's root turns to the camera's
+  heading (`Human::turnToHeading`); V holds the heading. Removed 2026-11-16, built anew.
+- Three general lines in the decider (asked first): `rebase` keeps each foot's turn on the
+  ground, a foot in the air on a step lands turned as its target is, and the free arms
+  cancel the body's turning against its heading (not the meant turn).
+- Arms and trunk lean of the run are the run planner's hand and chest targets.

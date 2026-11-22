@@ -126,10 +126,15 @@ struct BodyDeciderSettings {
     // share of the leg ahead of the hip (a foot right under the hip: the knee
     // forward). Design value.
     float kneeForwardBias = 0.25f;
-    // A body standing reaches a hand this share of its height past the arm
-    // (forward, level; Moriyama 2022's functional reach, young adults 0.22-
-    // 0.24 H); a hand further takes the whole body after it (a step).
-    float standingReachShare = 0.23f;
+    // How far a body reaches standing (a hand further takes a step): at
+    // shoulder height past the arm this share of its height fore-aft
+    // (Moriyama 2022's functional reach, young adults 0.22-0.24 H) and this
+    // one sideways (lateral reach); on the floor floorReach (m, level; NIOSH
+    // 1994); between them in proportion to the height.
+    float standingReachShare = 0.23f, standingReachSideShare = 0.13f, floorReach = 0.63f;
+    // A hand down beside the body: the body faces it all the way once the hand
+    // is this share of its hanging height lower [E].
+    float facingDrop = 0.5f;
     // Each next part in a reach queue carries this times the share of the
     // part before it.
     float queueShare = 0.5f;
@@ -305,6 +310,37 @@ private:
     // How far a ground point (character space) is out of the outline of
     // feet with their ankles at `ankles` (n of them; 0: inside).
     static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
+    // A hand's path (an event: it starts or its end moves): its end further
+    // than a body reaches standing asks for a step (reach_): the hips end
+    // where the standing reach gets there, between the feet. Planned once.
+    void planReach(const TargetSet& t, const BodyDeciderSettings& s);
+    // The way (rad from forward, + left) the trunk bends that brings `shoulder`
+    // within `reach` of `target` about `hips` (0: none needed).
+    float bendWay(math::Vec3 hips, math::Vec3 shoulder, math::Vec3 target, float reach) const;
+    // How far down (0..1) hand h's target is: 0 where the arm hangs, 1
+    // facingDrop of that height lower.
+    float lowness(int h, math::Vec3 target, float groundY, const BodyDeciderSettings& s) const;
+    // How far (rad, + to the left) the body turns from `yaw` to face hand h's
+    // target down beside it (0: high, or in front already). `mid`: the feet's.
+    float facingTurn(int h, math::Vec3 target, math::Vec3 mid, float yaw, float groundY, const BodyDeciderSettings& s) const;
+    // Where foot f goes with its hip when the hips turn to `turn` about the
+    // other foot (its place from standing turned).
+    math::Vec3 turnedFoot(int f, float turn) const;
+    // How far a hip turns on a standing foot each way (its joint's range).
+    float hipTurn(const BodyDeciderSettings& s) const;
+    // How short (m) the driven hands stay of their paths' ends with the body
+    // bent toward them on these feet, the hips turned to `turn` (further than
+    // the feet let: a leg gone round with its hip); the trunk's own solve,
+    // nothing of it kept.
+    float shortStanding(const TargetSet& t, const BodyDeciderSettings& s, float turn);
+    void startStep(int i, math::Vec3 from, float yaw);
+    math::Quat pelvisBase() const { return math::fromAxisAngle(math::kUp, stanceYaw_) * restPelvis_.rotation; }
+    // A step of the reach: which foot and its spot (out.step), none once the
+    // feet stand where the hips must end.
+    void reachStep(int swing, const BodyDeciderSettings& s, BodyQueue& out);
+    // The leg that, the hips gone on by `way` (level), at its reach would hold
+    // them more than reachDrop below standing (-1: none): its stance ends.
+    int legLeftBehind(math::Vec3 way, const BodyDeciderSettings& s) const;
     // Where foot i lands for capture point `xcom` moving with `velocity`, the
     // hips (centre of mass, on the ground) ending at `hipsEnd` (`hipsGoal`:
     // a hips target sets that place; free hips: the capture point); `miss`: how
@@ -312,7 +348,7 @@ private:
     // `beyondReach` whether a step's reach cut it short (more steps go on).
     math::Vec3 stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd, bool hipsGoal,
                         const BodyDeciderSettings& s, float& miss, math::Vec3* ideal = nullptr,
-                        bool* beyondReach = nullptr) const;
+                        bool* beyondReach = nullptr, float yaw = 0.0f) const;
     // A step of foot i from `from` to `spot` on the hips target's path: the
     // time it takes (the sync formula), `steps` steps sharing the way, at
     // least the leg's swing; negative: no path.
@@ -424,6 +460,7 @@ private:
     math::Quat restFoot_[2] = {math::identityQuat(), math::identityQuat()};  // each foot's bone standing (character space)
     float restFootY_[2] = {0.0f, 0.0f};  // each ankle's height standing
     math::Quat restHead_ = math::identityQuat();
+    math::Vec3 restShoulder_[2]{};   // each shoulder standing (character space)
     math::Vec3 restHandChest_[2]{};  // each hand standing, hanging, in the chest's frame
     math::Vec3 hipCentre_{0.0f};     // between the hips, from the pelvis (rest)
     math::Vec3 hangDir_[2]{}, hangBend_[2]{};  // the relaxed arm in the chest's frame (rest)
@@ -458,10 +495,32 @@ private:
     // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
     int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};
     float rangeMiss_[kEnds] = {0.0f, 0.0f, 0.0f, 0.0f};  // m: the output limb's end off its aim by its joints' ranges
-    // How far (level) a hand beyond the standing reach takes the hips toward
-    // it this decide: standing balance keeps the centre of mass over the
-    // support moved on by it (the body leans out and steps after the hand).
-    math::Vec3 reachShift_{0.0f};
+    // A reach further than standing (planReach): where the hips must end
+    // (between the feet), the foot that steps first, the feet's way there
+    // when it was planned (m), whether a step of it has landed, and whether
+    // it needs none any more (the hips go the rest).
+    struct ReachStep {
+        bool on = false, stepped = false, there = false;
+        int foot = 0;
+        math::Vec3 hips{0.0f};
+        float way = 0.0f;
+        float turn = 0.0f;  // rad about the vertical (+ left): how far the hips turn toward the reach
+    };
+    ReachStep reach_;
+    // Each foot's turn about the vertical on the ground (rad), the turn of
+    // its step under way (from, to), and the feet's mean turn this tick: the
+    // pelvis's range counts from it.
+    float anchorYaw_[2] = {0.0f, 0.0f}, stepYawFrom_[2] = {0.0f, 0.0f}, stepYaw_[2] = {0.0f, 0.0f};
+    float stanceYaw_ = 0.0f;
+    Plan query_;            // shortStanding's copy of the desired pose
+    BodyQueue queryQueue_;  // and its queue
+    // Each hand path's end and time left last tick (negative: none), and the
+    // trunk's target for it: now, and where it was when the reach was planned.
+    math::Vec3 lastHandEnd_[2]{};
+    float lastHandLeft_[2] = {-1.0f, -1.0f};
+    math::Vec3 trunkTarget_[2]{}, trunkFrom_[2]{};
+    bool trunkOn_[2] = {false, false};
+    math::Vec3 stepFrom_[2]{};  // where each foot's step under way began (ankle, character space)
     std::vector<float> mass_;          // per rig joint (kg)
     std::vector<math::Vec3> centre_;   // per rig joint: its mass's centre in the bone's frame
     float totalMass_ = 0.0f;

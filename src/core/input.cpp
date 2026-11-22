@@ -34,7 +34,9 @@ constexpr const char* kActionNames[] = {
     "ToggleMouseLook",
     "ResetPose",
     "SlowMotion",
+    "FreeView",
     "PoseLimb",
+    "PoseGo",
     "PoseAway", "PoseNear", "PoseLeft", "PoseRight",
     "PoseTurn",
 };
@@ -94,7 +96,9 @@ ActionMap::ActionMap() {
     bind(Action::ToggleMouseLook, Key::Tab);
     bind(Action::ResetPose, Key::R);
     bind(Action::SlowMotion, Key::I);
+    bind(Action::FreeView, Key::V);
     bind(Action::PoseLimb, Key::F);
+    bind(Action::PoseGo, Key::C);
     bind(Action::PoseAway, Key::Up);
     bind(Action::PoseNear, Key::Down);
     bind(Action::PoseLeft, Key::Left);

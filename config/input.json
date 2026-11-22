@@ -23,6 +23,9 @@
     // Camera: right-drag rotates (default). Tab toggles mouse-look, where the
     // mouse turns the camera with the cursor hidden.
     "ToggleMouseLook": ["Tab"],
+    // V: free view; the camera can be moved to any angle while the player keeps
+    // their heading. V again: the player turns with the camera again.
+    "FreeView": ["V"],
     // I: slow motion for the whole game (engine.json debug.slowMotionFactor).
     "SlowMotion": ["I"],
     // Limb test (engine.json debug.limbTest): F chooses the target (right
@@ -34,9 +37,11 @@
     // away/near; Ctrl+Shift Left/Right roll it about the camera's view. The
     // head only turns (its arrows turn it without Ctrl); the chest moves by
     // the trunk bending, within its joints' ranges. It
-    // stays where it is left. R resets the pose.
+    // stays where it is left. The body does not follow it until C is pressed:
+    // then it goes to the target as it is set. R resets the pose.
     "ResetPose": ["R"],
     "PoseLimb": ["F"],
+    "PoseGo": ["C"],
     "PoseAway": ["Up"],
     "PoseNear": ["Down"],
     "PoseLeft": ["Left"],

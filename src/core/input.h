@@ -61,7 +61,9 @@ enum class Action : uint8_t {
     ToggleMouseLook,
     ResetPose,   // limb test: drop the targets, the body back at its standing pose
     SlowMotion,        // toggle slow motion for the whole game
+    FreeView,          // the camera orbits freely; the player keeps their heading
     PoseLimb,          // limb test: choose the next target (feet, hands, hips, chest, head)
+    PoseGo,            // limb test: the body goes to the target as it is set now
     PoseAway, PoseNear, PoseLeft, PoseRight,  // limb test: move the target (camera-relative; Shift: up/down)
     PoseTurn,          // held (Ctrl): the limb test's arrows turn the target
     Count

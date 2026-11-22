@@ -36,6 +36,9 @@ void Human::loadLocomotion(const core::Config& c) {
     backSpeed_ = c.getFloat("move.backSpeed", backSpeed_);
     sideSpeed_ = c.getFloat("move.sideSpeed", sideSpeed_);
     moveAccel_ = c.getFloat("move.acceleration", moveAccel_);
+    turnRate_ = math::radians(c.getFloat("move.turnRateDeg", math::degrees(turnRate_)));
+    turnAccel_ = c.getFloat("move.turnAccel", turnAccel_);
+    turnEase_ = c.getFloat("move.turnEase", turnEase_);
     speedStep_ = c.getFloat("move.speedStep", speedStep_);
     minSpeed_ = c.getFloat("move.minSpeed", minSpeed_);
     maxSpeed_ = std::max(c.getFloat("move.maxSpeed", maxSpeed_), minSpeed_);
@@ -62,6 +65,12 @@ void Human::loadLocomotion(const core::Config& c) {
     runSettings_.legReach = c.getFloat("run.legReach", runSettings_.legReach);
     runSettings_.blendTime = c.getFloat("run.blendTime", runSettings_.blendTime);
     runSettings_.hipsAccel = c.getFloat("run.hipsAccel", runSettings_.hipsAccel);
+    runSettings_.armSwing = math::radians(c.getFloat("run.armSwingDeg", math::degrees(runSettings_.armSwing)));
+    runSettings_.armMid = math::radians(c.getFloat("run.armMidDeg", math::degrees(runSettings_.armMid)));
+    runSettings_.elbowBend = math::radians(c.getFloat("run.elbowBendDeg", math::degrees(runSettings_.elbowBend)));
+    runSettings_.handIn = c.getFloat("run.handIn", runSettings_.handIn);
+    runSettings_.leanPerSpeed = math::radians(c.getFloat("run.leanDegPerSpeed", math::degrees(runSettings_.leanPerSpeed)));
+    runSettings_.poseBlend = c.getFloat("run.poseBlend", runSettings_.poseBlend);
     motion::StepPlannerSettings& shape = deciderSettings_.stepShape;
     shape.height = stepSettings_.stepHeight;
     shape.peakAt = stepSettings_.peakAt;
@@ -137,6 +146,29 @@ void Human::followCapsule(float dt) {
     run_.rebase(toNew);
 }
 
+void Human::turnToHeading(float dt) {
+    // The root turns toward the heading while the body moves; everything the
+    // plan has stays where it is in the world and the next steps land the new
+    // way. No faster than turnRate, nor than the ground can turn the body's
+    // motion (v x w within turnAccel); eased in and out.
+    const float speed = math::length(walkVelocity_);
+    const bool moving = math::length(walkInput_) > 0.0f && speed > 0.05f;
+    const math::Vec3 ahead = root_.transformDirection(math::kForward);
+    const float off = headingOn_ && moving ? std::remainder(heading_ - std::atan2(ahead.x, ahead.z), math::kTwoPi) : 0.0f;
+    const float most = std::min(turnRate_, turnAccel_ / std::max(speed, 0.1f));
+    const float ease = std::max(turnEase_, dt);
+    const float want = std::clamp(off / ease, -most, most);
+    turnVelocity_ += (want - turnVelocity_) * std::min(1.0f, 2.0f * dt / ease);
+    if (off == 0.0f && std::abs(turnVelocity_) < 1e-3f) turnVelocity_ = 0.0f;
+    if (turnVelocity_ == 0.0f) return;
+    const math::Transform before = root_;
+    root_.rotation = math::normalize(math::fromAxisAngle(math::kUp, turnVelocity_ * dt) * root_.rotation);
+    stepper_.rebase(before, root_);
+    const math::Transform toNew = math::inverse(root_) * before;
+    decider_.rebase(toNew);
+    run_.rebase(toNew);
+}
+
 void Human::plantFeet() {
     // Feet planted where they stand in the rest pose (character space).
     rig_.localToModel(rig_.restPose(), models_);
@@ -149,6 +181,7 @@ void Human::tick(double dt) {
     previousRoot_ = root_;
     current_.locals = rig_.restPose().locals;
     followCapsule(static_cast<float>(dt));
+    if (physics_ && humanBody_.ready()) turnToHeading(static_cast<float>(dt));
     // The full-physics body: its muscles pull toward the decider's plan for
     // the limb test's targets, the capsule holding it up.
     if (physics_ && humanBody_.ready()) {
@@ -263,6 +296,10 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             math::radians(dv("decider.pelvisListDeg", math::degrees(deciderSettings_.pelvisList)));
         deciderSettings_.kneeForwardBias = dv("decider.kneeForwardBias", deciderSettings_.kneeForwardBias);
         deciderSettings_.standingReachShare = dv("decider.standingReachShare", deciderSettings_.standingReachShare);
+        deciderSettings_.standingReachSideShare =
+            dv("decider.standingReachSideShare", deciderSettings_.standingReachSideShare);
+        deciderSettings_.floorReach = dv("decider.floorReach", deciderSettings_.floorReach);
+        deciderSettings_.facingDrop = dv("decider.facingDrop", deciderSettings_.facingDrop);
         deciderSettings_.trunkTurnFrequency = dv("decider.trunkTurn.frequency", deciderSettings_.trunkTurnFrequency);
         deciderSettings_.trunkTurnDamping = dv("decider.trunkTurn.damping", deciderSettings_.trunkTurnDamping);
         deciderSettings_.trunkMaxTwist =
@@ -382,6 +419,13 @@ motion::RunBody Human::runBody() const {
         b.hip[i] = at(legs[i]->start);
         b.legLength[i] = math::distance(at(legs[i]->start), at(legs[i]->mid)) + math::distance(at(legs[i]->mid), at(legs[i]->end));
     }
+    const ik::TwoBoneChain* arms[2] = {&joints_.armL, &joints_.armR};
+    for (int i = 0; i < 2; ++i)
+        if (arms[i]->start >= 0) {
+            b.shoulder[i] = at(arms[i]->start);
+            b.upperArm = math::distance(at(arms[i]->start), at(arms[i]->mid));
+            b.forearm = math::distance(at(arms[i]->mid), at(arms[i]->end));
+        }
     b.ankleUp = liftedAnkleMin_ - toeClearance_;
     b.gravity = deciderSettings_.gravity;
     return b;
@@ -621,7 +665,8 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
             LOG_INFO("human: both feet off the ground: the capsule lets go");
             return;
         }
-        const float k = supportShare_ * onFeet;
+        // (a run's hold: whole from the touchdown, none in the flight)
+        const float k = supportShare_ * (run_.on() && !run_.ending() ? (run_.load() > 0.0f ? 1.0f : 0.0f) : onFeet);
         world.setSupportLimits(support_, c.supportMaxForce * k, c.supportMaxTorque * (run_.on() ? supportShare_ : k));
         // The real pelvis off the hold's target (level): small is nothing;
         // past medium for a while it is marked Medium (pelvisError_; nothing

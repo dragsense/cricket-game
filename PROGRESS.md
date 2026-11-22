@@ -169,6 +169,58 @@ Pieces (pass numbers in brackets):
   the user's OK once the baseline showed the catches were older.
   Open: squat 135 N m (why the spring torque grows once free up/down); the hips 3.5-4.6
   cm below the plan in walking.
+- [ ] **R1 A far hand: the step first, then the bend** (2026-11-22, awaiting the user's game
+  check; DECISIONS, BIOMECHANICS 9.8). Measured (release, scenarios in a scratch harness;
+  before -> after):
+  - one press 1.2 m ahead: the step 358 -> 0 ms after the press, +38 -> +57 cm, 1 step; trunk 4
+    deg until the foot lifts, 76 -> 49 deg at most; reached 0.63 -> 1.04 s; real hand off the
+    plan at most 25 -> 15 cm. 1.5 m 2 steps, 2.0 m 3 steps (as before), all reached.
+  - low and far (0.9 m, 17 cm up): 458 -> 0 ms, +23 -> +41 cm, 1 step, reached 0.95 -> 0.92 s.
+  - 12 presses 0.3 s apart: 1 step (158 ms) -> 2 (0 ms), trunk 79 -> 52 deg, real hand off the
+    plan 26 -> 7 cm; 0.5 s apart 3 steps (each press past the reach is a new target).
+  - right hand 12 presses: left foot, miss 6.6 -> right foot, 0.1 cm. Side 10 presses: no step,
+    miss 14.7 -> 2 steps, 0.1 cm. Across 10: miss 46 -> 27 cm, 2 steps (the shoulder's range).
+  - 6 and 8 presses ahead, out 5, across 5, up 6, down 6, toes: no step, unchanged.
+  - Walking, the arrow-key limb test, hips, foot and standing measures: identical (820 printed
+    lines); cost per human unchanged (~75-90 us).
+  Feet on the physics body slide 12-28 cm in a fast low reach (the plan's do not move; the
+  same at HEAD): measured, cause unknown, not changed. Open too: the stance hold 8b3e833 has
+  no entry here nor a full test run of its own.
+- [ ] **R2 The hips turn when the trunk is at its ranges; a leg goes round with them**
+  (2026-11-22, the user's formula; awaiting the game check; DECISIONS). Measured (before ->
+  after): hand down 6 presses, miss 10.0 -> 0.4 cm, no step (the hips turn on both feet, the
+  trunk bends forward); right hand down 70 cm 15.4 -> 0.2; ball 0.4 left, 0.35 behind: 18.6 ->
+  0.1 cm, the left leg 12 cm back, then the right foot turns in place; hip joints within
+  their ranges. Balls ahead, beside, across and far, and the standing cases: no turn, unchanged.
+  Walking, hips, foot and standing measures: unchanged (rounding).
+  Then (2026-11-22, same day): a target moving straight down flipped the trunk from a side
+  bend to a forward one when the turn came in. Now the turn comes in with how short the hand
+  would stay (all of it at 1 cm) once the bend sideways is past the trunk's range. Target
+  moving 0.2 m/s down: hand against the goal 7 ticks at 1.66 -> 5 at 0.17 m/s, real hand off
+  the plan 22.9 -> 6.8, feet 6.3 -> 3.4 cm; out + down 9 ticks at 1.73 -> 4 at 0.42, 29.0 ->
+  8.9, feet 8.4 -> 4.5; hand down 6 presses miss 0.4 -> 0.1 cm.
+  Worse: 7 down then 6 ahead presses, real hand off the plan 29.7 -> 32.8 cm. Balls: unchanged.
+  Open: the trunk bends sideways (pelvis 20, spine ~36 deg, twist 35) where people hardly do
+  (lateral 1-4, twist 3-4, hip 79, knee 70 deg, floor lifts, Davis 2002, spine.osu.edu): each
+  joint takes the shortest swing (planTrunk). Forcing the bend forward, with the knees' share,
+  was tried in scratch and not kept (balls 12-48 cm short, a jerk at the start). One press:
+  real feet slide 23-32 cm, the trunk bends ~500 deg/s where people lift at ~120 (Saraceni
+  2021); 1-3 cm with the path at ~1.9 s, except a ball 60 cm ahead (17 cm, cause unknown).
+  Across at 0.2 m/s: the right foot slides 17 cm (cause unknown).
+  Limb test input (2026-11-22, the user's ask): the arrows only set the target (red); C
+  (`PoseGo`) sends the body there (green).
+- [ ] **R3 A hand down: the body faces it, then bends forward** (2026-11-22, the user's ask;
+  FAILED the game check (the side bend still shows), stopped there; DECISIONS, BIOMECHANICS 9.8). Scratch measures, release, left hand,
+  11 balls on the floor (before -> after): plan miss at most 1.4 -> 0.3 cm (the ball 0.60 m
+  ahead not read); pelvis forward 44-80 -> 54-68 deg (38 behind-left); spine side 14-37 -> 1-16;
+  balls in front: pelvis side 20 -> 3-8. Balls to the side: the far foot comes forward and the
+  near one turns (2 steps), real hand off the goal 2.2-6.2 -> 2.0-4.7 cm.
+  Worse: ball between the feet 0 -> 1 step, left-front 0 -> 1, across 0.35/0.3 0 -> 2, across 0.7
+  1 -> 2, beside the foot and left 0.60 -> 2; target moving down 0.5 m/s: lean rate 216 -> 315
+  deg/s, feet slide 9.8 -> 13.8 cm; out + down at 0.2 m/s: 0 -> 6 steps, lean rate 124 -> 454,
+  at 0.5 m/s 0 -> 4 steps (cause unknown; keeping the feet's turn in a balance step was tried
+  and changed nothing, taken out).
+  Open: spine twist stays ~32 deg where people have 3-4; knees 33-47 where people have ~70.
 - [x] **Jog and run: `motion::RunPlanner`** (2026-11-22, the user's ask, checked in the
   game up to 5.0; DECISIONS). W with E past 1.6 m/s, up to 5.0 (the user: "perfect", then 5.0 asked). The decider is not touched. Scratch
   measures, release, steady 3 s: 1.8 / 2.0 / 2.6 / 3.0 / 3.4 / 4.0 m/s: standing foot off its
@@ -179,6 +231,20 @@ Pieces (pass numbers in brackets):
   4.6 / 5.0: foot 12.3 / 7.9, hips level 3.7 / 4.2 cm, vertical push 0 N, no torque limit).
   Open: the body is slowed at each landing (3.0 -> ~2.3 m/s for ~0.1 s) and the hold pulls it
   on; arms as in walking; no lean.
+- [x] **Run: the rest, and turning (V)** (2026-11-22, the user's list; checked in the
+  game). Scratch, release (before -> after):
+  - W+A let go at 2.6 m/s: foot off 62 -> 4.1 cm (the ending drives the hips across too).
+  - Landing, the hold whole from the touchdown: hips' most speed 3.0 m/s 3.50 -> 3.26, foot off at
+    5.0 m/s 12.4 -> 5.8 cm; the dip itself stays (2.25 m/s). Level force up (1391 -> 1973 N).
+    Tried, taken out: the hips giving way so that the centre of mass goes evenly (3.0: its
+    spread 1.13 -> 0.64 m/s, but at 5.0 the foot 29 cm off, W+A 54).
+  - Arms: elbow 79-97 deg, against the legs; trunk lean 3.1 / 4.6 / 5.9 / 7.5 deg at 2 / 3 / 4 / 5 m/s.
+  - Turning to the camera's heading while moving (V: free view), 60 deg/s, v x w <= 3 m/s^2:
+    90 deg in 1.5 s at 1.2-3 m/s; the standing foot turns 0-5 deg/s walking; foot off
+    7-8 (1.2), 16 (1.6, as straight), 7 (3.0) cm.
+  Open: walking turns swing the arms (hand 27-47 cm off the plan for a moment: the pelvis
+  stays back with the feet and comes on with the step); 180 deg at 5 m/s: foot 22 cm off
+  (measured with 3.5 m/s^2); the first run step 13 cm.
 - [ ] P4 Stance hold: the plan's statics, the ground push inside the foot's functional
   base of support (Sloot 2025) [spring vertical ~0 in standing, one foot, squat; static
   leg motors < 5 N m].

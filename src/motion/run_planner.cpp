@@ -106,6 +106,34 @@ void RunPlanner::moveFoot(int i, const RunPlannerSettings& s, TargetSet& t) {
     f.weightPosition = f.weightRotation = 1.0f;
 }
 
+void RunPlanner::pose(const RunBody& body, const RunPlannerSettings& s, TargetSet& t) const {
+    const float k = poseWeight_ * poseWeight_ * (3.0f - 2.0f * poseWeight_);
+    if (k <= 0.0f) return;
+    const math::Vec3 left3(way_.z, 0.0f, -way_.x);
+    // Each arm swings with the other side's leg: its foot ahead of the hips.
+    const float half = std::max(0.5f * (s.stanceWay + s.stanceWayPerSpeed * speed_), 0.1f);
+    for (int h = 0; h < 2; ++h) {
+        Target& hand = t.hand[h];
+        if (hand.mode != TargetMode::Free || body.upperArm <= 0.0f) continue;
+        const float ahead = math::dot(t.foot[1 - h].position - body.pelvis, way_) / half;
+        const float a = s.armMid + s.armSwing * std::clamp(ahead, -1.2f, 1.2f);  // the upper arm from hanging
+        const float b = a + s.elbowBend;                                           // the forearm
+        auto dir = [&](float x) { return way_ * std::sin(x) - math::kUp * std::cos(x); };
+        hand.mode = TargetMode::Driven;
+        hand.position = body.shoulder[h] + dir(a) * body.upperArm + dir(b) * body.forearm -
+                        left3 * (h == 0 ? s.handIn : -s.handIn);
+        hand.weightPosition = k;
+        hand.weightRotation = 0.0f;
+        hand.pathLeft = -1.0f;
+    }
+    if (t.chest.mode == TargetMode::Free) {
+        t.chest.mode = TargetMode::Driven;
+        t.chest.rotation = math::fromAxisAngle(left3, s.leanPerSpeed * speed_);
+        t.chest.weightPosition = 0.0f;
+        t.chest.weightRotation = k;
+    }
+}
+
 void RunPlanner::tick(math::Vec3 velocity, const RunBody& body, const RunPlannerSettings& s, TargetSet& t) {
     landed_[0] = landed_[1] = false;
     if (!on_) return;
@@ -155,15 +183,19 @@ void RunPlanner::tick(math::Vec3 velocity, const RunBody& body, const RunPlanner
     for (int i = 0; i < 2; ++i)
         if (swing_[i].on) swing_[i].aim = landingSpot(i, swing_[i].left(), velocity, body, s);
 
+    poseWeight_ = std::clamp(poseWeight_ + (ending_ ? -1.0f : 1.0f) * t.dt / std::max(s.poseBlend, 1e-3f), 0.0f, 1.0f);
+    pose(body, s, t);
     t.hips.mode = TargetMode::Driven;
     t.hips.velocity = velocity;
     t.hips.weightRotation = 0.0f;
     if (ending_) {
-        // The height is the standing legs' again.
+        // The height is the standing legs' again; level all of it still (the
+        // decider's own place across is where its last step was).
         load_ = 1.0f;
         t.hips.position = hips_;
         t.hips.directions[0] = way_;
-        t.hips.directionCount = 1;
+        t.hips.directions[1] = math::Vec3(way_.z, 0.0f, -way_.x);
+        t.hips.directionCount = 2;
     } else {
         hips_.y = height(body, s);
         t.hips.position = hips_;
