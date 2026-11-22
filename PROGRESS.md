@@ -170,7 +170,7 @@ Pieces (pass numbers in brackets):
   Open: squat 135 N m (why the spring torque grows once free up/down); the hips 3.5-4.6
   cm below the plan in walking.
 - [x] **Jog and run: `motion::RunPlanner`** (2026-11-22, the user's ask, checked in the
-  game up to 4.0; DECISIONS). W with E past 1.6 m/s, up to 5.0 (the user: "perfect", then 5.0 asked). The decider is not touched. Scratch
+  game up to 5.0; DECISIONS). W with E past 1.6 m/s, up to 5.0 (the user: "perfect", then 5.0 asked). The decider is not touched. Scratch
   measures, release, steady 3 s: 1.8 / 2.0 / 2.6 / 3.0 / 3.4 / 4.0 m/s: standing foot off its
   spot at most 3.1 / 3.4 / 3.2 / 3.1 / 5.8 / 6.8 cm (walk 1.6: 15.1), hips off the plan level
   1.4-5.1, up 2.1-3.7 cm, the hold's vertical push 0 N (level up to 1260 N), swing hip and
