@@ -1069,3 +1069,13 @@ Dated log. Format: decision, reason, alternatives rejected.
 - **Rejected:** a cocked arm by formula (arm 20 deg back, elbow 90); an elbow direction in the
   hand's target; the trunk turned both ways by the least angle (it turned the wrong way
   behind the back); the real hand's velocity / ball release of the entry above (later).
+
+## 2026-11-23: The throw's coil: the back foot turns 50 degrees; a pinned foot on a path has a turn
+- **Decision:** past 0.55 m of pull the body coils side-on (hips 50, chest 80 deg), the hand
+  riding it, and the back foot steps round 50 deg; the front foot stays, pointing at the
+  target. The decider's one general line: a pinned foot on a path (`pathLeft`) steps to its
+  target's turn too (without a path it keeps its own turn, as before).
+- **Reason:** the user's go. With the front foot at the target and the back one at 50 the hips
+  turn 50 back and come square again over flat feet (the hip turns out 50).
+- **Rejected:** the back foot at 90 (the hips cannot come square without a pivot on its ball);
+  turning the body under the old hand path (elbow 113-124, the hand ahead of the shoulder line).

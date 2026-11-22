@@ -90,6 +90,14 @@ void Human::loadThrow(const core::Config& c) {
     s.pullMax = c.getFloat("force.pullMax", s.pullMax);
     s.pullReach = c.getFloat("force.pullReach", s.pullReach);
     s.pullSpeed = c.getFloat("force.pullSpeed", s.pullSpeed);
+    s.coilFrom = c.getFloat("coil.from", s.coilFrom);
+    angle("coil.hipsDeg", s.coilHips);
+    angle("coil.chestDeg", s.coilChest);
+    angle("coil.handDeg", s.coilHand);
+    s.footAt = c.getFloat("coil.footAt", s.footAt);
+    s.footBackAt = c.getFloat("coil.footBackAt", s.footBackAt);
+    angle("coil.footTurnDeg", s.footTurn);
+    s.footTime = c.getFloat("coil.footTime", s.footTime);
     s.timeNone = c.getFloat("swing.timeNone", s.timeNone);
     s.timeFull = c.getFloat("swing.timeFull", s.timeFull);
     s.ride = c.getFloat("swing.ride", s.ride);
@@ -117,6 +125,11 @@ motion::ThrowBody Human::throwBody() const {
     b.pelvis = math::toTransform(plan[static_cast<size_t>(joints_.pelvis)]);
     b.armLength = math::distance(modelPos(plan, arm.start), modelPos(plan, arm.mid)) +
                   math::distance(modelPos(plan, arm.mid), b.hand);
+    for (int i = 0; i < 2; ++i) {
+        b.foot[i] = stepper_.foot(static_cast<motion::Foot>(i));
+        b.footTurn[i] = decider_.footTurn(i);
+    }
+    b.standing = decider_.stepFoot() < 0;
     return b;
 }
 
@@ -595,6 +608,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
             stepper_.place(static_cast<motion::Foot>(f), spot);
             t.foot[f].mode = motion::TargetMode::Pinned;
             t.foot[f].position = spot;
+            t.foot[f].rotation = math::fromAxisAngle(math::kUp, decider_.footTurn(f));
             footPath_.on = false;
         } else {
             // Above the ground: the foot is held up there (no weight on it).
@@ -606,8 +620,12 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     } else {
         footPath_.on = false;
     }
-    // The throw: its hand.
-    if (throw_.on()) throw_.tick(throwBody(), throwSettings_, t);
+    // The throw: its hand, coiled the hips, the chest and the back foot (a
+    // body that walks, or the limb test's foot, has its feet itself).
+    if (throw_.on()) {
+        if (poseFoot || math::length(walkInput_) > 0.0f) throw_.letFootGo();
+        throw_.tick(throwBody(), throwSettings_, t);
+    }
     // W / A / D: the hips target goes at the eased velocity, driven only along
     // the way it goes (the rest stays the body's own: across a forward walk
     // the sway over the standing foot, up the legs' height). Stopped, it holds
@@ -645,7 +663,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     // moves only by a step, never slides; none in the limb test's foot case:
     // that foot is placed by hand), and gives the muscles its plan. A step
     // that landed: the foot stays on its spot from now on.
-    t.balanceSteps = !poseFoot;
+    t.balanceSteps = !poseFoot && !(throw_.on() && throw_.footMoving());
     // Jog and run: from its speed on, once the step under way has landed, the
     // run planner gives the feet's and the hips' targets; the decider's own
     // steps wait meanwhile.

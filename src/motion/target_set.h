@@ -37,7 +37,9 @@ struct Target {
     float weightPosition = 1.0f;  // 0..1: how fully the position is followed when Driven
     float weightRotation = 1.0f;  // 0..1: how fully the rotation is followed when Driven
     // Feet: a timed swing's share gone, toe-off 0 to heel strike 1 (negative:
-    // no timing, a foot just held up), and the ground's normal under it.
+    // no timing, a foot just held up), and the ground's normal under it. A
+    // Pinned foot on a path (pathLeft) stands turned about the vertical as its
+    // rotation is; without one it keeps its own turn.
     float swing = -1.0f;
     math::Vec3 contactNormal = math::kUp;
     // Driven along these directions only (character space, unit, at right

@@ -9,6 +9,8 @@ namespace {
 
 constexpr bool kLeft = false;  // the throwing hand: the right one
 constexpr int kHand = kLeft ? 0 : 1;
+constexpr int kBack = kHand;                      // the back foot: the throwing side's
+constexpr float kBackWay = kLeft ? 1.0f : -1.0f;  // the body turns back this way about the vertical
 constexpr float kLeastSwing = 0.1f;  // rad, off the chest the hand goes at least this far to the release
 constexpr float kAhead = 0.15f;  // m, a hand this far ahead of the chest is clear of the body
 
@@ -35,7 +37,7 @@ ThrowArc ThrowPlanner::slotArc(const ThrowBody& body, const ThrowPlannerSettings
 }
 
 ThrowArc ThrowPlanner::swingArc(const ThrowBody& body, const ThrowPlannerSettings& s) const {
-    return makeSwingArc(slotArc(body, s), slot_, body.restShoulder, pulled(body, s), tilt_, s.swingRadius * body.armLength);
+    return makeSwingArc(slotArc(body, s), slot_, body.restShoulder, pulled(body, s, pull_), tilt_, s.swingRadius * body.armLength);
 }
 
 void ThrowPlanner::start(math::Vec3 goal, const ThrowArc& arc, const ThrowPlannerSettings& s) {
@@ -47,9 +49,11 @@ void ThrowPlanner::start(math::Vec3 goal, const ThrowArc& arc, const ThrowPlanne
 }
 
 void ThrowPlanner::toSlot(float angle, const ThrowBody& body, const ThrowPlannerSettings& s) {
+    if (stage_ == Stage::Uncoil) return;  // the hand comes forward first
     if (!on()) at_ = body.hand;
     slot_ = slotOf(angle, s);
-    pull_ = 0.0f;
+    pull_ = drawn_ = 0.0f;
+    released_ = false;
     const ThrowArc arc = slotArc(body, s);
     slotPoint_ = arc.point(slot_);
     start(slotPoint_, arc, s);
@@ -60,17 +64,22 @@ void ThrowPlanner::pull(float by, const ThrowPlannerSettings& s) {
     if (pulling()) pull_ = std::clamp(pull_ + by, 0.0f, s.pullMax);
 }
 
-math::Vec3 ThrowPlanner::pulled(const ThrowBody& body, const ThrowPlannerSettings& s) const {
+math::Vec3 ThrowPlanner::pulled(const ThrowBody& body, const ThrowPlannerSettings& s, float pull) const {
+    if (pull > s.coilFrom) {
+        // Coiled: from there it rides the body round.
+        const math::Vec3 from = pulled(body, s, s.coilFrom) - body.restChest;
+        return body.restChest + math::fromAxisAngle(math::kUp, kBackWay * s.coilHand * coilOf(pull, s)) * from;
+    }
     const math::Vec3 back = -math::kForward, d = slotPoint_ - body.restShoulder;
     const float radius = std::max(s.pullReach * body.armLength, math::length(d));
     // Straight back to the arm's length: |d + x back| = radius.
     const float b = math::dot(d, back);
     const float straight = -b + std::sqrt(std::max(b * b - math::dot(d, d) + radius * radius, 0.0f));
-    if (pull_ <= straight) return slotPoint_ + back * pull_;
+    if (pull <= straight) return slotPoint_ + back * pull;
     // Then round the shoulder, backward.
     const math::Vec3 out = math::safeNormalize(d + back * straight, back);
     const math::Vec3 axis = math::safeNormalize(math::cross(out, back), math::kUp);
-    return body.restShoulder + math::fromAxisAngle(axis, (pull_ - straight) / std::max(radius, 1e-3f)) * out * radius;
+    return body.restShoulder + math::fromAxisAngle(axis, (pull - straight) / std::max(radius, 1e-3f)) * out * radius;
 }
 
 void ThrowPlanner::hold() {
@@ -80,6 +89,12 @@ void ThrowPlanner::hold() {
 void ThrowPlanner::swing(float angle, const ThrowBody& body, const ThrowPlannerSettings& s) {
     if (stage_ != Stage::Held) return;
     release_ = releaseOf(angle, s);
+    released_ = true;
+    if (body.standing && !footMoving_) startSwing(body, s);
+}
+
+void ThrowPlanner::startSwing(const ThrowBody& body, const ThrowPlannerSettings& s) {
+    released_ = false;
     toRelease_ = std::max(math::lerp(s.timeNone, s.timeFull, force(s)), 0.05f);
     chestFrom_ = yawOf(body.chest.rotation);
     hipsFrom_ = yawOf(body.pelvis.rotation);
@@ -129,28 +144,78 @@ math::Vec3 ThrowPlanner::swung(const ThrowBody& body, const ThrowPlannerSettings
 }
 
 void ThrowPlanner::cancel(const ThrowBody& body, const ThrowPlannerSettings& s) {
-    if (!on() || stage_ == Stage::Return) return;
+    if (!on() || stage_ == Stage::Uncoil || stage_ == Stage::Return) return;
+    released_ = false;
+    if (drawn_ > s.coilFrom && (stage_ != Stage::Swing || !off_)) {
+        // Round the body as it came.
+        stage_ = Stage::Uncoil;
+        pull_ = s.coilFrom;
+        return;
+    }
+    drawn_ = 0.0f;
     start(body.restHand, slotArc(body, s), s);
     stage_ = Stage::Return;
 }
 
 void ThrowPlanner::rebase(const math::Transform& toNew) {
-    for (math::Vec3* p : {&at_, &from_, &goal_, &slotPoint_}) *p = toNew.transformPoint(*p);
+    for (math::Vec3* p : {&at_, &from_, &goal_, &slotPoint_, &footHome_, &footRound_}) *p = toNew.transformPoint(*p);
+    homeTurn_ += yawOf(toNew.rotation);
+}
+
+void ThrowPlanner::placeFoot(const ThrowBody& body, const ThrowPlannerSettings& s, TargetSet& t) {
+    const bool coiled = stage_ == Stage::Pull || stage_ == Stage::Held || stage_ == Stage::Uncoil;
+    if (coiled && !footAway_ && drawn_ >= s.footAt) {
+        if (!footGiven_) {
+            footHome_ = body.foot[kBack];
+            homeTurn_ = body.footTurn[kBack];
+        }
+        // Round the front foot, as far from it as it stands.
+        const math::Vec3 front = body.foot[1 - kBack];
+        footRound_ = front + math::fromAxisAngle(math::kUp, kBackWay * s.footTurn) * (footHome_ - front);
+        footRound_.y = footHome_.y;
+        footGiven_ = footAway_ = true;
+    } else if (footAway_ && stage_ != Stage::Swing && (!coiled || drawn_ < s.footBackAt)) {
+        footAway_ = false;
+    }
+    footMoving_ = false;
+    if (!footGiven_) return;
+    const math::Vec3 goal = footAway_ ? footRound_ : footHome_;
+    const float turn = footAway_ ? homeTurn_ + kBackWay * s.footTurn : homeTurn_;
+    constexpr float kThere = 0.02f;  // m, rad
+    const math::Vec3 off = goal - body.foot[kBack];
+    footMoving_ = !body.standing || std::sqrt(off.x * off.x + off.z * off.z) > kThere ||
+                  std::abs(std::remainder(turn - body.footTurn[kBack], math::kTwoPi)) > kThere;
+    if (!footMoving_) {
+        footGiven_ = footAway_;
+        return;  // it stands there: the body's own
+    }
+    Target& foot = t.foot[kBack];
+    foot.mode = TargetMode::Pinned;
+    foot.position = foot.pathEnd = goal;
+    foot.rotation = math::fromAxisAngle(math::kUp, turn);
+    foot.pathLeft = s.footTime;
 }
 
 void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, TargetSet& t) {
     if (!on()) return;
     time_ += t.dt;
-    if (stage_ == Stage::Return && time_ >= duration_) {
+    if (stage_ == Stage::Return && time_ >= duration_ && !footGiven_) {
         stop();
         return;
     }
     if (stage_ == Stage::Slot && time_ >= duration_) stage_ = Stage::Pull;
     if (stage_ == Stage::Swing && time_ >= duration_) cancel(body, s);
-    if (stage_ == Stage::Pull || stage_ == Stage::Held) {
+    if (stage_ == Stage::Uncoil && drawn_ <= s.coilFrom) {
+        start(body.restHand, slotArc(body, s), s);
+        stage_ = Stage::Return;
+        drawn_ = 0.0f;
+    }
+    if (stage_ == Stage::Pull || stage_ == Stage::Held || stage_ == Stage::Uncoil) {
         // After the mouse, no faster than pullSpeed.
-        const math::Vec3 way = pulled(body, s) - at_;
-        const float len = math::length(way), most = s.pullSpeed * t.dt;
+        const float most = s.pullSpeed * t.dt;
+        drawn_ += std::clamp(pull_ - drawn_, -most, most);
+        const math::Vec3 way = pulled(body, s, drawn_) - at_;
+        const float len = math::length(way);
         at_ += len > most ? way * (most / len) : way;
     } else if (stage_ == Stage::Swing) {
         at_ = swung(body, s, t.dt);
@@ -165,6 +230,17 @@ void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, Ta
     hand.mode = TargetMode::Driven;
     hand.position = at_;
     hand.weightRotation = 0.0f;  // the wrist straight on the forearm
+    placeFoot(body, s, t);
+    if (stage_ == Stage::Held && released_ && body.standing && !footMoving_) startSwing(body, s);
+    const float coil = stage_ == Stage::Pull || stage_ == Stage::Held || stage_ == Stage::Uncoil ? coilOf(drawn_, s) : 0.0f;
+    if (coil > 0.0f) {
+        // The body side-on, by how far the pull goes into the coil.
+        t.hips.mode = t.chest.mode = TargetMode::Driven;
+        t.hips.weightPosition = t.chest.weightPosition = 0.0f;
+        t.hips.weightRotation = t.chest.weightRotation = coil;
+        t.hips.rotation = math::fromAxisAngle(math::kUp, kBackWay * s.coilHips);
+        t.chest.rotation = math::fromAxisAngle(math::kUp, kBackWay * s.coilChest);
+    }
     if (stage_ == Stage::Swing) {
         // The hips first, then the chest, from where the pull left them.
         const auto turned = [&](float from, float to, float by) {

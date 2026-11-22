@@ -41,7 +41,27 @@ M6 waits.
   before 55), wrist 81-91 by physics alone, hand 7-9 m/s (before 5-6). Open: the real hand
   lags the path up to 28-40 cm on the way, 2-15 cm off the release (underarm worst): the
   muscle drive's softness (D, a session of its own); hips only ~100 deg/s (P3).
-- [ ] P3 A big coil side-on, the back foot turned, the weight on it.
+- [ ] P3 A big coil side-on, the back foot turned, the weight on it: three pieces, a game
+  check after each.
+  - P3a (built, committed as work in progress 2026-11-23, NOT passed: the user found too
+    many problems, no details yet): the pull to 1.1 m (was 0.9). To 0.55 as before;
+    beyond, the body coils (hips 50 deg, chest 80), the hand riding it round, and past 0.77
+    the back foot steps round 50 deg about the front one (home again below 0.69, after the
+    throw and on R). Click 3 waits until the foot stands. Let go: the pull forward first.
+    Measured (release, real body, pull 1.1, slots -60..35): pelvis 50-52, chest 78-79, elbow
+    46-66, the hand 5-12 deg behind the shoulder line (-60: 34) and 0.1-0.3 cm off; one step,
+    0.6 s, the foot at 51 deg. Swing (before, pull 0.9): hips 257-270 deg/s (77-105), chest
+    607-675 (381-410), hand 7.2-12.2 m/s (5.5-9.1), 3-16 cm off the release (1-15). Walk,
+    run, turning and 24 limb test cases bit-identical; tests pass.
+    Open, in the proposed order (next session: first what the user saw in the game, then one
+    at a time, a game check after each; P3b waits): 1 the front foot slips 1.0-1.5 cm in the
+    coil and 1.6-3 in the swing; 2 home again the back foot stays 5-6 deg turned; 3 slot 35
+    near 0.55 m: the hand 2.6 cm off (the coil's hips target takes the pelvis's share from
+    the reach at once: a decider line, ask first); 4 slot -60: elbow 46, the hand 34 deg
+    behind. Later: the hips turn 260 deg/s of the planned 395 (cause not measured, P3c); the
+    real hand off the release (the muscle drive, D).
+  - P3b The weight on the back foot (and the turned foot's outline). P3c The swing's timing
+    from the whole coil.
 - [ ] P4 The front foot's step.
 - [ ] P5 W: shuffle, then the step.
 - [ ] P6 From a walk or a run.

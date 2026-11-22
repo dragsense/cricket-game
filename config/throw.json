@@ -20,7 +20,24 @@
   // The force: the mouse draws the hand back from the slot point (m per pixel):
   // straight back to pullReach x the arm's length from the shoulder, then round
   // it, at most pullMax (m), no faster than pullSpeed (m/s) [E].
-  "force": { "pullMax": 0.9, "pullReach": 0.95, "pullPerPixel": 0.002, "pullSpeed": 2.0 },
+  "force": { "pullMax": 1.1, "pullReach": 0.95, "pullPerPixel": 0.002, "pullSpeed": 2.0 },
+  // A pull further than `from` (m) coils the body side-on, to pullMax: the hips
+  // hipsDeg back (54 at the front foot's contact; 50 is what the hip joints turn
+  // with the front foot pointing at the target), the chest chestDeg (107; the
+  // spine turns 35 on the pelvis), the hand riding it round the body by handDeg.
+  // The back foot steps round to footTurnDeg past footAt (m of pull), back home
+  // before footBackAt, in footTime (s): turned so far the hips come square again
+  // over the flat foot (90 would need it to pivot on its ball). [E]
+  "coil": {
+    "from": 0.55,
+    "hipsDeg": 50,
+    "chestDeg": 80,
+    "handDeg": 45,
+    "footAt": 0.77,
+    "footBackAt": 0.69,
+    "footTurnDeg": 50,
+    "footTime": 0.6
+  },
   // Click 3: the hips turn forward, then the chest (by these shares of the time
   // to the release, s: no force .. pullMax; peaks about halfway: hips 25-42 %,
   // upper trunk 50-60 %, BIOMECHANICS 10.5), the chest chestPast beyond square

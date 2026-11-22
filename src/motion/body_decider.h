@@ -265,6 +265,8 @@ public:
     // The decider's step under way (the latest started): its foot (-1: none)
     // and its clock share.
     int stepFoot() const;
+    // Foot i's turn about the vertical on the ground (rad, character space).
+    float footTurn(int i) const { return anchorYaw_[i]; }
     float stepShare() const;
     // Foot i's step (tests, debugging) and its timing.
     const StepPlanner& step(int i) const { return steps_[i]; }

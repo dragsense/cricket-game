@@ -492,7 +492,9 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
     // A foot never slides (the user's rule): given a spot on the ground
     // further than stepMargin from where it is (standing there, or held up
     // in the air), it steps there, in its path's time if it has one (the
-    // sync formula), else the gait's, and is pinned there as it lands.
+    // sync formula), else the gait's, and is pinned there as it lands; on a
+    // path it lands turned as given, and a turn alone takes a step too.
+    constexpr float kTurned = 0.05f;  // rad
     for (int i = 0; i < 2; ++i) {
         const Target& f = given.foot[i];
         const int ankle = joints_.legs[i].end;
@@ -500,12 +502,17 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
         const math::Vec3 from = grounded_[i] ? anchor_[i] : planPos(output_, ankle);
         math::Vec3 way = f.position - from;
         if (grounded_[i]) way.y = 0.0f;  // standing: only a new place on the ground
-        if (math::length(way) <= s.stepMargin) continue;
+        float turn = anchorYaw_[i];
+        if (f.pathLeft > 0.0f) {
+            const math::Vec3 toes = f.rotation * math::kForward;
+            turn += std::remainder(std::atan2(toes.x, toes.z) - turn, math::kTwoPi);
+        }
+        if (math::length(way) <= s.stepMargin && std::abs(turn - anchorYaw_[i]) <= kTurned) continue;
         timeStep(s);
         stepNow_[i] = nextStep_;
         if (f.pathLeft > 0.0f) stepNow_[i].duration = f.pathLeft;
         timeWeightShift(i, f.position, f.pathLeft > 0.0f, s);
-        startStep(i, from, anchorYaw_[i]);
+        startStep(i, from, turn);
         steps_[i].start(i, from, f.position, f.contactNormal);
         lastStarted_ = i;
         footEvent_ = true;
@@ -515,7 +522,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
         if (!p.running()) continue;
         p.tick(t.dt, stepNow_[i], work_);
         const float yaw = math::lerp(stepYawFrom_[i], stepYaw_[i], p.along());
-        work_.foot[i].rotation = math::fromAxisAngle(math::kUp, yaw) * work_.foot[i].rotation;
+        work_.foot[i].rotation = math::fromAxisAngle(math::kUp, yaw);
         stepping = true;
         if (p.landed()) {
             out.landed[i] = true;
