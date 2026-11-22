@@ -1101,6 +1101,65 @@ release ([Brunel, cricket throwing](https://bura.brunel.ac.uk/handle/2438/16239)
   **[P]**. Stride length and shoulder internal rotation speed predict throw speed **[P]**.
 - Underarm flicks at the stumps: no measured data; ~8–15 m/s **[E]**.
 
+### 10.5 The feet: when a fielder steps to throw (refreshed 2026-11-22)
+- **Same arm, different feet:** cricketers throw with similar shoulder, elbow and trunk
+  kinematics from standing and after a 15-20 m run-up; the hips flex more on the run
+  ([Dutton 2022, EJSS](https://onlinelibrary.wiley.com/doi/10.1080/17461391.2021.1979103))
+  **[P]**. So one arm/trunk motion, with the footwork chosen by the situation.
+- **What the feet add** (14 elite handballers,
+  [Wagner 2011](https://pmc.ncbi.nlm.nih.gov/articles/PMC3737895/)) **[P]**: run-up throw
+  23.9 m/s (100 %, centre of mass 3.0 m/s), standing with a step 22.3 (93 %, 1.5 m/s), jump
+  throw 21.9 (92 %). Cricket: set 30.5, after a 3 m shuffle 31.8 m/s (10.4).
+- **Stride length** (heel to heel): cricketers 1.41 +- 0.1 m at maximum speed, 1.28 +- 0.1 m
+  for distance ([Djanis 2021](https://researchrepository.murdoch.edu.au/id/eprint/61774))
+  **[P]**; ordinary fielders' throws only 34-38 % of height, ~0.65 m
+  ([Lozowski 2025](https://etd.auburn.edu/handle/10415/9715)) **[P]**; elite pitchers 75 % of
+  height, ankle to ankle
+  ([Fleisig 1994](https://digitalcommons.library.uab.edu/cgi/viewcontent.cgi?article=6858&context=etd-collection))
+  **[P]**. Stride length and trunk flexion predict the speed of cricket throws
+  ([Lozowski 2021](https://commons.nmu.edu/isbs/vol39/iss1/34)) **[P]**.
+- **Crow hop:** front foot, back foot, front foot
+  ([JOSPT 2011](https://www.jospt.org/doi/10.2519/jospt.2011.3568)) **[P]**: the back foot
+  lands side-on, the front one strides at the target. The throwing side's foot is the back one.
+- **Timing from the front foot's contact (0 %) to release (100 %)**, pitchers, 0.145 s
+  ([Seroyer 2010](https://pmc.ncbi.nlm.nih.gov/articles/PMC3445080/)) **[P]**; infielders are
+  later in the same order ([Miyanishi 2015](https://doi.org/10.5432/jjpehss.14108)) **[P]**:
+
+| Peak | Pitchers | Infielder | Speed |
+|---|---|---|---|
+| Pelvis turn | 25-39 % | 42 % | 620-690 deg/s |
+| Upper trunk turn | 51-52 % | 60 % | 1060-1200 deg/s |
+| Shoulder external rotation (max) | 81 % | 79 % | 175-183 deg (with scapula and back) |
+| Elbow extension | 90-95 % | 92 % | 2300-2450 deg/s |
+| Shoulder internal rotation | 102-104 % | 102 % | 6900-7200 deg/s |
+
+- **At front foot contact:** pelvis turned back 54 deg (infielder 83), upper trunk 107-109,
+  arm abducted ~90-95, horizontally back 16-24, externally rotated 50-57, elbow flexed
+  ~90 (infielder 128), lead knee 45-50 deg. **At release:** pelvis square, upper trunk 22-28 past square, arm
+  0-8 ahead of the shoulder line, elbow 24 flexed, trunk 23-32 forward and 13-24 to the side (cricket
+  28.6 and 23.5), lead knee 35-44 (Miyanishi 2015, Fleisig, Djanis 2021) **[P]**.
+
+### 10.6 What our physics body can throw now (measured 2026-11-22, scratch only)
+Right hand (7 cm past the wrist), standing, feet and pelvis still; peak speed, m/s. "Plan":
+trunk and arm posed proximal to distal in the time T.
+
+| Drive | T 0.12 | 0.16 | 0.20 | 0.25 | 0.30 s |
+|---|---|---|---|---|---|
+| the plan itself | 30.0 | 22.6 | 18.2 | 14.6 | 12.2 |
+| muscles as in the game (activationTime 0.03) | 13.8 | 14.1 | 14.8 | 14.1 | 13.1 |
+| strength x3 | 14.5 | 15.8 | 16.6 | - | - |
+| activationTime 0.01, real strength | 17.2 | 20.0 | 18.6 | 16.8 | 15.1 |
+| arm alone (no trunk turn) | 9.0 | 7.2 | 8.8 | - | 9.2 |
+
+- The shoulder is at its torque limit for 0-4 ticks: the drive's softness stops the hand, not
+  the muscles' strength (x3 gives +0.7..1.8 only). With the strength the ceiling, ~20.
+- The trunk's turn gives 4-7 m/s of it.
+- Through today's decider (hand target on the shoulder's arc, chest turned): 7.9-8.8 with its
+  rates (trunk 4, limb 12 rad/s); with them raised (10, 60) 7.8-12.6, and the plan's own arm
+  jumps (20-41 m/s, mostly upward): the two-bone solve has no shoulder twist of its own.
+- Not measured: the pelvis's turn and the stride (they add to it), the arm's external
+  rotation past our 90 deg range (real 175-183 with scapula and back).
+
 ### Implementation notes (`config/throw.json`)
 - Two half circles around the throwing shoulder, radius `arc.radiusFactor` (0.95) x arm
   length. The slot arc is square to the facing direction (-90° underarm, 0° sidearm,

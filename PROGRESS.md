@@ -1,6 +1,25 @@
 # Progress
 
-## Current milestone: M6 Bowling rework — in progress (branch milestone-6)
+## Current milestone: M4 Throw, on the physics body (branch throw, 2026-11-22)
+
+Goal: the player throws on the physics body: three clicks on the circles (hand height, coil,
+release point; M5's "perfect" controls), the feet step by the situation. Targets only, from
+`motion/throw_planner` (as the run planner; nothing throw-specific in the decider); the ball
+leaves with the real hand's velocity and is a Jolt body. Plan (the user's go, 2026-11-22;
+DECISIONS); stop for the game check after each piece. Out of scope: pick, catch, dive,
+off-balance throws. M6 waits.
+
+- [x] T0 Research (BIOMECHANICS 10.5) and measure (10.6); no game change. The hand reaches
+  14.8 m/s standing (real fielder ~30); the drive is too soft, the strength allows ~20; the
+  decider's hand arc gives 8-12.6 and its arm jumps. Open before T2: the fast arm (below).
+- [ ] T1 Ball in the hand, the circles, click 1 (height) and click 2 (coil).
+- [ ] T2 Standing throw, no step. Needs: the arm's own shoulder twist in the plan, and the
+  user's call on the soft drive.
+- [ ] T3 One step (coil >= 30 %).
+- [ ] T4 W: shuffle, then the step.
+- [ ] T5 From a walk or a run.
+
+## Waiting: M6 Bowling rework — in progress (branch milestone-6)
 
 Goal: the bowler's delivery in the spirit of the M5 chest throw: the player gives body
 intent on circles around the bowler (trunk coil, arm-circle tilt, release point); the

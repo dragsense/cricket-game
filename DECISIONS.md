@@ -1042,3 +1042,13 @@ Dated log. Format: decision, reason, alternatives rejected.
   ground, a foot in the air on a step lands turned as its target is, and the free arms
   cancel the body's turning against its heading (not the meant turn).
 - Arms and trunk lean of the run are the run planner's hand and chest targets.
+
+## 2026-11-22: The throw on the physics body: three clicks, the feet by the situation
+- **Decision:** M5's three clicks (hand height, coil, release point; wheel tilts). Feet: a
+  small coil none; a coil of 30 % or more one stride of the front foot (the swing waits for
+  it to land); W held at the release click a shuffle first; from a walk or run the next step
+  is the stride. `motion/throw_planner` gives targets only. The ball leaves with the real
+  hand's velocity (no speed formula). M6 bowling waits.
+- **Reason:** the user's go. Cricketers use the same arm with and without a run-up, only the
+  feet differ (Dutton 2022, BIOMECHANICS 10.5).
+- **Rejected:** the ball's speed from the coil by formula (10-31 m/s, M5).
