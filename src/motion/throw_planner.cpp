@@ -14,12 +14,6 @@ constexpr float kBackWay = kLeft ? 1.0f : -1.0f;  // the body turns back this wa
 constexpr float kLeastSwing = 0.1f;  // rad, off the chest the hand goes at least this far to the release
 constexpr float kAhead = 0.15f;  // m, a hand this far ahead of the chest is clear of the body
 
-// A part's turn about the vertical (rad, + left).
-float yawOf(math::Quat q) {
-    const math::Vec3 ahead = q * math::kForward;
-    return std::atan2(ahead.x, ahead.z);
-}
-
 // Round `arc` from `from` to `to` (never through the body): the angle, the
 // distance from the centre and the depth, each by the same share.
 math::Vec3 sweep(const ThrowArc& arc, math::Vec3 from, math::Vec3 to, float u) {
@@ -122,50 +116,30 @@ void ThrowPlanner::swing(float angle, const ThrowBody& body, const ThrowPlannerS
 void ThrowPlanner::startSwing(const ThrowBody& body, const ThrowPlannerSettings& s) {
     released_ = false;
     toRelease_ = std::max(math::lerp(s.timeNone, s.timeFull, force(s)), 0.05f);
-    chestFrom_ = yawOf(body.chest.rotation);
-    hipsFrom_ = yawOf(body.pelvis.rotation);
     loadFrom_ = math::lerp(0.5f, s.backLoad, coilOf(drawn_, s));
-    past_ = (kLeft ? -1.0f : 1.0f) * s.chestPast * force(s);
-    riding_ = math::inverse(body.chest.rotation) * (at_ - body.chest.position);
-    off_ = false;
-    lastAngle_ = swingArc(body, s).angleOf(at_);
-    rate_ = 0.0f;
+    // From where the hand is drawn back: evenly faster round the throw circle
+    // to be at the release on time, out onto it meanwhile, then slowing down
+    // past it. Its whole path is known now (the decider plans the body for it).
+    const ThrowArc arc = swingArc(body, s);
+    const math::Vec3 d = at_ - arc.centre;
+    depth_ = math::dot(d, arc.normal);
+    radius_ = math::length(d - depth_ * arc.normal);
+    angle_ = arc.angleOf(at_);
+    release_ = std::max(release_, angle_ + kLeastSwing);
+    accel_ = 2.0f * (release_ - angle_) / (toRelease_ * toRelease_);
+    end_ = std::max(release_, std::min(release_ + s.follow, s.followMax));
+    const float fast = accel_ * toRelease_;
+    duration_ = toRelease_ + (fast > 1e-3f ? 2.0f * (end_ - release_) / fast : 0.0f);
     time_ = 0.0f;
-    duration_ = 1e9f;  // known once the hand is off the chest
     stage_ = Stage::Swing;
 }
 
-math::Vec3 ThrowPlanner::swung(const ThrowBody& body, const ThrowPlannerSettings& s, float dt) {
+math::Vec3 ThrowPlanner::swung(const ThrowBody& body, const ThrowPlannerSettings& s) const {
     ThrowArc arc = swingArc(body, s);
-    if (time_ < s.ride * toRelease_) {
-        const math::Vec3 p = body.chest.position + body.chest.rotation * riding_;
-        const float a = arc.angleOf(p);
-        if (dt > 0.0f) rate_ = std::remainder(a - lastAngle_, math::kTwoPi) / dt;
-        lastAngle_ = a;
-        return p;
-    }
-    if (!off_) {
-        // Off the chest, from where it is as it goes: evenly faster to be at the
-        // release on time, out onto the circle meanwhile.
-        off_ = true;
-        offAt_ = time_;
-        const math::Vec3 d = at_ - arc.centre;
-        depth_ = math::dot(d, arc.normal);
-        radius_ = math::length(d - depth_ * arc.normal);
-        angle_ = lastAngle_;
-        const float left = std::max(toRelease_ - offAt_, 1e-2f);
-        release_ = std::max(release_, angle_ + kLeastSwing);
-        rate_ = std::clamp(rate_, 0.0f, (release_ - angle_) / left);
-        accel_ = 2.0f * (release_ - angle_ - rate_ * left) / (left * left);
-        end_ = std::max(release_, std::min(release_ + s.follow, s.followMax));
-        const float fast = rate_ + accel_ * left;
-        duration_ = toRelease_ + (fast > 1e-3f ? 2.0f * (end_ - release_) / fast : 0.0f);
-    }
-    const float left = std::max(toRelease_ - offAt_, 1e-2f);
-    const float t = time_ - offAt_, before = std::min(t, left), after = std::max(0.0f, t - left);
-    const float fast = rate_ + accel_ * left, past = std::max(duration_ - toRelease_, 1e-3f);
-    const float angle = angle_ + rate_ * before + 0.5f * accel_ * before * before + fast * after * (1.0f - 0.5f * after / past);
-    const float out = math::minimumJerk(std::clamp(t / (left * s.elbowBy), 0.0f, 1.0f));
+    const float before = std::min(time_, toRelease_), after = std::max(0.0f, time_ - toRelease_);
+    const float fast = accel_ * toRelease_, past = std::max(duration_ - toRelease_, 1e-3f);
+    const float angle = angle_ + 0.5f * accel_ * before * before + fast * after * (1.0f - 0.5f * after / past);
+    const float out = math::minimumJerk(std::clamp(time_ / (toRelease_ * s.elbowBy), 0.0f, 1.0f));
     arc.radius = math::lerp(radius_, arc.radius, out);
     return arc.point(angle) + (1.0f - out) * depth_ * arc.normal;
 }
@@ -173,7 +147,7 @@ math::Vec3 ThrowPlanner::swung(const ThrowBody& body, const ThrowPlannerSettings
 void ThrowPlanner::cancel(const ThrowBody& body, const ThrowPlannerSettings& s) {
     if (!on() || stage_ == Stage::Uncoil || stage_ == Stage::Return) return;
     released_ = false;
-    if (drawn_ > s.coilFrom && (stage_ != Stage::Swing || !off_)) {
+    if (drawn_ > s.coilFrom && stage_ != Stage::Swing) {
         // Round the body as it came.
         stage_ = Stage::Uncoil;
         pull_ = s.coilFrom;
@@ -210,7 +184,7 @@ void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, Ta
         const float len = math::length(way);
         at_ += len > most ? way * (most / len) : way;
     } else if (stage_ == Stage::Swing) {
-        at_ = swung(body, s, t.dt);
+        at_ = swung(body, s);
     } else {
         const float u = math::minimumJerk(std::clamp(time_ / duration_, 0.0f, 1.0f));
         const bool ahead = stage_ == Stage::Return && from_.z - body.restChest.z > kAhead;
@@ -227,7 +201,10 @@ void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, Ta
     if (stage_ == Stage::Pull || stage_ == Stage::Held || stage_ == Stage::Uncoil) {
         hand.pathEnd = pulled(body, s, pull_);
         hand.pathLeft = std::abs(pull_ - drawn_) / std::max(s.pullSpeed, 1e-3f);
-    } else if (stage_ != Stage::Swing) {
+    } else if (stage_ == Stage::Swing) {
+        hand.pathEnd = swingArc(body, s).point(end_);
+        hand.pathLeft = std::max(0.0f, duration_ - time_);
+    } else {
         hand.pathEnd = goal_;
         hand.pathLeft = std::max(0.0f, duration_ - time_);
     }
@@ -239,21 +216,10 @@ void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, Ta
         t.foot[kBack].load = math::lerp(0.5f, s.backLoad, coil);
     }
     if (stage_ == Stage::Swing) {
-        // The hips first, then the chest, from where the pull left them; the
-        // weight back to even with the hips.
-        const auto share = [&](float by) {
-            return math::minimumJerk(std::clamp(time_ / std::max(by * toRelease_, 1e-3f), 0.0f, 1.0f));
-        };
-        const auto turned = [&](float from, float to, float by) {
-            return math::fromAxisAngle(math::kUp, math::lerp(from, to, share(by)));
-        };
-        t.foot[kBack].load = math::lerp(loadFrom_, 0.5f, share(s.hipsBy));
-        t.hips.mode = TargetMode::Driven;
-        t.hips.weightPosition = 0.0f;
-        t.hips.rotation = turned(hipsFrom_, 0.0f, s.hipsBy);
-        t.chest.mode = TargetMode::Driven;
-        t.chest.weightPosition = 0.0f;
-        t.chest.rotation = turned(chestFrom_, past_, s.chestBy);
+        // The weight back to even (the body itself turns by the decider's
+        // chain, for the hand's path).
+        const float u = math::minimumJerk(std::clamp(time_ / std::max(s.hipsBy * toRelease_, 1e-3f), 0.0f, 1.0f));
+        t.foot[kBack].load = math::lerp(loadFrom_, 0.5f, u);
     }
 }
 

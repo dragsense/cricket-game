@@ -100,11 +100,8 @@ void Human::loadThrow(const core::Config& c) {
     s.backLoad = c.getFloat("coil.backLoad", s.backLoad);
     s.timeNone = c.getFloat("swing.timeNone", s.timeNone);
     s.timeFull = c.getFloat("swing.timeFull", s.timeFull);
-    s.ride = c.getFloat("swing.ride", s.ride);
     s.hipsBy = c.getFloat("swing.hipsBy", s.hipsBy);
-    s.chestBy = c.getFloat("swing.chestBy", s.chestBy);
     s.elbowBy = c.getFloat("swing.elbowBy", s.elbowBy);
-    angle("swing.chestPastDeg", s.chestPast);
     s.limbRate = c.getFloat("swing.limbRate", s.limbRate);
     s.trunkRate = c.getFloat("swing.trunkRate", s.trunkRate);
     s.hipsRate = c.getFloat("swing.hipsRate", s.hipsRate);
@@ -121,8 +118,6 @@ motion::ThrowBody Human::throwBody() const {
     const ik::TwoBoneChain& arm = joints_.armR;
     if (joints_.chest < 0 || joints_.pelvis < 0 || arm.start < 0 || plan.size() != static_cast<size_t>(rig_.numJoints())) return b;
     b.hand = modelPos(plan, arm.end);
-    b.chest = math::toTransform(plan[static_cast<size_t>(joints_.chest)]);
-    b.pelvis = math::toTransform(plan[static_cast<size_t>(joints_.pelvis)]);
     b.upperArm = math::distance(modelPos(plan, arm.start), modelPos(plan, arm.mid));
     b.armLength = b.upperArm +
                   math::distance(modelPos(plan, arm.mid), b.hand);

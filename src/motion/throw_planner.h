@@ -9,11 +9,11 @@
 //   forearm laid back; further the hand goes round the body (the decider turns
 //   the spine, the hips, steps where the arm cannot); Held: a click keeps it.
 //   The hand's target comes with its path (end, time left), as a mover's.
-// - Swing: the hips turn forward, then the chest; the hand rides the chest, the
-//   arm still bent, and late comes out onto the throw circle (the whole arm's
-//   length) through the clicked release point (the throw's direction is the
-//   circle's there), and slows down past it (proximal to distal, BIOMECHANICS
-//   10.5).
+// - Swing: the hand from where it is drawn back, evenly faster round the throw
+//   circle, late out onto it (the whole arm's length), through the clicked
+//   release point (the throw's direction is the circle's there), and slower
+//   past it; as a path, so the decider turns the body for it (its chain: the
+//   arm, the trunk, the hips).
 // - Uncoil (a throw let go): the pull forward again. Return: the hand back to
 //   hanging.
 // Character space. No allocations. BIOMECHANICS 10.
@@ -44,16 +44,14 @@ struct ThrowPlannerSettings {
     float bentFrom = 0.785f, bentAt = 1.571f;
     float layback[3] = {1.134f, 1.745f, 2.269f};
     // The back foot's share of the weight with the whole coil (even: 0.5);
-    // back to even with the hips through the swing.
+    // back to even by hipsBy of the time to the release.
     float backLoad = 0.8f;
-    // The swing: its time to the release (s) from no force to all of it; the
-    // share of it the hand rides the chest; by which share the hips, the chest
-    // and (a share of the rest) the elbow have turned; how far past square the
-    // chest goes with all the force, how far the hand goes on past the release
-    // (rad).
-    float timeNone = 0.5f, timeFull = 0.36f, ride = 0.7f;
-    float hipsBy = 0.66f, chestBy = 0.9f, elbowBy = 1.2f;
-    float chestPast = 0.349f, follow = 1.047f, followMax = 2.443f;
+    // The swing: its time to the release (s) from no force to all of it; by
+    // which share of it the weight is even and the elbow open; how far the hand
+    // goes on past the release (rad).
+    float timeNone = 0.5f, timeFull = 0.36f;
+    float hipsBy = 0.66f, elbowBy = 1.2f;
+    float follow = 1.047f, followMax = 2.443f;
     // The decider's rates meanwhile (rad/s; Human sets them): a limb's, a trunk
     // joint's, the hips'.
     float limbRate = 40.0f, trunkRate = 10.0f, hipsRate = 10.0f;
@@ -67,7 +65,6 @@ struct ThrowBody {
     math::Vec3 restChest{0.0f}, restShoulder{0.0f}, restHand{0.0f};
     float armLength = 0.0f, upperArm = 0.0f;  // m
     math::Vec3 hand{0.0f};
-    math::Transform chest, pelvis;  // in the plan now
     bool standing = true;
 };
 
@@ -129,16 +126,13 @@ private:
     float slot_ = 0.0f, tilt_ = 0.0f, pull_ = 0.0f;  // rad, rad, m
     float drawn_ = 0.0f;       // m, the pull the hand is at (after pull_ at pullSpeed)
     bool released_ = false;    // click 3 is in, the back foot not down yet
-    // The swing: the time to the release, the chest's and the hips' turn where
-    // it began, the hand in the chest's frame (riding it); off it: since when,
-    // where round the circle (angle, rate, distance, depth), the release and the
-    // end (rad), the rate there.
-    float toRelease_ = 0.0f, chestFrom_ = 0.0f, hipsFrom_ = 0.0f, past_ = 0.0f, loadFrom_ = 0.5f;
-    math::Vec3 riding_{0.0f};
-    bool off_ = false;
-    float offAt_ = 0.0f, angle_ = 0.0f, rate_ = 0.0f, radius_ = 0.0f, depth_ = 0.0f, lastAngle_ = 0.0f;
+    // The swing: the time to the release, the back foot's load where it began;
+    // where round the circle it began (angle, distance, depth), the release and
+    // the end (rad), the rate's gain to the release.
+    float toRelease_ = 0.0f, loadFrom_ = 0.5f;
+    float angle_ = 0.0f, radius_ = 0.0f, depth_ = 0.0f;
     float release_ = 0.0f, end_ = 0.0f, accel_ = 0.0f;
-    math::Vec3 swung(const ThrowBody& body, const ThrowPlannerSettings& s, float dt);
+    math::Vec3 swung(const ThrowBody& body, const ThrowPlannerSettings& s) const;
     math::Vec3 at_{0.0f}, from_{0.0f}, goal_{0.0f};  // the hand's target now, where the stage began, where it ends
     math::Vec3 slotPoint_{0.0f};
 };

@@ -46,22 +46,19 @@
     "handDeg": 45,
     "backLoad": 0.8
   },
-  // Click 3: the hips turn forward, then the chest (by these shares of the time
-  // to the release, s: no force .. pullMax; peaks about halfway: hips 25-42 %,
-  // upper trunk 50-60 %, BIOMECHANICS 10.5), the chest chestPast beyond square
-  // with all the force (22-28 at release). The hand rides the chest, the arm
-  // bent, for `ride` of the time, then comes out onto the throw circle (the elbow
-  // opens late: ~91 %; not quite straight at the release, ~24 deg: elbowBy) and
-  // goes on past the release, slowing down. Rates: the decider's bounds meanwhile
-  // (rad/s; a trunk joint's: the upper trunk turns ~19 over its joints). [E]
+  // Click 3: the hand's path only (the body turns for it by the decider's
+  // chain): from where it is drawn back, evenly faster round the throw circle to
+  // the release (its time, s: no force .. pullMax), out onto the circle meanwhile
+  // (the elbow opens late: ~91 %; not quite straight at the release, ~24 deg:
+  // elbowBy), then on past the release, slowing down. The weight back to even by
+  // hipsBy of the time (with the hips: peaks 25-42 %, BIOMECHANICS 10.5). Rates:
+  // the decider's bounds meanwhile (rad/s; a trunk joint's: the upper trunk
+  // turns ~19 over its joints). [E]
   "swing": {
     "timeNone": 0.5,
     "timeFull": 0.36,
-    "ride": 0.7,
     "hipsBy": 0.66,
-    "chestBy": 0.9,
     "elbowBy": 1.2,
-    "chestPastDeg": 20,
     "followDeg": 60,
     "followMaxDeg": 140,
     "limbRate": 40,
