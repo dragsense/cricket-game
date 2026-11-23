@@ -163,6 +163,17 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
 - [ ] C3 The hand's chain: arm -> clavicle (the scapulohumeral shares, 15.1) -> chest,
   spine_02, spine_01 -> pelvis -> the hips -> a step, by the same rule; replaces
   turnTrunk, trunkOrders, planTrunk (hands), armMiss and the rounds.
+  First try (2026-11-23, reverted, diff kept in the session scratchpad): turnTrunk's
+  trunk turn from turnToReach at chainOnset of the shoulder's range and at all of it,
+  their gap taken as what the last 0.2 of the range is worth; the spine -> pelvis split
+  by chainOwnPart. Throw better nearly everywhere (slot 35 release direction 54 -> 5 deg,
+  96 -> 6; slot 0 chest 343 -> 167 deg/s) but slot -45 pull 1.1 chest 678 -> 813 deg/s,
+  the back foot still 7 cm; the limb test's hand back moved against its goal (6 -> 16
+  ticks, 0.65 -> 2.5 m/s). Cause: the gap is wrong while the hard turn is 0 (inside the
+  range), and turnToReach's hard turn flickers 0 / 7 / 0 deg tick to tick (its reach
+  yes/no threshold). Next: the trunk turns until the shoulder's range used (its angles
+  over its range, ik::limitAngles) comes down to its own share (chainOwnPart): a
+  continuous measure, no threshold.
   (Dropped, the user 2026-11-23: no walk / run redesign; only the chain.)
 - [ ] C5 The replaced functions deleted, DESIGN / DECISIONS updated.
 
