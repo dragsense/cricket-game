@@ -42,6 +42,10 @@ struct Target {
     // rotation is; without one it keeps its own turn.
     float swing = -1.0f;
     math::Vec3 contactNormal = math::kUp;
+    // Feet: the share of the body's weight (0..1) this foot carries while
+    // both stand; the hips go over the feet by these shares. Negative: the
+    // other foot's rest (1 minus its share), or even if neither is given.
+    float load = -1.0f;
     // Driven along these directions only (character space, unit, at right
     // angles to each other); none: the whole position.
     static constexpr int kMaxDirections = 3;

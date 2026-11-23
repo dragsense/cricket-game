@@ -8,8 +8,13 @@
     // The hand goes to these slots (underarm .. overarm: the arm ~45 deg above
     // level; throws raise it 92-103 deg off the trunk, BIOMECHANICS 10.5); the
     // release points on the throw circle (0: the slot's way, + ahead) [E].
-    "slotMinDeg": -60,
-    "slotMaxDeg": 35,
+    // The whole circle (the user, 2026-11-23: no limit). Measured round it:
+    // -105..45 the real hand stands on the point (<= 1.7 cm); 60..105 the real
+    // arm sticks overhead (60-81 cm off: the shoulder's swing at 180, Jolt's
+    // swing-twist singular place); -120 and below, 105 and above (across the
+    // body) the plan itself falls 3-44 cm short. Both: open, to fix (general).
+    "slotMinDeg": -180,
+    "slotMaxDeg": 180,
     "releaseMinDeg": -30,
     "releaseMaxDeg": 100,
     // The wheel leans the throw circle about the line from the shoulder to the
@@ -22,22 +27,24 @@
   // straight back to pullReach x the arm's length from the shoulder, then round
   // it, at most pullMax (m), no faster than pullSpeed (m/s) [E].
   "force": { "pullMax": 1.1, "pullReach": 0.95, "pullPerPixel": 0.002, "pullSpeed": 2.0 },
-  // A pull further than `from` (m) coils the body side-on, to pullMax: the hips
-  // hipsDeg back (54 at the front foot's contact; 50 is what the hip joints turn
-  // with the front foot pointing at the target), the chest chestDeg (107; the
-  // spine turns 35 on the pelvis), the hand riding it round the body by handDeg.
-  // The back foot steps round to footTurnDeg past footAt (m of pull), back home
-  // before footBackAt, in footTime (s): turned so far the hips come square again
-  // over the flat foot (90 would need it to pivot on its ball). [E]
+  // The arm's own pull: low the arm straight, round the shoulder (extension
+  // ~50-60); raised, the elbow bends (from bentFromDeg off hanging, fully at
+  // bentAtDeg) and the forearm lays back about the upper arm to the shoulder's
+  // external rotation, more the higher the arm: ~65 at 0, ~100 at 45 (pro
+  // pitchers 102, Wilk 2012 CORR s11999-012-2265-z), ~130 at 90 (throwers
+  // 127-135, PMC3348299); above 90 it stays (the arm's elevation limit). [E]
+  "layback": { "bentFromDeg": 45, "bentAtDeg": 90, "at0Deg": 65, "at45Deg": 100, "at90Deg": 130 },
+  // A pull further than `from` (m) takes the hand round the body by handDeg, to
+  // pullMax. The body turns by itself where the arm cannot (the decider: the
+  // shoulder to its range, then the spine, then the hips, then a step round:
+  // the hand's target comes with its path, so the decider plans ahead). The
+  // back foot carries backLoad of the weight with the whole coil (0.5: even; the COM over
+  // the drive leg in the wind-up; no study gives the share), back to even with
+  // the hips through the swing. [E]
   "coil": {
     "from": 0.55,
-    "hipsDeg": 50,
-    "chestDeg": 80,
     "handDeg": 45,
-    "footAt": 0.77,
-    "footBackAt": 0.69,
-    "footTurnDeg": 50,
-    "footTime": 0.6
+    "backLoad": 0.8
   },
   // Click 3: the hips turn forward, then the chest (by these shares of the time
   // to the release, s: no force .. pullMax; peaks about halfway: hips 25-42 %,

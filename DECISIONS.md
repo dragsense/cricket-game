@@ -1101,3 +1101,34 @@ Dated log. Format: decision, reason, alternatives rejected.
   The user: one general rule, from research.
 - **Rejected:** a rate limit on the list (a smoothing patch); the list from the centre of
   mass's lever share (it still returns within the blend).
+
+## 2026-11-23: A foot's load share is a target (Target::load)
+Decision: the planner says how much of the weight each standing foot carries; the
+decider places the hips over the feet by those shares (default even, unchanged).
+Why: the user's rule, nothing throw-specific in the decider; the COM over the drive leg
+before a step or a throw is general (gait-initiation APA, the wind-up). The throw only
+sets the back foot's share (`coil.backLoad`).
+Rejected: the throw planner driving the hips' position itself (body placement in a
+planner, duplicating the decider's hips-over-feet).
+
+## 2026-11-23: The body's turn is one chain: arm, shoulder, spine, hips, feet
+Decision: a planner gives only the hand's path (the throw: its height, force, release).
+Where the arm's joint limits keep the hand off it, the decider's turnTrunk turns the
+spine first (each joint by place, to its range), then the pelvis only what the spine
+cannot give; the feet next (to do). The throw planner no longer drives a fixed coil.
+Why: the user's rule, general for every reach; overhead the arm lays back itself (the
+shoulder's external rotation grows with elevation: ~65 / 100 / 130 deg), so the chest
+turns only a little and the hips not at all.
+Rejected: the throw planner turning hips/chest by fixed angles (throw-specific body
+placement); spine and pelvis sharing the turn at once (the hips turned before the spine
+was at its range).
+
+## 2026-11-23: A planner's hand comes with its path; the look-ahead uses the load shares
+Decision: the throw planner gives its hand target's path (pathEnd, pathLeft) like any
+mover, and no longer steps the back foot itself: the decider's planReach turns the
+hips and steps round when the shoulder's, the spine's and the hips' ranges are not
+enough. planReach's look-ahead places the hips over the feet by their load shares
+(BodyDecider::loadShare), as the tick does.
+Why: the user's chain (arm, shoulder, spine, hips, feet), general; the look-ahead with
+even hips disagreed with the tick (0-2 mm vs 5.4 cm short) and never stepped.
+Rejected: keeping the planner's back-foot step (throw-specific body placement).

@@ -75,7 +75,7 @@ M6 waits.
     roll torque mean 67/60/66/67 -> 59/52/61/68 N m. Held-up feet bit-identical; walk, run
     and the two side hand reaches that step changed. Tests pass.
     Open, in order (one at a time, a game check after each; P3b waits): 1 the front foot's
-    slip in the swing (1.9-2.5 cm, 10-15 deg; not measured yet); 2 home again
+    slip in the swing: dropped (the user, 2026-11-23: no slip seen in the game); 2 home again
     the back foot stays 5-6 deg turned; 3 slot 35
     near 0.55 m: the hand 2.6 cm off (the coil's hips target takes the pelvis's share from
     the reach at once: a decider line, ask first); 4 slot -60: elbow 46, the hand 34 deg
@@ -87,8 +87,54 @@ M6 waits.
     hand on the circle 0.0 cm (before up to 14 cm off it, 37 off its plane); with the whole
     pull the release points 10-15 cm further back, the real hand's way 20-66 deg off the
     circle's (10-29), 6.9-9.8 m/s (7.8-12.0).
-  - P3b The weight on the back foot (and the turned foot's outline). P3c The swing's timing
-    from the whole coil.
+  - P3b The weight on the back foot (built 2026-11-23, WAITING for the game check). General:
+    `Target::load` on a foot, its share of the weight while both stand (negative: the other's
+    rest, or even); the decider puts the hips over the feet by these shares (even:
+    bit-identical). The throw: the back foot to `coil.backLoad` 0.8 with the coil, back to
+    even with the hips through the swing. Measured (slot 0, pull 1.1, held): the COM 0.54 ->
+    0.80 of the way to the back ankle, but the hips move only 5 cm: the feet stand ~16 cm
+    apart after the turn; the knees stay at 5 deg, no drop (predicted 12-15 cm, a 15-25 deg
+    knee: wrong). The vertical load share 0.65 -> 0.62 (on so narrow a stance the feet's own
+    pressure centres decide it). Walk, run, 24 limb cases bit-identical; tests pass. The
+    turned foot's outline: not changed (no decision in the coil uses it). Open: a wider
+    stance for the coil (or P4's stride) for the loaded look.
+  - P3d The force by the hand's height (built 2026-11-23, WAITING for the game check; the
+    user's rule: the throw control gives only the height, the force and the release, the
+    hand's path; the body is the decider's general chain: the arm to its limits, then the
+    shoulder, the spine, the hips, the feet). Done: (1) the planner's fixed coil (hips 50,
+    chest 80) is gone: the decider's turnTrunk turns the trunk where the shoulder's range
+    keeps the hand off its target; (2) turnTrunk turns the spine first (each joint by place,
+    to its range, 35 in all), the pelvis only what the spine cannot give (it used to share
+    them at once); (3) the pull's path by height (`layback`): low the arm straight round the
+    shoulder; raised the elbow bends and the forearm lays back to the shoulder's external
+    rotation (65 / 100 / 130 at the arm 0 / 45 / 90 from hanging, research); (4) the back
+    foot steps round only once the chest turns past the spine's 35 (`coil.footFromChestDeg`).
+    Measured at the whole pull (1.1): low (-105..-30) the arm 43-55 behind, chest 30-41;
+    sidearm (0) arm 19, chest 44; overhead 45: chest 32, hips 0 (was chest 80, hips 50
+    everywhere). At 0.8 the hips 0 everywhere (the spine alone). Walk, run, the 12 foot
+    cases bit-identical; the hand cases reach as before (hands up: pelvis 1.9 -> 0). Tests
+    pass. Open: slot 30 the real arm flips on the way (66 cm; the shoulder's 180 deg
+    singular place, the joint fix); next, the feet in the decider's chain (planReach's
+    turn step on the shoulder-range miss, not only on distance), then the planner's own
+    back-foot step, load and swing hips/chest drive go.
+  - P3e The feet in the chain (built 2026-11-23, WAITING for the game check with P3d): the
+    planner gives the hand as a path (pathEnd / pathLeft, as a mover's), so the decider's
+    planReach plans ahead for it (the trunk, the hips, a turn step); the planner's own
+    back-foot step and its settings are gone. Found and fixed (general): the look-ahead
+    (shortStanding) put the hips evenly between the feet where the tick puts them over
+    the load shares (Target::load), 5 cm apart with the throw's 0.8: it saw the hand 0-2 mm
+    short where the tick left 5.4 cm, so it never stepped; both now by
+    BodyDecider::loadShare (even: bit-identical). Measured, whole pull held: the hand
+    within 1.5 cm at -105..45 (was 3-14 low), -90 6.4 cm; the hips to their 30 then the
+    feet: -105 steps round (hips 60); elsewhere no step (the spine 35 + hips 30 enough).
+    Walk, run, 24 limb cases bit-identical; tests pass. Open: the overhead swing (slot 35:
+    plan 16 cm, real 31-67 cm off; the chest starts at -32 now, not -77): the swing's
+    hips/chest are still the planner's (next: the swing by the chain too), and the
+    shoulder joint's 180 deg place (slot 30 flips on the way).
+    After these (the user, 2026-11-23): the force's path is one circle in the arm's own
+    reach from the height point, always backward: the mouse forward/back moves the hand
+    along it (less/more force), never forward or elsewhere.
+    P3c The swing's timing from the whole coil.
 - [ ] P4 The front foot's step.
 - [ ] P5 W: shuffle, then the step.
 - [ ] P6 From a walk or a run.

@@ -70,6 +70,32 @@ math::Vec3 ThrowPlanner::pulled(const ThrowBody& body, const ThrowPlannerSetting
         const math::Vec3 from = pulled(body, s, s.coilFrom) - body.restChest;
         return body.restChest + math::fromAxisAngle(math::kUp, kBackWay * s.coilHand * coilOf(pull, s)) * from;
     }
+    const math::Vec3 straightArm = pulledStraight(body, s, pull);
+    // Raised: the elbow bends and the forearm lays back about the upper arm
+    // (the shoulder's external rotation, more the higher the arm).
+    const math::Vec3 u = math::safeNormalize(slotPoint_ - body.restShoulder, math::kUp);
+    const float e = std::acos(std::clamp(-u.y, -1.0f, 1.0f));  // the arm from hanging
+    const float w = std::clamp((e - s.bentFrom) / std::max(s.bentAt - s.bentFrom, 1e-3f), 0.0f, 1.0f);
+    if (w <= 0.0f) return straightArm;
+    const float half = 0.5f * math::kPi * 0.5f;  // 45 deg: the table's step
+    const float er = e < half ? math::lerp(s.layback[0], s.layback[1], e / half)
+                              : math::lerp(s.layback[1], s.layback[2], std::min((e - half) / half, 1.0f));
+    const float phi = er - 0.5f * math::kPi;  // past the forearm upright
+    const math::Vec3 side = makeSlotArc(body.restChest, kLeft, 1.0f).side;
+    math::Vec3 t = math::kUp - u * math::dot(u, math::kUp);
+    t = math::length(t) > 0.2f ? math::normalize(t) : -side;
+    const math::Vec3 back = -math::kForward;
+    const math::Vec3 b = math::safeNormalize(back - u * math::dot(u, back) - t * math::dot(t, back), back);
+    const math::Vec3 fEnd = std::cos(phi) * t + std::sin(phi) * b;
+    const float k = std::clamp(pull / std::max(s.coilFrom, 1e-3f), 0.0f, 1.0f);
+    const float ang = std::acos(std::clamp(math::dot(u, fEnd), -1.0f, 1.0f));
+    const math::Vec3 axis = math::safeNormalize(math::cross(u, fEnd), b);
+    const math::Vec3 elbow = body.restShoulder + u * body.upperArm;
+    const math::Vec3 laid = elbow + math::fromAxisAngle(axis, k * ang) * u * (body.armLength - body.upperArm);
+    return math::lerp(straightArm, laid, w);
+}
+
+math::Vec3 ThrowPlanner::pulledStraight(const ThrowBody& body, const ThrowPlannerSettings& s, float pull) const {
     const math::Vec3 back = -math::kForward, d = slotPoint_ - body.restShoulder;
     const float radius = std::max(s.pullReach * body.armLength, math::length(d));
     // Straight back to the arm's length: |d + x back| = radius.
@@ -90,7 +116,7 @@ void ThrowPlanner::swing(float angle, const ThrowBody& body, const ThrowPlannerS
     if (stage_ != Stage::Held) return;
     release_ = releaseOf(angle, s);
     released_ = true;
-    if (body.standing && !footMoving_) startSwing(body, s);
+    if (body.standing) startSwing(body, s);
 }
 
 void ThrowPlanner::startSwing(const ThrowBody& body, const ThrowPlannerSettings& s) {
@@ -98,6 +124,7 @@ void ThrowPlanner::startSwing(const ThrowBody& body, const ThrowPlannerSettings&
     toRelease_ = std::max(math::lerp(s.timeNone, s.timeFull, force(s)), 0.05f);
     chestFrom_ = yawOf(body.chest.rotation);
     hipsFrom_ = yawOf(body.pelvis.rotation);
+    loadFrom_ = math::lerp(0.5f, s.backLoad, coilOf(drawn_, s));
     past_ = (kLeft ? -1.0f : 1.0f) * s.chestPast * force(s);
     riding_ = math::inverse(body.chest.rotation) * (at_ - body.chest.position);
     off_ = false;
@@ -158,48 +185,13 @@ void ThrowPlanner::cancel(const ThrowBody& body, const ThrowPlannerSettings& s) 
 }
 
 void ThrowPlanner::rebase(const math::Transform& toNew) {
-    for (math::Vec3* p : {&at_, &from_, &goal_, &slotPoint_, &footHome_, &footRound_}) *p = toNew.transformPoint(*p);
-    homeTurn_ += yawOf(toNew.rotation);
-}
-
-void ThrowPlanner::placeFoot(const ThrowBody& body, const ThrowPlannerSettings& s, TargetSet& t) {
-    const bool coiled = stage_ == Stage::Pull || stage_ == Stage::Held || stage_ == Stage::Uncoil;
-    if (coiled && !footAway_ && drawn_ >= s.footAt) {
-        if (!footGiven_) {
-            footHome_ = body.foot[kBack];
-            homeTurn_ = body.footTurn[kBack];
-        }
-        // Round the front foot, as far from it as it stands.
-        const math::Vec3 front = body.foot[1 - kBack];
-        footRound_ = front + math::fromAxisAngle(math::kUp, kBackWay * s.footTurn) * (footHome_ - front);
-        footRound_.y = footHome_.y;
-        footGiven_ = footAway_ = true;
-    } else if (footAway_ && stage_ != Stage::Swing && (!coiled || drawn_ < s.footBackAt)) {
-        footAway_ = false;
-    }
-    footMoving_ = false;
-    if (!footGiven_) return;
-    const math::Vec3 goal = footAway_ ? footRound_ : footHome_;
-    const float turn = footAway_ ? homeTurn_ + kBackWay * s.footTurn : homeTurn_;
-    constexpr float kThere = 0.02f;  // m, rad
-    const math::Vec3 off = goal - body.foot[kBack];
-    footMoving_ = !body.standing || std::sqrt(off.x * off.x + off.z * off.z) > kThere ||
-                  std::abs(std::remainder(turn - body.footTurn[kBack], math::kTwoPi)) > kThere;
-    if (!footMoving_) {
-        footGiven_ = footAway_;
-        return;  // it stands there: the body's own
-    }
-    Target& foot = t.foot[kBack];
-    foot.mode = TargetMode::Pinned;
-    foot.position = foot.pathEnd = goal;
-    foot.rotation = math::fromAxisAngle(math::kUp, turn);
-    foot.pathLeft = s.footTime;
+    for (math::Vec3* p : {&at_, &from_, &goal_, &slotPoint_}) *p = toNew.transformPoint(*p);
 }
 
 void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, TargetSet& t) {
     if (!on()) return;
     time_ += t.dt;
-    if (stage_ == Stage::Return && time_ >= duration_ && !footGiven_) {
+    if (stage_ == Stage::Return && time_ >= duration_) {
         stop();
         return;
     }
@@ -230,23 +222,32 @@ void ThrowPlanner::tick(const ThrowBody& body, const ThrowPlannerSettings& s, Ta
     hand.mode = TargetMode::Driven;
     hand.position = at_;
     hand.weightRotation = 0.0f;  // the wrist straight on the forearm
-    placeFoot(body, s, t);
-    if (stage_ == Stage::Held && released_ && body.standing && !footMoving_) startSwing(body, s);
+    // Its path (as a mover's): where it goes and in what time, so the body
+    // plans ahead for it (the decider's reach: the trunk, the hips, a step).
+    if (stage_ == Stage::Pull || stage_ == Stage::Held || stage_ == Stage::Uncoil) {
+        hand.pathEnd = pulled(body, s, pull_);
+        hand.pathLeft = std::abs(pull_ - drawn_) / std::max(s.pullSpeed, 1e-3f);
+    } else if (stage_ != Stage::Swing) {
+        hand.pathEnd = goal_;
+        hand.pathLeft = std::max(0.0f, duration_ - time_);
+    }
+    if (stage_ == Stage::Held && released_ && body.standing) startSwing(body, s);
     const float coil = stage_ == Stage::Pull || stage_ == Stage::Held || stage_ == Stage::Uncoil ? coilOf(drawn_, s) : 0.0f;
     if (coil > 0.0f) {
-        // The body side-on, by how far the pull goes into the coil.
-        t.hips.mode = t.chest.mode = TargetMode::Driven;
-        t.hips.weightPosition = t.chest.weightPosition = 0.0f;
-        t.hips.weightRotation = t.chest.weightRotation = coil;
-        t.hips.rotation = math::fromAxisAngle(math::kUp, kBackWay * s.coilHips);
-        t.chest.rotation = math::fromAxisAngle(math::kUp, kBackWay * s.coilChest);
+        // The weight onto the back foot (the COM over the drive leg); the
+        // body turns by itself where the arm cannot (the decider).
+        t.foot[kBack].load = math::lerp(0.5f, s.backLoad, coil);
     }
     if (stage_ == Stage::Swing) {
-        // The hips first, then the chest, from where the pull left them.
-        const auto turned = [&](float from, float to, float by) {
-            const float u = math::minimumJerk(std::clamp(time_ / std::max(by * toRelease_, 1e-3f), 0.0f, 1.0f));
-            return math::fromAxisAngle(math::kUp, math::lerp(from, to, u));
+        // The hips first, then the chest, from where the pull left them; the
+        // weight back to even with the hips.
+        const auto share = [&](float by) {
+            return math::minimumJerk(std::clamp(time_ / std::max(by * toRelease_, 1e-3f), 0.0f, 1.0f));
         };
+        const auto turned = [&](float from, float to, float by) {
+            return math::fromAxisAngle(math::kUp, math::lerp(from, to, share(by)));
+        };
+        t.foot[kBack].load = math::lerp(loadFrom_, 0.5f, share(s.hipsBy));
         t.hips.mode = TargetMode::Driven;
         t.hips.weightPosition = 0.0f;
         t.hips.rotation = turned(hipsFrom_, 0.0f, s.hipsBy);

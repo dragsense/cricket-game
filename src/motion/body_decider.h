@@ -337,6 +337,9 @@ private:
     math::Vec3 turnedFoot(int f, float turn) const;
     // How far a hip turns on a standing foot each way (its joint's range).
     float hipTurn(const BodyDeciderSettings& s) const;
+    // Foot i's share of the weight while both stand, twice it (1: even): the
+    // planner's load, else 1 less the other's, else even.
+    static float loadShare(const TargetSet& t, int i);
     // How short (m) the driven hands stay of their paths' ends with the body
     // bent toward them on these feet, the hips turned to `turn` (further than
     // the feet let: a leg gone round with its hip); the trunk's own solve,

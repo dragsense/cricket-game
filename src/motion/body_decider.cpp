@@ -710,7 +710,9 @@ void BodyDecider::supportAndHips(const TargetSet& t, const BodyDeciderSettings& 
     // still on the ground: the weight shift) or free of the ground none;
     // each ramps at 1 / supportBlendTime (Winter 1995's load/unload).
     const float step = t.dt / std::max(s.supportBlendTime, 1e-3f);
-    // The hips' place: over the weighted feet; a foot held up without timing
+    // The hips' place: over the weighted feet (by their load shares, even
+    // unless the planner gives them: the COM over the foot that carries it,
+    // the trailing knee bending by the legs' reach); a foot held up without timing
     // counts by its load (all weight goes to the other). Their height counts
     // a foot on a timed swing where its target is. Level, through a step of
     // the decider's own the hips follow the capture point's path instead
@@ -718,6 +720,7 @@ void BodyDecider::supportAndHips(const TargetSet& t, const BodyDeciderSettings& 
     float load = 0.0f, sum = 0.0f;
     math::Vec3 centre(0.0f);
     int timed = -1;
+    const float share[2] = {loadShare(t, 0), loadShare(t, 1)};
     for (int i = 0; i < 2; ++i) {
         const int ankle = joints_.legs[i].end;
         const bool pinned = ankle >= 0 && t.foot[i].mode == TargetMode::Pinned;
@@ -726,7 +729,7 @@ void BodyDecider::supportAndHips(const TargetSet& t, const BodyDeciderSettings& 
         load += support_[i];
         const bool swinging = t.foot[i].mode == TargetMode::Driven && t.foot[i].swing >= 0.0f;
         if (swinging) timed = i;
-        const float w = swinging ? 1.0f : support_[i];
+        const float w = swinging ? 1.0f : support_[i] * share[i];
         const math::Vec3 at = pinned ? anchor_[i] : swinging ? t.foot[i].position : planPos(output_, ankle);
         centre += w * at;
         sum += w;
@@ -1246,6 +1249,11 @@ float BodyDecider::facingTurn(int h, math::Vec3 target, math::Vec3 mid, float ya
     return turn * way > 0.0f ? turn * down : 0.0f;
 }
 
+float BodyDecider::loadShare(const TargetSet& t, int i) {
+    const float own = t.foot[i].load, other = t.foot[1 - i].load;
+    return 2.0f * (own >= 0.0f ? std::min(own, 1.0f) : other >= 0.0f ? 1.0f - std::min(other, 1.0f) : 0.5f);
+}
+
 float BodyDecider::hipTurn(const BodyDeciderSettings& s) const {
     if (!limits_ || joints_.legs[0].start < 0) return s.pelvisMax.y;
     const ik::JointLimit& hip = limits_->limit(joints_.legs[0].start);
@@ -1279,7 +1287,9 @@ float BodyDecider::shortStanding(const TargetSet& t, const BodyDeciderSettings& 
         }
         stanceYaw_ = 0.5f * (anchorYaw_[0] + anchorYaw_[1]);
     }
-    const math::Vec3 mid = 0.5f * (anchor_[0] + anchor_[1]);
+    // Over the feet by their load shares (as supportAndHips places them).
+    const float w0 = loadShare(t, 0), w1 = loadShare(t, 1);
+    const math::Vec3 mid = (w0 * anchor_[0] + w1 * anchor_[1]) / std::max(w0 + w1, 1e-3f);
     hipsRef_ = math::Vec3(mid.x, ref.y, mid.z);
     const float pelvis = stanceYaw_ + std::clamp(turn - stanceYaw_, s.pelvisMin.y, s.pelvisMax.y);
     placePelvis(d, math::Transform{hipsRef_, math::fromAxisAngle(math::kUp, pelvis) * restPelvis_.rotation});
@@ -2251,15 +2261,23 @@ float BodyDecider::turnTrunk(int h, math::Vec3 target, const BodyDeciderSettings
             }
             room[k] = std::max(0.0f, room[k]);
         }
+        // The spine first (each joint its share by place; what one at its
+        // range cannot take, the others), the pelvis only what the spine at
+        // its range still cannot give.
         float left = turn;
-        for (int pass = 0; pass < 4 && left > kMinAngle; ++pass) {
+        for (int pass = 0; pass < 8 && left > kMinAngle; ++pass) {
+            const bool pelvis = pass >= 4;
             float sum = 0.0f;
             for (int k = 0; k < 4; ++k)
-                if (room[k] - give[k] > kMinAngle) sum += weight[k];
-            if (sum <= 1e-6f) break;
+                if ((k == 3) == pelvis && room[k] - give[k] > kMinAngle) sum += weight[k];
+            if (sum <= 1e-6f) {
+                if (pelvis) break;
+                pass = 3;
+                continue;
+            }
             const float now = left;
             for (int k = 0; k < 4; ++k) {
-                if (room[k] - give[k] <= kMinAngle) continue;
+                if ((k == 3) != pelvis || room[k] - give[k] <= kMinAngle) continue;
                 const float take = std::min(now * weight[k] / sum, room[k] - give[k]);
                 give[k] += take;
                 left -= take;
