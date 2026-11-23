@@ -254,7 +254,7 @@ TEST_CASE("body decider: a foot target out of reach is reported short, the leg k
     CHECK(math::distance(f.planPos(f.joints.legs[1].end), f.pos(f.joints.legs[1].end)) < 0.002f);
 }
 
-TEST_CASE("body decider: a hand let go blends back to rest without a jump") {
+TEST_CASE("body decider: a hand let go stays where it is, without a jump") {
     Fixture f;
     motion::TargetSet t = f.standing();
     t.hand[1].mode = motion::TargetMode::Driven;
@@ -276,5 +276,5 @@ TEST_CASE("body decider: a hand let go blends back to rest without a jump") {
     // move the wrist by at most rate x dt x (the arm's length twice over).
     const float arm = math::distance(f.pos(f.joints.arms[1].start), f.pos(f.joints.arms[1].end));
     CHECK(worstStep <= f.settings.limbMaxRate * kDt * 2.0f * arm);
-    CHECK(math::distance(last, f.pos(f.joints.arms[1].end)) < 0.05f);  // back at rest
+    CHECK(math::distance(last, reached) < 0.05f);  // the decider moves nothing it is not given
 }

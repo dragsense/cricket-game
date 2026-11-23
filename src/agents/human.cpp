@@ -116,7 +116,7 @@ motion::ThrowBody Human::throwBody() const {
     b.upperArm = math::distance(modelPos(plan, arm.start), modelPos(plan, arm.mid));
     b.armLength = b.upperArm +
                   math::distance(modelPos(plan, arm.mid), b.hand);
-    b.standing = decider_.stepFoot() < 0;
+    b.standing = true;
     return b;
 }
 
@@ -622,8 +622,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
         walkVelocity_ += len > most ? change * (most / len) : change;
         const float speed = math::length(walkVelocity_);
         const bool moving = speed > 1e-3f;
-        const bool settling = hipsDriven_ && (decider_.stepFoot() >= 0 || queue_.step.wanted);
-        if ((moving || settling) && joints_.pelvis >= 0 && g != static_cast<int>(motion::Goal::Hips)) {
+        if (moving && joints_.pelvis >= 0 && g != static_cast<int>(motion::Goal::Hips)) {
             if (!hipsDriven_) {
                 const std::vector<math::Mat4>& plan = decider_.outputModels();
                 hipsGoal_ = root_.transformPoint(math::Vec3(plan[static_cast<size_t>(joints_.pelvis)][3]));
@@ -655,7 +654,7 @@ const std::vector<math::Mat4>* Human::limbTestPlan(float dt) {
     if (mayRun && (run_.on() || math::length(walkVelocity_) >= runSettings_.enterSpeed)) {
         t.balanceSteps = false;
         const motion::RunBody body = runBody();
-        if (!run_.on() && decider_.stepFoot() < 0) {
+        if (!run_.on()) {
             const math::Vec3 feet[2] = {t.foot[0].position, t.foot[1].position};
             run_.start(body, feet, walkVelocity_);
         }

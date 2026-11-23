@@ -255,9 +255,6 @@ public:
     // allocations.
     void decide(const TargetSet& targets, const BodyDeciderSettings& s, BodyQueue& out);
 
-    // The decider's step under way (the latest started): its foot (-1: none)
-    // and its clock share.
-    int stepFoot() const;
     // Foot i's turn about the vertical on the ground (rad, character space).
     float footTurn(int i) const { return anchorYaw_[i]; }
     // Foot i's step (tests, debugging) and its timing.
@@ -295,49 +292,7 @@ private:
     void solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void report(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
-    // The next step's timing (nextStep_): the step's shape's.
-    void timeStep(const BodyDeciderSettings& s) { nextStep_ = s.stepShape; }
-    // Every swing's landing time, planned (not chased each tick): on a foot's
-    // event (a step starts or lands) or a change of the hips target's motion,
-    // from the body's own prediction of the hips (stanceLeft), keeping the
-    // swing's progress (StepPlanner::setTimeLeft).
-    void timeSwings(const TargetSet& t, const BodyDeciderSettings& s);
-    // The body's prediction of grounded leg o's stance: the time until it can
-    // no longer hold the hips: until the hips are so far past it that its
-    // reach holds them reachDrop below standing (the balance step's bound).
-    float stanceLeft(int o, const BodyDeciderSettings& s) const;
-    // How far a ground point (character space) is out of the outline of
-    // feet with their ankles at `ankles` (n of them; 0: inside).
-    static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
-    // Foot i's share of the weight while both stand, twice it (1: even): the
-    // planner's load, else 1 less the other's, else even.
-    static float loadShare(const TargetSet& t, int i);
-    void startStep(int i, math::Vec3 from, float yaw);
     math::Quat pelvisBase() const { return math::fromAxisAngle(math::kUp, stanceYaw_) * restPelvis_.rotation; }
-    // A step of foot i from `from` to `spot` on the hips target's path: the
-    // time it takes (the sync formula), `steps` steps sharing the way, at
-    // least the leg's swing; negative: no path.
-    float pathStepTime(const TargetSet& t, int i, math::Vec3 from, math::Vec3 spot, int steps,
-                       const BodyDeciderSettings& s) const;
-    // A step's swing of foot i from `from` to `spot` (s): Fitts' law for the
-    // way, at least the leg's swing (swingTimeAtLeast).
-    float swingTime(int i, math::Vec3 from, math::Vec3 spot, const BodyDeciderSettings& s) const;
-    // The shortest swing of leg i from `from` to `spot` (s): at rest at both
-    // ends it peaks at 1.875 D / T, the foot at most legMaxRate x the leg.
-    float swingTimeAtLeast(int i, math::Vec3 from, math::Vec3 spot, const BodyDeciderSettings& s) const;
-    // The body as a linear inverted pendulum over ground at `groundY`: its
-    // rate w0 = sqrt(g / l), l the plan's centre of mass height (0: no gravity).
-    float pendulumRate(float groundY, const BodyDeciderSettings& s) const;
-    // Foot f's step just set up (stepNow_[f], to `spot`): its weight shift
-    // takes the shortest time that keeps the centre of pressure within the
-    // feet as the capture point moves to where the swing needs it (DCM,
-    // Englsberger 2015); `fixedTotal`: the step's whole time is given (a
-    // path), the swing keeps at least its leg's time.
-    void timeWeightShift(int f, math::Vec3 spot, bool fixedTotal, const BodyDeciderSettings& s);
-    // The hips' level place on a step of the decider's own (foot `timed`,
-    // the other standing): the capture point's path (DCM) and the hips
-    // following it, x' = -w0 (x - xi).
-    math::Vec3 stepHips(int timed, float dt, const BodyDeciderSettings& s);
     math::Vec3 centreOfMass(const Plan& p) const;
 
     // Hand h's arm off plan p's chest, for its range (arm_fit.h).
@@ -361,12 +316,6 @@ private:
     float limbReach(int e, const BodyDeciderSettings& s) const;
     // The pelvis's turn about the vertical from the feet (rad, + to the left).
     float pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const;
-    // The trunk's spring-damper one tick on: the chest's turn against the
-    // pelvis (trunkTwist_) from the pelvis's turn.
-    void trunkSpring(float pelvisYaw, float dt, const BodyDeciderSettings& s);
-    // Free arms (no goal) swing to cancel the plan's turning and settle to
-    // their rest in the chest's frame.
-    void freeArms(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     // The head level in the world, facing the chest's way (desired pose).
     void levelHead(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
 

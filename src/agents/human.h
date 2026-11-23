@@ -49,8 +49,6 @@ public:
     bool supported() const { return supportOn_; }
     // The capsule's hold on the pelvis (physics; for measuring).
     physics::JointId supportJoint() const { return support_; }
-    // The step under way: its foot (-1: none).
-    int stepFoot() const { return decider_.stepFoot(); }
     // The real pelvis off the hold's target (physics_world.json
     // "character.pelvisError"): Small is nothing, Medium sustained, Large
     // lets go (when the release is on).
