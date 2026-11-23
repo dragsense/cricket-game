@@ -946,19 +946,21 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
             if (ik::solveTwoBone(arm, p.models, at, armPole, 1.0f, p.pose)) {
                 math::Vec3 beyond = beyondRange(p, arm.start, s);
                 // Further than the arm reaches (the elbow straight, at its
-                // range): the rest is the turn, about the lower back, that
-                // brings the hand onto the line to the target; the chain
-                // shares it the same way.
+                // range): the arm pushes the shoulder along its own direction;
+                // the shoulder cannot move, the clavicle turns it that way
+                // (the push's arc over the clavicle), and the chain carries
+                // that turn on, the same axis (passUp).
                 const math::Quat chestNow = joints_.spine[2] >= 0 ? planRot(p, joints_.spine[2]) : math::identityQuat();
                 const math::Vec3 chestAt = joints_.spine[2] >= 0 ? planPos(p, joints_.spine[2]) : math::Vec3(0.0f);
-                const math::Vec3 restAt = chestAt + chestNow * restHandChest_[h];
-                const math::Vec3 wanted = math::lerp(restAt, hand.position, k);
-                if (joints_.spine[0] >= 0 && math::distance(shoulder, wanted) > reach + kReachEpsilon) {
-                    const math::Vec3 pivot = planPos(p, joints_.spine[0]);
-                    const math::Vec3 from = planPos(p, arm.end) - pivot, to = wanted - pivot;
-                    const math::Vec3 normal = math::cross(from, to);
-                    const float sine = math::length(normal);
-                    if (sine > 1e-6f) beyond += normal / sine * std::atan2(sine, math::dot(from, to));
+                const math::Vec3 wanted = math::lerp(chestAt + chestNow * restHandChest_[h], hand.position, k);
+                const int clavicle = joints_.clavicles[h];
+                const float push = math::distance(shoulder, wanted) - reach;
+                if (clavicle >= 0 && push > kReachEpsilon) {
+                    const math::Vec3 bone = shoulder - planPos(p, clavicle);
+                    const math::Vec3 armWay = math::normalize(wanted - shoulder);
+                    const math::Vec3 normal = math::cross(bone, armWay);
+                    const float sine = math::length(normal), length = math::length(bone);
+                    if (sine > 1e-6f && length > 1e-4f) beyond += normal / sine * (push / length);
                 }
                 armAtRest();
                 if (math::length(beyond) > kMinAngle) {
