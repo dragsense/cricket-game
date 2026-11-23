@@ -82,6 +82,11 @@
   // rest). 0.5 is a starting value, not a measured one.
   "decider": {
     "queueShare": 0.5,
+    // The chain rule (motion/body_chain.h, the user's design 2026-11-23): a
+    // joint takes what is asked of it, and past this share of its range the
+    // next one in the chain takes over smoothly (never a jump at the limit).
+    // The trunk joins a reach at ~0.8-0.9 of the arm's (Moriyama 2022).
+    "chainOnset": 0.8,
     // The pelvis tilt limits (BIOMECHANICS 9.3), rotation vector in degrees,
     // character space: [forward tilt (hip flexion, + forward), turn, side tilt].
     // Forward tilt 80 = hip flexion with straight knees (hamstrings).

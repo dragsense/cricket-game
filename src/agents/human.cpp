@@ -369,6 +369,7 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             math::radians(dv("decider.trunkTurn.maxDeg", math::degrees(deciderSettings_.trunkMaxTwist)));
         deciderSettings_.onGround = dv("decider.onGround", deciderSettings_.onGround);
         deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));
+        deciderSettings_.chainOnset = dv("decider.chainOnset", deciderSettings_.chainOnset);
         deciderSettings_.blendTime = dv("decider.blendTime", deciderSettings_.blendTime);
         deciderSettings_.supportBlendTime = dv("decider.supportBlendTime", deciderSettings_.supportBlendTime);
         deciderSettings_.hipsMaxSpeed = dv("decider.hipsMaxSpeed", deciderSettings_.hipsMaxSpeed);

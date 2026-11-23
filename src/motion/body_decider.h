@@ -177,6 +177,10 @@ struct BodyDeciderSettings {
     // (rad): quiet standing knee 0-5 deg (BIOMECHANICS 2); the two-bone
     // solve's soften keeps it from snapping.
     float limbMinBend = 0.0873f;  // 5 deg
+    // The chain rule (body_chain.h): a joint past this share of its range
+    // hands the rest on to the next one, smoothly (the trunk joins a reach
+    // at ~0.8-0.9 of the arm's, Moriyama 2022).
+    float chainOnset = 0.8f;
     // s: a target's mode or weight change blends over this; a foot's support
     // weight over supportBlendTime (the weight shift of a step).
     float blendTime = 0.1f, supportBlendTime = 0.12f;
@@ -406,9 +410,11 @@ private:
     // A lifted foot out of reach: the stance leg lowers the hips, the pelvis
     // tilts on the stance hip.
     void footTrunk(int i, math::Vec3 target, math::Vec3 velocity, const BodyDeciderSettings& s, BodyQueue& out);
-    // A lifted foot further out to the side than the hip abducts: the pelvis
-    // hikes on that side about the standing hip by the rest (its range).
-    void footHike(int i, math::Vec3 target, const BodyDeciderSettings& s);
+    // The chain rule from a lifted thigh to the pelvis (solveLegs, desired
+    // pose): what the thigh asks past chainOnset of its real range the pelvis
+    // turns, the same way, about the standing hip, within its range. True if
+    // the pelvis moved.
+    bool chainPelvis(Plan& p, const BodyDeciderSettings& s);
     // Leg i's knee reaching from `hip` to `target`, bent toward `pole`; the
     // thigh's abduction (rad, out +) in the pelvis's frame.
     math::Vec3 kneeToward(int i, math::Vec3 hip, math::Vec3 target, math::Vec3 pole) const;
@@ -590,6 +596,13 @@ private:
     // swing (1 - smoothstep of the swing's share), held after it lands until
     // its leg carries all its weight again.
     float listLeft_[2] = {1.0f, 1.0f};
+    // The chain from a lifted thigh to the pelvis (chainPelvis): the thigh's
+    // range angles asked before its clamp (rad, limitFrame axes), whether
+    // there is one this solve, and what the pelvis took this tick.
+    math::Vec3 chainNeed_[2]{math::Vec3(0.0f), math::Vec3(0.0f)};
+    bool chainHas_[2] = {false, false};
+    math::Vec3 chainApplied_[2]{math::Vec3(0.0f), math::Vec3(0.0f)};
+    bool chainAgain_ = false;  // solveLegs' second solve on the turned pelvis
     math::Vec3 listAxis_{0.0f, 0.0f, 1.0f};
     // The list the output pelvis carries and its pivot (pelvis frame: the
     // weighted hips), taken off before its bounds each tick and put back on.

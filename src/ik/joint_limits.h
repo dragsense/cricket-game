@@ -65,6 +65,12 @@ LimitFrame limitFrame(const JointLimit& limit);
 // rotation.
 math::Quat clampRotation(math::Quat q, const JointLimit& limit);
 
+// A local rotation's angles as clampRotation counts them (rad, the
+// limitFrame's axes): the twist about X, then the pyramid swing's about Y
+// and about Z, each comparable with the LimitFrame's min / max. A free
+// joint: zero.
+math::Vec3 limitAngles(math::Quat q, const JointLimit& limit);
+
 // Limit mirrored for the opposite side (rotations about Y and Z flip sign).
 JointLimit mirrored(const JointLimit& limit);
 

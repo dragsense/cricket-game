@@ -1,6 +1,7 @@
 #include "motion/body_decider.h"
 
 #include "core/log.h"
+#include "motion/body_chain.h"
 #include "ik/joint_limits.h"
 
 #include <algorithm>
@@ -809,6 +810,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     // body: the trunk starts upright over the hips' reference (so it also
     // straightens after a reach), the limbs from the output (warm start).
     Plan& d = desired_;
+    chainApplied_[0] = chainApplied_[1] = math::Vec3(0.0f);
     d.pose.locals = output_.pose.locals;  // same size: no allocation
     const rig::Pose& rest = rig_->restPose();
     for (int j : {joints_.spine[0], joints_.spine[1], joints_.spine[2], joints_.neck, joints_.head, joints_.clavicles[0],
@@ -925,7 +927,6 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         const float k = act_[FootLW + i] * std::clamp(foot.weightPosition, 0.0f, 1.0f);
         endTarget[2 + i] = anchor_[i] + drivenPart(foot, foot.position - anchor_[i]) * k;
         endOn[2 + i] = true;
-        footHike(i, endTarget[2 + i], s);
         footTrunk(i, endTarget[2 + i], foot.velocity, s, out);
     }
     auto shortOf = [&] {
@@ -1499,6 +1500,7 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
     // given by the blended rotation weight.
     const rig::Pose& rest = rig_->restPose();
     const bool isOutput = &p == &output_;
+    if (!isOutput) chainHas_[0] = chainHas_[1] = false;
     if (!isOutput) {
         // The desired pelvis no lower than the grounded knees allow, and no
         // higher than every grounded leg reaches (that wins: the output
@@ -1551,7 +1553,7 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
             // the leg ahead. A step's swing (walking, running, a side step)
             // keeps the knee forward. As far as the thigh stays within the
             // hip's abduction range; a foot further out than the hip and the
-            // pelvis's hike (footHike) reach is held at that range, short of
+            // pelvis's turn (chainPelvis) reach is held at that range, short of
             // its target (reported).
             const math::Quat pelvisRot = planRot(p, joints_.pelvis);
             const math::Quat turned = pelvisRot * math::inverse(restPelvis_.rotation);  // from standing
@@ -1562,26 +1564,6 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
             float turn = 0.0f;
             if (limits_ && joints_.legs[0].start >= 0) {
                 const ik::JointLimit& hipLimit = limits_->limit(joints_.legs[0].start);  // left: + external, + abduction
-                // Held at the range: the target's way out to the side cut
-                // (its height and fore-aft kept) until the thigh, knee
-                // forward, is within it.
-                auto inRange = [&](math::Vec3 at) {
-                    const float abd = thighAbduction(i, pelvisRot, hip, kneeToward(i, hip, at, poleAt(0.0f)));
-                    return abd >= hipLimit.swing2Min - 1e-3f && abd <= hipLimit.swing2Max + 1e-3f;
-                };
-                if (!inRange(target)) {
-                    const math::Vec3 v = math::inverse(turned) * (target - hip);
-                    auto cut = [&](float share) {
-                        return hip + turned * math::Vec3(v.x * share, v.y, v.z);
-                    };
-                    float lo = 0.0f, hi = 1.0f;
-                    constexpr int kHalvings = 8;
-                    for (int n = 0; n < kHalvings; ++n) {
-                        const float mid = 0.5f * (lo + hi);
-                        (inRange(cut(mid)) ? lo : hi) = mid;
-                    }
-                    target = cut(lo);
-                }
                 if (t.foot[i].swing < 0.0f) {
                     const math::Vec3 v = math::inverse(turned) * (target - hip);
                     turn = std::clamp(std::atan2(side * v.x, std::max(v.z, 0.0f) + s.kneeForwardBias * legLength_[i]),
@@ -1636,8 +1618,18 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
             // slides): its hip and knee are the pelvis's and the anchor's,
             // which the hips' bounds keep within reach and the knee's bend.
             const int chain[2] = {leg.start, leg.mid};
-            if (grounded_[i]) refresh(p, leg.start);
-            else clampLimb(p, 2 + i, chain, 2, target);
+            if (grounded_[i]) {
+                refresh(p, leg.start);
+            } else {
+                // What the thigh asks of its range before the clamp: the
+                // chain's pelvis takes its part after both legs (chainPelvis).
+                if (!isOutput && limits_) {
+                    chainNeed_[i] = ik::limitAngles(p.pose.locals[static_cast<size_t>(leg.start)].rotation,
+                                                    limits_->limitIn(leg.start, p.pose));
+                    chainHas_[i] = true;
+                }
+                clampLimb(p, 2 + i, chain, 2, target);
+            }
         }
         // The foot: flat on its ground, or as given, within the ankle's range.
         math::Quat footLocal = math::normalize(math::inverse(planRot(p, leg.mid)) * footRot);
@@ -1646,6 +1638,58 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
         refresh(p, leg.end);
         for (int j : {leg.start, leg.mid, leg.end}) markPlanned(j, out);
     }
+    // The chain: a lifted thigh near its range hands the rest to the pelvis;
+    // the legs are solved once more on the turned pelvis.
+    if (!isOutput && !chainAgain_ && chainPelvis(p, s)) {
+        chainAgain_ = true;
+        solveLegs(p, t, s, out);
+        chainAgain_ = false;
+    }
+}
+
+bool BodyDecider::chainPelvis(Plan& p, const BodyDeciderSettings& s) {
+    // The chain rule (body_chain.h) from a lifted thigh to the pelvis: on each
+    // of the thigh's range axes (the clamp's own: twist, then the two swing
+    // angles) the thigh keeps its part (chainOwnPart of the whole need), the
+    // pelvis turns the rest the same way about the same axis (the same
+    // direction as the joint before it), about the standing hip, within the
+    // pelvis's range. The whole need counts what the pelvis already took this
+    // tick (chainApplied_), so the repeated solves settle on the split.
+    if (!limits_) return false;
+    bool moved = false;
+    for (int i = 0; i < 2; ++i) {
+        if (!chainHas_[i]) continue;
+        const ik::TwoBoneChain& leg = joints_.legs[i];
+        const ik::LimitFrame f = ik::limitFrame(limits_->limitIn(leg.start, p.pose));
+        math::Vec3 delta(0.0f);
+        for (int a = 0; a < 3; ++a) {
+            const float total = chainNeed_[i][a] + chainApplied_[i][a];
+            const float bound = total >= 0.0f ? f.max[a] : -f.min[a];
+            if (bound <= 0.0f) continue;  // no room that way: the clamp's
+            const float rest = std::abs(total) - chainOwnPart(std::abs(total), bound, s.chainOnset);
+            delta[a] = std::copysign(rest, total) - chainApplied_[i][a];
+        }
+        if (math::length(delta) <= kMinAngle) continue;
+        const math::Quat parent = planRot(p, rig_->parent(leg.start));
+        const math::Vec3 axes[3] = {f.x, f.y, f.z};
+        math::Quat turn = math::identityQuat();
+        for (int a = 0; a < 3; ++a)
+            if (delta[a] != 0.0f) turn = math::fromAxisAngle(math::normalize(parent * axes[a]), delta[a]) * turn;
+        math::Transform pelvis = pelvisOf(p);
+        const int other = joints_.legs[1 - i].start;
+        const math::Vec3 pivot = grounded_[1 - i] && other >= 0 ? planPos(p, other)
+                                                                 : pelvis.position + pelvis.rotation * hipCentre_;
+        const math::Quat want = math::normalize(turn * pelvis.rotation);
+        const math::Quat rel =
+            clampRotationVector(math::normalize(want * math::inverse(pelvisBase())), s.pelvisMin, s.pelvisMax);
+        const math::Quat by = math::normalize(rel * pelvisBase() * math::inverse(pelvis.rotation));
+        pelvis.rotation = math::normalize(by * pelvis.rotation);
+        pelvis.position = pivot + by * (pelvis.position - pivot);
+        placePelvis(p, pelvis);
+        chainApplied_[i] += delta;
+        moved = true;
+    }
+    return moved;
 }
 
 void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {
@@ -2403,33 +2447,6 @@ float BodyDecider::thighAbduction(int i, math::Quat pelvisRot, math::Vec3 hip, m
     const math::Vec3 v = math::inverse(pelvisRot * math::inverse(restPelvis_.rotation)) * (knee - hip);
     const float side = i == 0 ? 1.0f : -1.0f;  // +X is the left leg's outside
     return std::asin(std::clamp(side * math::safeNormalize(v, -math::kUp).x, -1.0f, 1.0f));
-}
-
-void BodyDecider::footHike(int i, math::Vec3 target, const BodyDeciderSettings& s) {
-    // A lifted foot out to the side further than the hip abducts (its range):
-    // the pelvis hikes on that side, about the standing hip, by what the hip
-    // cannot give, within the pelvis's range (pelvisMin / pelvisMax).
-    const ik::TwoBoneChain& leg = joints_.legs[i];
-    if (!limits_ || leg.start < 0 || joints_.legs[0].start < 0 || joints_.legs[1 - i].start < 0) return;
-    Plan& d = desired_;
-    math::Transform p = pelvisOf(d);
-    const float side = i == 0 ? 1.0f : -1.0f;  // +X is the left leg's outside
-    // The thigh with the knee forward (the least abduction a lift asks for).
-    const math::Vec3 hip = planPos(d, leg.start);
-    const math::Vec3 reached = clampToReach(hip, target, limbReach(2 + i, s));
-    const float abduction =
-        thighAbduction(i, p.rotation, hip, kneeToward(i, hip, reached, p.rotation * s.kneePole));
-    const float excess = abduction - limits_->limit(joints_.legs[0].start).swing2Max;  // left: + abduction
-    if (excess <= 0.0f) return;
-    const math::Vec3 pivot = planPos(d, joints_.legs[1 - i].start);
-    const math::Vec3 forward = p.rotation * (math::inverse(restPelvis_.rotation) * math::kForward);
-    const math::Quat want = math::normalize(math::fromAxisAngle(forward, side * excess) * p.rotation);
-    const math::Quat rel =
-        clampRotationVector(math::normalize(want * math::inverse(pelvisBase())), s.pelvisMin, s.pelvisMax);
-    const math::Quat turn = math::normalize(rel * pelvisBase() * math::inverse(p.rotation));
-    p.rotation = math::normalize(turn * p.rotation);
-    p.position = pivot + turn * (p.position - pivot);
-    placePelvis(d, p);
 }
 
 int BodyDecider::endRoot(int e) const { return e < 2 ? joints_.arms[e].start : joints_.legs[e - 2].start; }

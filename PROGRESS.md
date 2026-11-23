@@ -149,33 +149,21 @@ range, the next joint joining smoothly as it nears that range (`motion/body_chai
 planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range cut, the
 8 rounds). One piece at a time, the user's game check after each.
 
-- [ ] C0 `chainOwnPart` (built, uncommitted) used in footHike: no change measured (walk,
-  run, 12 limb cases, side foot 0.2 / 0.35 identical, 0.6 within 0.2 cm): footHike
-  estimates the abduction with the knee forward (14-25 deg) while the clamp stops the
-  thigh at 46.9 deg (the knee turned out), so it never hikes. Goes into C1.
-- [ ] C1 The leg's chain on its real range: solve the leg, read the thigh's own range used
-  (the clamp's, `limitIn`), the rest to the pelvis by `chainOwnPart` (abduction: hike
-  about the standing hip; twist: turn; extension, a foot behind: tilt), solve again.
-  footHike's estimate and solveLegs' binary-search cut go. Predicted: side foot 0.2 m
-  short 3.3 -> < 0.5 cm, pelvis hike 2-3 deg; 0.6 m from 20 cm out to ~35, to the pelvis's
-  20 deg side tilt; walk bit-identical (abduction far below 0.8 x 45); run: the trailing
-  hip near its 30 deg extension at toe-off may tilt the pelvis a few deg (real running
-  does); measured either way.
-- [ ] C2 The run's hips from the legs: the run planner's hips path (the push as a half
-  sine over the stance, the flight ballistic, gravity from physics_world.json) moves
-  into the decider as one general rule: when the feet's targets leave no foot on the
-  ground for a time T, the standing leg pushes the hips so they fly for T (a jump is the
-  same). The run planner then gives only the feet. Walk: the hips' height already comes
-  from the standing leg's reach over its foot (the leg rotating, 15.3) and their way from
-  the capture point; unchanged. Predicted: run hips within 0.5 cm of now, vertical 6-10 cm.
+- [ ] C1 The leg's chain on its real range (built 2026-11-23, uncommitted, WAITING for the
+  game check): `ik::limitAngles` reads a joint's angles as its clamp counts them; a lifted
+  thigh past `chainOnset` of its range on any axis (twist, flexion/extension, abduction)
+  hands the rest to the pelvis, turned the same way about the same axis, about the
+  standing hip, within the pelvis's range (`BodyDecider::chainPelvis`, then the legs once
+  more). footHike and solveLegs' abduction cut are gone. Measured: side foot 0.2 / 0.35 /
+  0.6 m reaches 19.3 / 34.4 / 54 cm (was 16.7 / 34.1 / 20); 12 limb cases as before (foot
+  up a little better). Walk and run change a little (the user: fine, general): the
+  trailing hip asks 30.5 (walk) / 33 deg (run) of its 30 deg extension at toe-off, so the
+  pelvis tilts forward there (at most 2.5 / 4.4 deg a tick); walk stance slide 3.3 -> 4.1
+  and 4.9 -> 4.4 cm. Tests pass.
 - [ ] C3 The hand's chain: arm -> clavicle (the scapulohumeral shares, 15.1) -> chest,
-  spine_02, spine_01 -> pelvis -> the hips move -> a step, all by `chainOwnPart`, the pose
-  each tick from the path's start (a smooth function of the target, no rounds). The throw
-  planner gives only the hand (its coil hips / chest go). Predicted: the coil's chest
-  snap ~860 -> < 300 deg/s, the back foot's drag 5.5-7 -> < 1 cm; the hand limb cases
-  change (all 12 measured).
-- [ ] C4 Measure only: our walk's and run's thigh, shank, foot elevation angles against
-  the plane (97-99.5 %) and the thigh's 100-160 ms lead; a change only if far off.
+  spine_02, spine_01 -> pelvis -> the hips -> a step, by the same rule; replaces
+  turnTrunk, trunkOrders, planTrunk (hands), armMiss and the rounds.
+  (Dropped, the user 2026-11-23: no walk / run redesign; only the chain.)
 - [ ] C5 The replaced functions deleted, DESIGN / DECISIONS updated.
 
 ## Waiting: M6 Bowling rework — in progress (branch milestone-6)

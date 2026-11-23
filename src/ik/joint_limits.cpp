@@ -195,34 +195,59 @@ bool clampOne(const AxisRange& r, float& s, float& c) {
 
 } // namespace
 
+namespace {
+
+// q = swing * twist in the limit's frame, twist about X (Jolt's
+// Quat::GetSwingTwist), both parts with w >= 0 (Jolt's ClampSwingTwist).
+struct SwingTwist {
+    float tx = 0.0f, tw = 1.0f, sy = 0.0f, sz = 0.0f, sw = 1.0f;
+    bool negSwing = false, negTwist = false;
+};
+
+SwingTwist swingTwist(math::Quat q, const LimitFrame& f) {
+    const math::Vec3 v(q.x, q.y, q.z);
+    const float w = q.w, x = math::dot(v, f.x), y = math::dot(v, f.y), z = math::dot(v, f.z);
+    SwingTwist p;
+    p.sy = y;
+    p.sz = z;
+    p.sw = w;
+    const float s = std::sqrt(w * w + x * x);
+    if (s != 0.0f) {
+        p.tx = x / s;
+        p.tw = w / s;
+        p.sy = (w * y - x * z) / s;
+        p.sz = (w * z + x * y) / s;
+        p.sw = s;
+    }
+    p.negSwing = p.sw < 0.0f;
+    p.negTwist = p.tw < 0.0f;
+    if (p.negSwing) {
+        p.sy = -p.sy;
+        p.sz = -p.sz;
+        p.sw = -p.sw;
+    }
+    if (p.negTwist) {
+        p.tx = -p.tx;
+        p.tw = -p.tw;
+    }
+    return p;
+}
+
+} // namespace
+
+math::Vec3 limitAngles(math::Quat q, const JointLimit& lim) {
+    if (lim.type == LimitType::Free) return math::Vec3(0.0f);
+    const SwingTwist p = swingTwist(math::normalize(q), limitFrame(lim));
+    return math::Vec3(2.0f * std::atan2(p.tx, p.tw), 2.0f * std::atan2(p.sy, p.sw), 2.0f * std::atan2(p.sz, p.sw));
+}
+
 math::Quat clampRotation(math::Quat q, const JointLimit& lim) {
     if (lim.type == LimitType::Free) return q;
     q = math::normalize(q);
     const LimitFrame f = limitFrame(lim);
-    const math::Vec3 v(q.x, q.y, q.z);
-    const float w = q.w, x = math::dot(v, f.x), y = math::dot(v, f.y), z = math::dot(v, f.z);
-
-    // q = swing * twist, twist about X (Jolt's Quat::GetSwingTwist).
-    float tx = 0.0f, tw = 1.0f, sy = y, sz = z, sw = w;
-    const float s = std::sqrt(w * w + x * x);
-    if (s != 0.0f) {
-        tx = x / s;
-        tw = w / s;
-        sy = (w * y - x * z) / s;
-        sz = (w * z + x * y) / s;
-        sw = s;
-    }
-    // Jolt's ClampSwingTwist, both parts with w >= 0.
-    const bool negSwing = sw < 0.0f, negTwist = tw < 0.0f;
-    if (negSwing) {
-        sy = -sy;
-        sz = -sz;
-        sw = -sw;
-    }
-    if (negTwist) {
-        tx = -tx;
-        tw = -tw;
-    }
+    SwingTwist parts = swingTwist(q, f);
+    float &tx = parts.tx, &tw = parts.tw, &sy = parts.sy, &sz = parts.sz, &sw = parts.sw;
+    const bool negSwing = parts.negSwing, negTwist = parts.negTwist;
     const AxisRange rx = axisRange(f.min.x, f.max.x), ry = axisRange(f.min.y, f.max.y), rz = axisRange(f.min.z, f.max.z);
     bool clamped = false;
     if (rx.locked) {
