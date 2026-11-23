@@ -123,18 +123,6 @@ struct BodyDeciderJoints {
 // human_joints.json "decider" (see the file for the sources).
 struct BodyDeciderSettings {
     math::Vec3 kneePole{0.0f, 0.0f, 1.0f};    // knees point this way (pelvis frame)
-    // How far a body reaches standing (a hand further takes a step): at
-    // shoulder height past the arm this share of its height fore-aft
-    // (Moriyama 2022's functional reach, young adults 0.22-0.24 H) and this
-    // one sideways (lateral reach); on the floor floorReach (m, level; NIOSH
-    // 1994); between them in proportion to the height.
-    float standingReachShare = 0.23f, standingReachSideShare = 0.13f, floorReach = 0.63f;
-    // A hand down beside the body: the body faces it all the way once the hand
-    // is this share of its hanging height lower [E].
-    float facingDrop = 0.5f;
-    // Each next part in a reach queue carries this times the share of the
-    // part before it.
-    float queueShare = 0.5f;
     // The measured lumbopelvic rhythm (Esola et al. 1996): lumbar : hip ratio
     // per band of trunk flexion (upper bounds, rad).
     float lumbarHipBand[3] = {0.5236f, 1.0472f, 1.5708f};  // 30, 60, 90 deg
@@ -152,19 +140,12 @@ struct BodyDeciderSettings {
     // that carries it (pelvic list), this much (rad) with all the weight on
     // one leg, by the weight's share (the weight shift: it leads a lift).
     float pelvisList = 0.0698f;  // 4 deg
-    // The trunk's axial spring-damper (Prins et al. 2019): the chest's turn
-    // follows the pelvis's through it (natural frequency rad/s, damping
-    // ratio). Driven faster than its frequency (quicker steps) it lags and
-    // turns less, opposite to the pelvis; slowly, with it (BIOMECHANICS 4.3).
-    float trunkTurnFrequency = 2.5f, trunkTurnDamping = 0.5f;
     // The chest's turn against the pelvis stays within this (rad) each way:
     // the thoracic turn's range (BIOMECHANICS 2); decider.trunkTurn.maxDeg.
     float trunkMaxTwist = 0.5236f;  // 30 deg
     // A Driven foot this close (m) above where it was pinned still stands on
     // the ground (it has not lifted yet: the weight shift before a step).
     float onGround = 0.02f;
-    // The most steps a hips path longer than a step reaches is shared by.
-    int mostSteps = 4;
     // A limb reaches at most its span with the knee or elbow bent this much
     // (rad): quiet standing knee 0-5 deg (BIOMECHANICS 2); the two-bone
     // solve's soften keeps it from snapping.
@@ -192,16 +173,6 @@ struct BodyDeciderSettings {
     // space): forward tilt (hip flexion, +X), turn (Y), side tilt (Z);
     // decider.pelvisMinDeg / pelvisMaxDeg (BIOMECHANICS 9.3).
     math::Vec3 pelvisMin{-0.1745f, -0.5236f, -0.3491f}, pelvisMax{1.3963f, 0.5236f, 0.3491f};
-    // The balance step (human_joints.json "decider.balanceStep"): the
-    // extrapolated centre of mass XCoM = CoM + v / w0, w0 = sqrt(g / l)
-    // (Hof, Gazendam & Sinke 2005). Out of the support (the feet's outline)
-    // by more than stepMargin: a step, its foot landing where the XCoM will
-    // be when it lands, landingBehind short of it along the motion (so the
-    // body carries on), under its own hip to the side; never crossing the
-    // other foot (minFootGap) nor further from it than a step reaches: an
-    // ellipse, maxStepForward fore-aft, maxStepSide across (the hip flexes
-    // and extends much further than it abducts, BIOMECHANICS 2).
-    bool balanceStepOn = true;
     float stepMargin = 0.02f;       // m
     float footHalfWidth = 0.045f;   // m, the foot's outline: half its width
     float footHalfLength = 0.11f;   // m, half its length
@@ -209,20 +180,6 @@ struct BodyDeciderSettings {
     float landingBehind = 0.05f;    // m
     float minFootGap = 0.1f;        // m
     float maxStepForward = 0.6f, maxStepSide = 0.5f;  // m
-    // Where the hips stop (no speed there) the foot lands so they end between
-    // the feet (the user's rule: a normal stance); moving on, by the capture
-    // point. Blended by the hips' speed there, all the capture point's from
-    // this speed (m/s).
-    float stopBlendSpeed = 0.3f;
-    // A foot left behind steps too: once, by the time a step could land, its
-    // leg at its reach would hold the hips more than this below standing (m).
-    float reachDrop = 0.04f;
-    // The longest weight shift before a lift (s): a body that needs longer
-    // steps anyway (gait initiation's APA lasts ~0.5 s at natural speed).
-    float weightShiftMost = 0.5f;
-    // A step's swing is an aimed foot move: Fitts' law, a + b log2(2D / W)
-    // (the limb test's goals' values, human_joints.json "muscles").
-    float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
     // The decider's own step: its shape (locomotion.json "step": height,
     // apex, toe-off, ball of the foot; its timing is decided per step).
     StepPlannerSettings stepShape;
@@ -248,7 +205,6 @@ public:
     math::Vec3 planCentreOfMass() const;
     // For measuring: the desired pelvis (before the bounded motion) and the
     // output hips' velocity (character space).
-    math::Vec3 desiredPelvis() const;
     math::Vec3 outputHipsVelocity() const { return hipsVel_; }
 
     // One tick: from the targets and the plan so far, fills `out`. No
@@ -257,9 +213,6 @@ public:
 
     // Foot i's turn about the vertical on the ground (rad, character space).
     float footTurn(int i) const { return anchorYaw_[i]; }
-    // Foot i's step (tests, debugging) and its timing.
-    const StepPlanner& step(int i) const { return steps_[i]; }
-    const StepPlannerSettings& stepTiming(int i) const { return stepNow_[i]; }
 
     // The output pose (character space), valid after decide().
     const rig::Pose& outputPose() const { return output_.pose; }
@@ -346,18 +299,13 @@ private:
     Plan desired_, output_;
     bool seeded_ = false;
     bool warnedNoGravity_ = false;  // the "no gravity: no balance step" warning, logged once
-    float armLength_[2]{};  // upper arm + forearm
-    float legLength_[2]{};  // thigh + shin
     float thighLength_[2]{}, shinLength_[2]{};
     float upperArmLength_[2]{}, forearmLength_[2]{};
-    math::Vec3 hipOffset_[2]{};  // each hip joint from the pelvis (pelvis frame, rest)
     math::Quat footToPelvis_[2] = {math::identityQuat(), math::identityQuat()};
     math::Quat restFoot_[2] = {math::identityQuat(), math::identityQuat()};  // each foot's bone standing (character space)
     float restFootY_[2] = {0.0f, 0.0f};  // each ankle's height standing
-    math::Quat restHead_ = math::identityQuat();
     math::Vec3 restShoulder_[2]{};   // each shoulder standing (character space)
     math::Vec3 restHandChest_[2]{};  // each hand standing, hanging, in the chest's frame
-    math::Vec3 hipCentre_{0.0f};     // between the hips, from the pelvis (rest)
     math::Vec3 hangDir_[2]{}, hangBend_[2]{};  // the relaxed arm in the chest's frame (rest)
     math::Transform restPelvis_{};   // the pelvis standing (rest, character space)
     // Feet on the ground: where each is pinned (ankle), its ground normal and
@@ -381,20 +329,13 @@ private:
     // The hips' reference (support) and the output hips' motion state.
     math::Vec3 hipsRef_{0.0f}, hipsRefVel_{0.0f};
     math::Vec3 hipsVel_{0.0f};
-    // Through a step and its settling (dcmOn_): the hips' level place, which
-    // follows the capture point (dcmXi_), and the capture point where the
-    // step began (dcmStart_). Off: the hips are where the support puts them.
-    math::Vec3 dcmHips_{0.0f}, dcmXi_{0.0f}, dcmStart_{0.0f};
-    math::Vec3 dcmStartVel_{0.0f};  // its velocity where the step began (the body's level speed)
-    bool dcmOn_ = false;
     float rangeMiss_[kEnds] = {0.0f, 0.0f, 0.0f, 0.0f};  // m: the output limb's end off its aim by its joints' ranges
     // Each foot's turn about the vertical on the ground (rad), the turn of
     // its step under way (from, to), and the feet's mean turn this tick: the
     // pelvis's range counts from it.
-    float anchorYaw_[2] = {0.0f, 0.0f}, stepYawFrom_[2] = {0.0f, 0.0f}, stepYaw_[2] = {0.0f, 0.0f};
+    float anchorYaw_[2] = {0.0f, 0.0f};
     float stanceYaw_ = 0.0f;
     BodyDeciderSettings ranged_;  // this decide's settings, the pelvis range narrowed by the grounded hips
-    math::Vec3 stepFrom_[2]{};  // where each foot's step under way began (ankle, character space)
     std::vector<float> mass_;          // per rig joint (kg)
     std::vector<math::Vec3> centre_;   // per rig joint: its mass's centre in the bone's frame
     float totalMass_ = 0.0f;
@@ -402,47 +343,8 @@ private:
     // planned mass centres last decide (character space), each arm's swing
     // angle (rad, forward +) about the shoulder.
     std::vector<int8_t> armOf_;
-    std::vector<math::Vec3> lastCentre_;
-    bool lastValid_ = false;
-    float armAngle_[2] = {0.0f, 0.0f};
-    // The balance step: the foot that stepped last (-1: none yet) and which
-    // foot was on a timed swing last decide.
-    int lastStepped_ = -1;
-    bool wasSwinging_[2] = {false, false};
-    // The decider's own steps, one per foot, each one's timing, the
-    // next step's, the foot that started last, and this tick's targets with
-    // the stepping feet's in place.
-    StepPlanner steps_[2];
-    StepPlannerSettings stepNow_[2], nextStep_;
-    int lastStarted_ = -1;
     TargetSet work_;
-    // A foot's event this tick (the swings' times are planned again) and the
-    // hips target's level velocity last tick.
-    bool footEvent_ = false;
-    math::Vec3 lastGoalVelocity_{0.0f};
-    // The hips target's path last tick (its end, time left; negative: none):
-    // a new or moved path is an event (the swings are timed again).
-    math::Vec3 lastPathEnd_{0.0f};
-    float lastPathLeft_ = -1.0f;
-    // How many steps share the hips' path, for each foot's step under way.
-    int pathSteps_[2] = {1, 1};
-    // The trunk's spring-damper: the pelvis's turn and its rate last tick,
-    // the chest's turn against the pelvis and its rate (rad, rad/s).
-    float lastPelvisYaw_ = 0.0f, lastPelvisRate_ = 0.0f;
-    float trunkTwist_ = 0.0f, trunkTwistRate_ = 0.0f;
-    // The pelvic list this decide (rad about the pelvis's forward, +: the
-    // left side up) and that forward: the trunk turns back from it.
-    float listAngle_ = 0.0f;
-    // Per side: how much of its list is left while its foot is on a timed
-    // swing (1 - smoothstep of the swing's share), held after it lands until
-    // its leg carries all its weight again.
-    float listLeft_[2] = {1.0f, 1.0f};
     bool legChained_ = false;  // the lifted legs' chain done this tick (solveLegs)
-    math::Vec3 listAxis_{0.0f, 0.0f, 1.0f};
-    // The list the output pelvis carries and its pivot (pelvis frame: the
-    // weighted hips), taken off before its bounds each tick and put back on.
-    float appliedList_ = 0.0f;
-    math::Vec3 appliedPivot_{0.0f};
     int trunkTicks_ = 0;  // ticks since the plan started (no rates before 2)
 };
 

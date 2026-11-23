@@ -62,14 +62,12 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
     rig_ = &rig;
     limits_ = limits;
     joints_ = joints;
-    steps_[0] = steps_[1] = StepPlanner{};
     if (joints.pelvis < 0 || rig.numJoints() > BodyQueue::kMaxJoints) return false;
     const size_t n = static_cast<size_t>(rig.numJoints());
     output_.pose = rig.restPose();
     output_.models.resize(n);
     desired_.pose = rig.restPose();
     desired_.models.resize(n);
-    lastCentre_.assign(n, math::Vec3(0.0f));
     armOf_.assign(n, -1);
     for (int j = 0; j < static_cast<int>(n); ++j)
         for (int a = j; a >= 0; a = rig.parent(a))
@@ -88,11 +86,8 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
         if (leg.start >= 0) {
             thighLength_[i] = math::distance(planPos(r, leg.start), planPos(r, leg.mid));
             shinLength_[i] = math::distance(planPos(r, leg.mid), planPos(r, leg.end));
-            legLength_[i] = thighLength_[i] + shinLength_[i];
             footToPelvis_[i] = math::inverse(planRot(r, leg.end)) * restPelvis_.rotation;
             restFoot_[i] = planRot(r, leg.end);
-            restFootY_[i] = planPos(r, leg.end).y;
-            hipOffset_[i] = pelvisInv * (planPos(r, leg.start) - restPelvis_.position);
             anchor_[i] = planPos(r, leg.end);
             anchorRot_[i] = restFoot_[i];
         }
@@ -100,19 +95,15 @@ bool BodyDecider::init(const rig::Rig& rig, const BodyDeciderJoints& joints, con
         if (arm.start >= 0) {
             upperArmLength_[i] = math::distance(planPos(r, arm.start), planPos(r, arm.mid));
             forearmLength_[i] = math::distance(planPos(r, arm.mid), planPos(r, arm.end));
-            armLength_[i] = upperArmLength_[i] + forearmLength_[i];
             const math::Vec3 hang = math::safeNormalize(planPos(r, arm.end) - planPos(r, arm.start), -math::kUp);
             const math::Vec3 back = -math::kForward - hang * math::dot(-math::kForward, hang);
             hangDir_[i] = chestInv * hang;
             hangBend_[i] = chestInv * math::safeNormalize(back, -math::kForward);
-            restShoulder_[i] = planPos(r, arm.start);
             restHandChest_[i] = chestInv * (planPos(r, arm.end) - chestPos);
         }
     }
-    if (joints.head >= 0) restHead_ = planRot(r, joints.head);
     if (joints.legs[0].start >= 0 && joints.legs[1].start >= 0) {
         const math::Vec3 mid = 0.5f * (planPos(r, joints.legs[0].start) + planPos(r, joints.legs[1].start));
-        hipCentre_ = pelvisInv * (mid - restPelvis_.position);
     }
     seed(rig.restPose());
     return true;
@@ -129,8 +120,6 @@ void BodyDecider::seed(const rig::Pose& pose) {
     if (!rig_ || pose.locals.size() != output_.pose.locals.size()) return;
     output_.pose.locals = pose.locals;  // same size: no allocation
     refresh(output_);
-    appliedList_ = 0.0f;
-    appliedPivot_ = math::Vec3(0.0f);
     desired_.pose.locals = pose.locals;
     refresh(desired_);
     for (int i = 0; i < 2; ++i) {
@@ -141,24 +130,11 @@ void BodyDecider::seed(const rig::Pose& pose) {
         anchorRot_[i] = restFoot_[i];
         grounded_[i] = true;
         support_[i] = 1.0f;
-        listLeft_[i] = 1.0f;
     }
     for (float& a : act_) a = 0.0f;
     hipsRef_ = pelvisOf(output_).position;
     hipsRefVel_ = hipsVel_ = math::Vec3(0.0f);
-    dcmOn_ = false;
-    dcmStartVel_ = math::Vec3(0.0f);
-    lastValid_ = false;
-    armAngle_[0] = armAngle_[1] = 0.0f;
-    lastStepped_ = -1;
-    wasSwinging_[0] = wasSwinging_[1] = false;
-    steps_[0] = steps_[1] = StepPlanner{};
-    lastStarted_ = -1;
     anchorYaw_[0] = anchorYaw_[1] = stanceYaw_ = 0.0f;
-    footEvent_ = false;
-    lastGoalVelocity_ = math::Vec3(0.0f);
-    lastPelvisYaw_ = lastPelvisRate_ = trunkTwist_ = trunkTwistRate_ = 0.0f;
-    trunkTicks_ = 0;
     seeded_ = true;
 }
 
@@ -176,26 +152,14 @@ void BodyDecider::rebase(const math::Transform& toNew) {
         l.pathEnd = toNew.transformPoint(l.pathEnd);
         for (math::Vec3& d : l.directions) d = toNew.rotation * d;
     }
-    lastPathEnd_ = toNew.transformPoint(lastPathEnd_);
-    for (int i = 0; i < 2; ++i)
-        for (math::Vec3* p : {&stepFrom_[i]})
-            *p = toNew.transformPoint(*p);
     hipsRef_ = toNew.transformPoint(hipsRef_);
     hipsRefVel_ = toNew.rotation * hipsRefVel_;
     hipsVel_ = toNew.rotation * hipsVel_;
-    for (math::Vec3* p : {&dcmHips_, &dcmXi_, &dcmStart_}) *p = toNew.transformPoint(*p);
-    dcmStartVel_ = toNew.rotation * dcmStartVel_;
-    // (The free arms cancel the body's turning against its heading: a turn of
-    // the heading itself is meant.)
-    for (math::Vec3& p : lastCentre_) p += toNew.position;
-    for (StepPlanner& p : steps_) p.rebase(toNew);
     // A foot keeps its turn on the ground too.
     const math::Vec3 ahead = toNew.rotation * math::kForward;
     const float turned = std::atan2(ahead.x, ahead.z);
-    for (float* yaw : {&anchorYaw_[0], &anchorYaw_[1], &stepYawFrom_[0], &stepYawFrom_[1], &stepYaw_[0], &stepYaw_[1],
-                       &stanceYaw_})
+    for (float* yaw : {&anchorYaw_[0], &anchorYaw_[1], &stanceYaw_})
         *yaw += turned;
-    lastGoalVelocity_ = toNew.rotation * lastGoalVelocity_;
     if (!seeded_) return;
     placePelvis(output_, toNew * pelvisOf(output_));
     refresh(output_, joints_.pelvis);
@@ -271,7 +235,6 @@ void BodyDecider::clampLimb(Plan& p, int e, const int* joints, int count, math::
 }
 
 math::Vec3 BodyDecider::planCentreOfMass() const { return centreOfMass(desired_); }
-math::Vec3 BodyDecider::desiredPelvis() const { return pelvisOf(desired_).position; }
 
 math::Vec3 BodyDecider::centreOfMass(const Plan& p) const {
     math::Vec3 sum(0.0f);
@@ -459,7 +422,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
 float BodyDecider::stanceNow() const {
     float yaw = 0.0f;
     for (int i = 0; i < 2; ++i)
-        yaw += 0.5f * (steps_[i].running() ? math::lerp(stepYawFrom_[i], stepYaw_[i], steps_[i].along()) : anchorYaw_[i]);
+        yaw += 0.5f * anchorYaw_[i];
     return yaw;
 }
 

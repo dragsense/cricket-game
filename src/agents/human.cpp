@@ -336,27 +336,11 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         muscleTiming_.goalJump = jointsConfig_->getFloat("muscles.goalJump", muscleTiming_.goalJump);
         muscleTiming_.goalMoved = jointsConfig_->getFloat("muscles.goalMoved", muscleTiming_.goalMoved);
         // A step's swing is a foot's aimed move too: the same Fitts' law.
-        deciderSettings_.fittsA = muscleTiming_.fittsA;
-        deciderSettings_.fittsB = muscleTiming_.fittsB;
-        deciderSettings_.fittsWidth = muscleTiming_.fittsWidth;
         throwSettings_.fittsA = muscleTiming_.fittsA;
         throwSettings_.fittsB = muscleTiming_.fittsB;
         throwSettings_.fittsWidth = muscleTiming_.fittsWidth;
-        deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
-        deciderSettings_.armCancel = jointsConfig_->getFloat("decider.armCancel", deciderSettings_.armCancel);
         auto dv = [&](const char* key, float value) { return jointsConfig_->getFloat(key, value); };
         deciderSettings_.pelvisTurnPerStep = dv("decider.pelvisTurnPerStep", deciderSettings_.pelvisTurnPerStep);
-        deciderSettings_.pelvisList =
-            math::radians(dv("decider.pelvisListDeg", math::degrees(deciderSettings_.pelvisList)));
-        deciderSettings_.standingReachShare = dv("decider.standingReachShare", deciderSettings_.standingReachShare);
-        deciderSettings_.standingReachSideShare =
-            dv("decider.standingReachSideShare", deciderSettings_.standingReachSideShare);
-        deciderSettings_.floorReach = dv("decider.floorReach", deciderSettings_.floorReach);
-        deciderSettings_.facingDrop = dv("decider.facingDrop", deciderSettings_.facingDrop);
-        deciderSettings_.trunkTurnFrequency = dv("decider.trunkTurn.frequency", deciderSettings_.trunkTurnFrequency);
-        deciderSettings_.trunkTurnDamping = dv("decider.trunkTurn.damping", deciderSettings_.trunkTurnDamping);
-        deciderSettings_.trunkMaxTwist =
-            math::radians(dv("decider.trunkTurn.maxDeg", math::degrees(deciderSettings_.trunkMaxTwist)));
         deciderSettings_.onGround = dv("decider.onGround", deciderSettings_.onGround);
         deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));
         deciderSettings_.chainOnset = dv("decider.chainOnset", deciderSettings_.chainOnset);
@@ -373,28 +357,14 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         trunkMaxRate_ = deciderSettings_.trunkMaxRate;
         hipsMaxTurnRate_ = deciderSettings_.hipsMaxTurnRate;
         deciderSettings_.legMaxRate = dv("decider.legMaxRate", deciderSettings_.legMaxRate);
-        deciderSettings_.twoLegKneeMax =
-            math::radians(dv("decider.twoLegKneeMaxDeg", math::degrees(deciderSettings_.twoLegKneeMax)));
-        deciderSettings_.oneLegKneeMax =
-            math::radians(dv("decider.oneLegKneeMaxDeg", math::degrees(deciderSettings_.oneLegKneeMax)));
         // The pelvis tilt limits (BIOMECHANICS 9.3), degrees in config.
         deciderSettings_.pelvisMin =
             math::radians(jointsConfig_->getVec3("decider.pelvisMinDeg", math::degrees(deciderSettings_.pelvisMin)));
         deciderSettings_.pelvisMax =
             math::radians(jointsConfig_->getVec3("decider.pelvisMaxDeg", math::degrees(deciderSettings_.pelvisMax)));
-        deciderSettings_.balanceStepOn = jointsConfig_->getBool("decider.balanceStep.on", deciderSettings_.balanceStepOn);
-        deciderSettings_.stepMargin = dv("decider.balanceStep.margin", deciderSettings_.stepMargin);
         deciderSettings_.footHalfWidth = dv("decider.balanceStep.footHalfWidth", deciderSettings_.footHalfWidth);
         deciderSettings_.footHalfLength = dv("decider.balanceStep.footHalfLength", deciderSettings_.footHalfLength);
         deciderSettings_.footCentreAhead = dv("decider.balanceStep.footCentreAhead", deciderSettings_.footCentreAhead);
-        deciderSettings_.landingBehind = dv("decider.balanceStep.landingBehind", deciderSettings_.landingBehind);
-        deciderSettings_.stopBlendSpeed = dv("decider.balanceStep.stopBlendSpeed", deciderSettings_.stopBlendSpeed);
-        deciderSettings_.minFootGap = dv("decider.balanceStep.minFootGap", deciderSettings_.minFootGap);
-        deciderSettings_.maxStepForward = dv("decider.balanceStep.maxStepForward", deciderSettings_.maxStepForward);
-        deciderSettings_.maxStepSide = dv("decider.balanceStep.maxStepSide", deciderSettings_.maxStepSide);
-        deciderSettings_.reachDrop = dv("decider.balanceStep.reachDrop", deciderSettings_.reachDrop);
-        deciderSettings_.weightShiftMost = dv("decider.balanceStep.weightShiftMost", deciderSettings_.weightShiftMost);
-        deciderSettings_.mostSteps = jointsConfig_->getInt("decider.balanceStep.mostSteps", deciderSettings_.mostSteps);
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
