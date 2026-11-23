@@ -123,10 +123,6 @@ struct BodyDeciderJoints {
 // human_joints.json "decider" (see the file for the sources).
 struct BodyDeciderSettings {
     math::Vec3 kneePole{0.0f, 0.0f, 1.0f};    // knees point this way (pelvis frame)
-    // A lifted knee turns toward its foot's way, the way counted from this
-    // share of the leg ahead of the hip (a foot right under the hip: the knee
-    // forward). Design value.
-    float kneeForwardBias = 0.25f;
     // How far a body reaches standing (a hand further takes a step): at
     // shoulder height past the arm this share of its height fore-aft
     // (Moriyama 2022's functional reach, young adults 0.22-0.24 H) and this
@@ -307,8 +303,6 @@ private:
     void solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     void report(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
-    // The balance step on the output pose (StepAdvice).
-    void balanceStep(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
     // The next step's timing (nextStep_): the step's shape's.
     void timeStep(const BodyDeciderSettings& s) { nextStep_ = s.stepShape; }
     // Every swing's landing time, planned (not chased each tick): on a foot's
@@ -323,25 +317,11 @@ private:
     // How far a ground point (character space) is out of the outline of
     // feet with their ankles at `ankles` (n of them; 0: inside).
     static float outsideFeet(math::Vec3 p, const math::Vec3* ankles, int n, const BodyDeciderSettings& s);
-    // How far down (0..1) hand h's target is: 0 where the arm hangs, 1
-    // facingDrop of that height lower.
-    float lowness(int h, math::Vec3 target, float groundY, const BodyDeciderSettings& s) const;
     // Foot i's share of the weight while both stand, twice it (1: even): the
     // planner's load, else 1 less the other's, else even.
     static float loadShare(const TargetSet& t, int i);
     void startStep(int i, math::Vec3 from, float yaw);
     math::Quat pelvisBase() const { return math::fromAxisAngle(math::kUp, stanceYaw_) * restPelvis_.rotation; }
-    // The leg that, the hips gone on by `way` (level), at its reach would hold
-    // them more than reachDrop below standing (-1: none): its stance ends.
-    int legLeftBehind(math::Vec3 way, const BodyDeciderSettings& s) const;
-    // Where foot i lands for capture point `xcom` moving with `velocity`, the
-    // hips (centre of mass, on the ground) ending at `hipsEnd` (`hipsGoal`:
-    // a hips target sets that place; free hips: the capture point); `miss`: how
-    // far it stays from the ideal spot (crossing, reach), `ideal` that spot,
-    // `beyondReach` whether a step's reach cut it short (more steps go on).
-    math::Vec3 stepSpot(int i, math::Vec3 xcom, math::Vec3 velocity, math::Vec3 hipsEnd, bool hipsGoal,
-                        const BodyDeciderSettings& s, float& miss, math::Vec3* ideal = nullptr,
-                        bool* beyondReach = nullptr, float yaw = 0.0f) const;
     // A step of foot i from `from` to `spot` on the hips target's path: the
     // time it takes (the sync formula), `steps` steps sharing the way, at
     // least the leg's swing; negative: no path.
@@ -368,22 +348,13 @@ private:
     math::Vec3 stepHips(int timed, float dt, const BodyDeciderSettings& s);
     math::Vec3 centreOfMass(const Plan& p) const;
 
-    // A hand's trunk: out of reach, the queue (by where the target is) and
-    // its plan on the desired pose.
-    void handTrunk(int h, math::Vec3 target, const BodyDeciderSettings& s, BodyQueue& out);
-    void trunkOrders(int h, math::Vec3 target, math::Vec3 velocity, const BodyDeciderSettings& s, BodyQueue& out);
     // Hand h's arm off plan p's chest, for its range (arm_fit.h).
     ArmShape armShape(int h, const Plan& p, const BodyDeciderSettings& s) const;
     ArmHang armHang(int h, const Plan& p) const;
     math::Quat armFrame(int h, const Plan& p) const;
-    // A lifted foot out of reach: the stance leg lowers the hips, the pelvis
-    // tilts on the stance hip.
-    void footTrunk(int i, math::Vec3 target, math::Vec3 velocity, const BodyDeciderSettings& s, BodyQueue& out);
-    // The chain rule from a lifted thigh to the pelvis (solveLegs, desired
-    // pose): what the thigh asks past chainOnset of its real range the pelvis
-    // turns, the same way, about the standing hip, within its range. True if
-    // the pelvis moved.
-    bool chainPelvis(Plan& p, const BodyDeciderSettings& s);
+    // What joint j asks past chainOnset of its range (before its clamp), as a
+    // world rotation vector (the chain's start, passUp).
+    math::Vec3 beyondRange(const Plan& p, int j, const BodyDeciderSettings& s) const;
     // The chain rule up `chain` (each joint the next one's child; the pelvis
     // may come last), the foot's rule: `rest` is the rotation (world rotation
     // vector) the joint before the chain cannot keep; each joint takes its
@@ -392,27 +363,11 @@ private:
     // could take; `pelvisTurned` set if the pelvis moved (legs to solve).
     math::Vec3 passUp(Plan& p, const int* chain, int count, math::Vec3 rest, const BodyDeciderSettings& s,
                       bool& pelvisTurned);
-    // Leg i's knee reaching from `hip` to `target`, bent toward `pole`; the
-    // thigh's abduction (rad, out +) in the pelvis's frame.
-    math::Vec3 kneeToward(int i, math::Vec3 hip, math::Vec3 target, math::Vec3 pole) const;
-    float thighAbduction(int i, math::Quat pelvisRot, math::Vec3 hip, math::Vec3 knee) const;
     int endRoot(int e) const;
     float endReach(int e) const;
     // How far end e (hand L, R, foot L, R) reaches from its root: its span
     // with the middle joint at limbMinBend.
     float limbReach(int e, const BodyDeciderSettings& s) const;
-    math::Vec3 tiltPivot(int e) const;
-    // The planned trunk for an end out of reach: each part of the queue
-    // [first, end) turns (or the hips move) by its share of what brings the
-    // end's root within reach, in passes, within its range.
-    void planTrunk(int e, math::Vec3 target, int first, int end, const BodyDeciderSettings& s, BodyQueue& out);
-    // A queue of joints turning one way together, shared by place.
-    void turnChain(const int* joints, int count, math::Quat delta, math::Vec3 velocity, Goal goal,
-                   const BodyDeciderSettings& s, BodyQueue& out);
-    void shareQueue(int first, const BodyDeciderSettings& s, BodyQueue& out) const;
-    // The desired pelvis under the hands' and lifted feet's trunk: the
-    // centre of mass over the support (standing only).
-    void balanceStanding(const TargetSet& t, const BodyDeciderSettings& s);
     // The pelvis's turn about the vertical from the feet (rad, + to the left).
     float pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const;
     // The trunk's spring-damper one tick on: the chest's turn against the
@@ -448,9 +403,6 @@ private:
     math::Quat restFootLevel(int i) const;  // a foot's standing rotation on `anchorNormal_`
     // The highest the hips may be for grounded foot i (its leg at its reach).
     float reachableHeight(const Plan& p, int i, const BodyDeciderSettings& s, bool& valid) const;
-    // The lowest the pelvis may be over the grounded feet: no grounded knee
-    // past its bound (two feet or one). `any`: some grounded leg bounds it.
-    float lowestHeight(const Plan& p, const BodyDeciderSettings& s, bool& any) const;
 
     const rig::Rig* rig_ = nullptr;
     const ik::JointLimits* limits_ = nullptr;
@@ -499,8 +451,6 @@ private:
     math::Vec3 dcmHips_{0.0f}, dcmXi_{0.0f}, dcmStart_{0.0f};
     math::Vec3 dcmStartVel_{0.0f};  // its velocity where the step began (the body's level speed)
     bool dcmOn_ = false;
-    // Each end's trunk orders this decide: [first, end) in the queue (-1: none).
-    int trunkFirst_[kEnds] = {-1, -1, -1, -1}, trunkEnd_[kEnds] = {-1, -1, -1, -1};
     float rangeMiss_[kEnds] = {0.0f, 0.0f, 0.0f, 0.0f};  // m: the output limb's end off its aim by its joints' ranges
     // Each foot's turn about the vertical on the ground (rad), the turn of
     // its step under way (from, to), and the feet's mean turn this tick: the
@@ -551,13 +501,7 @@ private:
     // swing (1 - smoothstep of the swing's share), held after it lands until
     // its leg carries all its weight again.
     float listLeft_[2] = {1.0f, 1.0f};
-    // The chain from a lifted thigh to the pelvis (chainPelvis): the thigh's
-    // range angles asked before its clamp (rad, limitFrame axes), whether
-    // there is one this solve, and what the pelvis took this tick.
-    math::Vec3 chainNeed_[2]{math::Vec3(0.0f), math::Vec3(0.0f)};
-    bool chainHas_[2] = {false, false};
-    math::Vec3 chainApplied_[2]{math::Vec3(0.0f), math::Vec3(0.0f)};
-    bool chainAgain_ = false;  // solveLegs' second solve on the turned pelvis
+    bool legChained_ = false;  // the lifted legs' chain done this tick (solveLegs)
     math::Vec3 listAxis_{0.0f, 0.0f, 1.0f};
     // The list the output pelvis carries and its pivot (pelvis frame: the
     // weighted hips), taken off before its bounds each tick and put back on.

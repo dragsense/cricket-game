@@ -160,6 +160,20 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
   trailing hip asks 30.5 (walk) / 33 deg (run) of its 30 deg extension at toe-off, so the
   pelvis tilts forward there (at most 2.5 / 4.4 deg a tick); walk stance slide 3.3 -> 4.1
   and 4.9 -> 4.4 cm. Tests pass.
+- [ ] C4 One chain for all seven targets, no decider movement (2026-11-23, the user's rules;
+  committed, WAITING for the game check): BodyDecider::passUp is the one chain rule (each
+  joint its own part within its own limits, chainOwnPart; the rest to the next, same axis,
+  same way); beyondRange gives what a joint asks past its range. Hands: clavicle, chest,
+  spine_02, spine_01, pelvis. Lifted thigh: pelvis, spine_01, spine_02, chest. Chest target:
+  chest .. pelvis. Head target: head, neck, chest .. pelvis. A grounded thigh past its
+  range: its foot pivots on the ground (only the leg the body turns away from: rangePelvis).
+  A lifted knee points where its toes do (knee over toes). The decider no longer moves the
+  hips: gone are the balance step, balanceStanding, the hips over the weighted feet and
+  their height clamps, footHike, footTrunk, handTrunk / trunkOrders / planTrunk, turnChain,
+  shareQueue, chainPelvis, chainFoot and their helpers (the pelvis turns in place; a
+  driven hips target still moves it). Walk no longer steps. body_decider.cpp 2684 -> ~1500
+  lines. Tests pass (the old trunk-queue tests and the stepping foot's reach / bent knee
+  checks removed).
 - [ ] C3 The hand's chain, the foot's rule (built 2026-11-23, committed, WAITING for the game
   check): solveArms measures the upper arm with its fitPole elbow (ik::limitAngles); what
   it asks past chainOnset of its range on each axis the clavicle, chest, spine_02,

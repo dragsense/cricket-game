@@ -357,7 +357,6 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.pelvisTurnPerStep = dv("decider.pelvisTurnPerStep", deciderSettings_.pelvisTurnPerStep);
         deciderSettings_.pelvisList =
             math::radians(dv("decider.pelvisListDeg", math::degrees(deciderSettings_.pelvisList)));
-        deciderSettings_.kneeForwardBias = dv("decider.kneeForwardBias", deciderSettings_.kneeForwardBias);
         deciderSettings_.standingReachShare = dv("decider.standingReachShare", deciderSettings_.standingReachShare);
         deciderSettings_.standingReachSideShare =
             dv("decider.standingReachSideShare", deciderSettings_.standingReachSideShare);

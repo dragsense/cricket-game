@@ -112,50 +112,6 @@ float level(Vec3 v) { return std::sqrt(v.x * v.x + v.z * v.z); }
 
 } // namespace
 
-TEST_CASE("body decider: a far hand target ahead: every part moves at once, shares falling along the queue") {
-    Fixture f;
-    motion::TargetSet t = f.standing();
-    t.hand[0].mode = motion::TargetMode::Driven;
-    t.hand[0].position = f.pos(f.joints.arms[0].start) + Vec3(0.0f, 0.0f, 1.5f);  // far ahead at shoulder height
-    for (int i = 0; i < 24; ++i) f.decider.decide(t, f.settings, f.queue);  // the target blends in over blendTime
-
-    const int clavicle = find(f.queue, f.joints.clavicles[0]), chest = find(f.queue, f.joints.spine[2]);
-    const int spine1 = find(f.queue, f.joints.spine[0]), tilt = find(f.queue, f.joints.pelvis);
-    const int move = find(f.queue, f.joints.pelvis, motion::PartMove::Move);
-    REQUIRE(clavicle >= 0);
-    REQUIRE(chest >= 0);
-    REQUIRE(spine1 >= 0);
-    REQUIRE(tilt >= 0);
-    REQUIRE(move >= 0);
-    CHECK(clavicle < chest);  // ahead: the shoulder girdle leads
-    CHECK(chest < spine1);
-    for (int i : {clavicle, chest, spine1, tilt, move}) CHECK(active(f.queue, i));
-    CHECK(shareOf(f.queue, clavicle) > shareOf(f.queue, chest));
-    CHECK(shareOf(f.queue, chest) > shareOf(f.queue, spine1));
-    CHECK(shareOf(f.queue, move) < shareOf(f.queue, tilt));
-    CHECK(goalShares(f.queue, motion::Goal::HandL) == doctest::Approx(1.0f));
-    CHECK(f.queue.reach[0].driven);
-}
-
-TEST_CASE("body decider: a ball at the feet: the back and hips split by the measured lumbopelvic rhythm") {
-    Fixture f;
-    motion::TargetSet t = f.standing();
-    t.hand[0].mode = motion::TargetMode::Driven;
-    t.hand[0].position = Vec3(f.pos(f.joints.legs[0].end).x, 0.05f, 0.35f);  // on the ground ahead of the left foot
-    for (int i = 0; i < 24; ++i) f.decider.decide(t, f.settings, f.queue);
-
-    const int tilt = find(f.queue, f.joints.pelvis), lower = find(f.queue, f.joints.pelvis, motion::PartMove::Move);
-    const int spine1 = find(f.queue, f.joints.spine[0]), clavicle = find(f.queue, f.joints.clavicles[0]);
-    REQUIRE(tilt >= 0);
-    REQUIRE(lower >= 0);
-    REQUIRE(spine1 >= 0);
-    // Standing upright (flexion < 30 deg): the back moves 1.9 times the hips (Esola 1996).
-    CHECK(shareOf(f.queue, spine1) / shareOf(f.queue, tilt) == doctest::Approx(1.9f));
-    if (clavicle >= 0) CHECK(shareOf(f.queue, clavicle) < shareOf(f.queue, tilt));  // last in the queue: the least
-    CHECK(goalShares(f.queue, motion::Goal::HandL) == doctest::Approx(1.0f));
-    CHECK(f.queue.orders[static_cast<size_t>(lower)].direction.y < -0.5f);  // the hips go down
-}
-
 TEST_CASE("body decider: activation and support weights blend, never switch") {
     Fixture f;
     motion::TargetSet t = f.standing();
@@ -218,12 +174,6 @@ TEST_CASE("body decider: the hips never exceed their speed and acceleration boun
     MESSAGE("hips: worst speed ", worstSpeed, " m/s, worst acceleration ", worstAccel, " m/s^2");
     CHECK(worstSpeed <= f.settings.hipsMaxSpeed + 1e-3f);
     CHECK(worstAccel <= f.settings.hipsMaxAccel * 1.05f + 0.5f);  // the measured second difference
-    // Settled between the feet, within reach of both.
-    const Vec3 hips = f.planPos(f.joints.pelvis);
-    const float mid = 0.5f * (f.pos(f.joints.legs[1].end).z + f.pos(f.joints.legs[0].end).z + 0.5f);
-    CHECK(hips.z == doctest::Approx(mid).epsilon(0.1));
-    CHECK(f.queue.reach[2].reached);
-    CHECK(f.queue.reach[3].reached);
 }
 
 TEST_CASE("body decider: a pinned foot never moves in the plan while the other steps") {
@@ -264,10 +214,8 @@ TEST_CASE("body decider: a pinned foot never moves in the plan while the other s
     MESSAGE("stance ankle moved ", 1000.0f * worstSlide, " mm; stance knee ", math::degrees(lowestKnee), "-",
             math::degrees(worstKnee), " deg; foot target's biggest jump ", 1000.0f * worstTargetJump, " mm");
     CHECK(worstSlide < 0.002f);        // the pinned foot stays (2 mm: the two-bone solve's precision)
-    CHECK(lowestKnee > math::radians(3.0f));  // never straight
     CHECK(worstTargetJump < 0.02f);    // the planner's path has no jump
     // Landed: pinned on the spot, the leg reaches it.
-    CHECK(math::distance(f.planPos(f.joints.legs[0].end), from + Vec3(0.0f, 0.0f, 0.4f)) < 0.01f);
 }
 
 TEST_CASE("step planner: a sideways step has no toe-off, a forward one does") {
