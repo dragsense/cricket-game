@@ -160,6 +160,16 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
   trailing hip asks 30.5 (walk) / 33 deg (run) of its 30 deg extension at toe-off, so the
   pelvis tilts forward there (at most 2.5 / 4.4 deg a tick); walk stance slide 3.3 -> 4.1
   and 4.9 -> 4.4 cm. Tests pass.
+- [ ] C5 After C4, the same day (all committed, pushed to origin/body-chain 85afc1e;
+  NOT game-checked): the hand's roll by the chain (forearm twist, then the elbow round);
+  a hand past the arm's reach pushes the shoulder the arm's way (the clavicle's turn,
+  then passUp; temporary until movement); the passive shares gone (decider, TargetSet,
+  Human, configs); the decider's own steps, capture point, trunk spring, pelvic list,
+  free arm swing, undriven head levelling and pelvis turn gone, with ~40 members and 25
+  settings left over; a hand let go stays where it is. body_decider.cpp 2684 -> 937
+  lines. Tests pass (the step measures and the old trunk-queue tests removed). Next:
+  the user's game check of the limb test (hands back / across / up / far, a foot up,
+  chest, head).
 - [ ] C4 One chain for all seven targets, no decider movement (2026-11-23, the user's rules;
   committed, WAITING for the game check): BodyDecider::passUp is the one chain rule (each
   joint its own part within its own limits, chainOwnPart; the rest to the next, same axis,

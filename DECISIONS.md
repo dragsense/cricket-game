@@ -1132,3 +1132,22 @@ enough. planReach's look-ahead places the hips over the feet by their load share
 Why: the user's chain (arm, shoulder, spine, hips, feet), general; the look-ahead with
 even hips disagreed with the tick (0-2 mm vs 5.4 cm short) and never stepped.
 Rejected: keeping the planner's back-foot step (throw-specific body placement).
+
+## 2026-11-23: The decider is one rotation chain; it moves nothing of its own
+Decision (branch body-chain, the user's design): every target (two hands, two feet,
+hips, chest, head) is followed by one rule, `BodyDecider::passUp`: a joint keeps its
+own part of what is asked of it within its real range (`motion/body_chain`
+`chainOwnPart`: all of it up to `decider.chainOnset` 0.8, then bending over toward the
+range), the rest goes to the next joint about the same axis, the same way. Only
+rotations: the decider no longer moves the hips (they stay where they are; a driven
+hips target and physics still move them) and has no steps, balance step, trunk spring,
+pelvic list, free arm swing, head levelling, passive pulls or pelvis turn of its own.
+The IK: a lifted knee over its toes; a hand's roll is the forearm's twist, the rest
+turns the elbow round. A hand past the arm's reach pushes the shoulder the arm's way
+(the clavicle's turn, then the chain; temporary until movement comes).
+Why: the user: one simple formula ("hand moves the arm, the arm the shoulder, then
+chest, hips; the foot the shin, thigh, hips"); the separate mechanisms (turnTrunk,
+planReach, footHike, ...) each needed their own fixes and jumped at their thresholds.
+Rejected: the trunk turn by turnToReach (flickers at the range), the CCD (target) way
+and a twist-only rule for the hands (the user: the foot's rule, same axis), the hips
+moving to keep the legs in reach (the user: no movement for now).
