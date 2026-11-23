@@ -1042,6 +1042,43 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
             }
             const int chain[2] = {arm.start, arm.mid};
             clampLimb(p, h, chain, 2, target);
+            // The hand's roll (about the forearm): the forearm twists its own
+            // part within its range (chainOwnPart); the rest turns the elbow
+            // round the shoulder-hand line (the shoulder's turn), the same
+            // way, and the arm is solved again (the chain rule, as passUp).
+            const float krr = act_[h] * std::clamp(hand.weightRotation, 0.0f, 1.0f);
+            if (limits_ && arm.end >= 0 && krr > 0.0f) {
+                const math::Quat restHandNow = planRot(p, arm.mid) * rest.locals[static_cast<size_t>(arm.end)].rotation;
+                const math::Quat wantHand = math::normalize(math::slerp(restHandNow, hand.rotation, krr));
+                const math::Vec3 along = math::safeNormalize(planPos(p, arm.end) - planPos(p, arm.mid), hang.down);
+                const math::Quat rel = math::normalize(wantHand * math::inverse(planRot(p, arm.end)));
+                const float roll = std::remainder(2.0f * std::atan2(math::dot(math::Vec3(rel.x, rel.y, rel.z), along), rel.w),
+                                                  math::kTwoPi);
+                const ik::JointLimit foreLimit = limits_->limitIn(arm.mid, p.pose);
+                const ik::LimitFrame ff = ik::limitFrame(foreLimit);
+                const float now = ik::limitAngles(fore, foreLimit).x;
+                const float total = now + roll;
+                const float bound = total >= 0.0f ? ff.max.x : -ff.min.x;
+                float part = roll;
+                if (bound > 0.0f)
+                    part = std::copysign(chainOwnPart(std::abs(total), bound, s.chainOnset), total) - now;
+                const float over = roll - part;
+                if (std::abs(over) > kMinAngle) {
+                    pole = math::fromAxisAngle(math::safeNormalize(target - from, hang.down), over) * pole;
+                    armAtRest();
+                    if (ik::solveTwoBone(arm, p.models, target, pole, 1.0f, p.pose)) {
+                        if (isOutput) {
+                            upper = limitTurn(prevUpper, upper, s.limbMaxRate, t.dt);
+                            fore = limitTurn(prevFore, fore, s.limbMaxRate, t.dt);
+                        }
+                        clampLimb(p, h, chain, 2, target);
+                    }
+                }
+                if (std::abs(part) > kMinAngle) {
+                    const math::Vec3 alongNow = math::safeNormalize(planPos(p, arm.end) - planPos(p, arm.mid), hang.down);
+                    turnPlanned(p, arm.mid, math::fromAxisAngle(alongNow, part));
+                }
+            }
         }
         // The hand's rotation, as given, within the wrist's range.
         if (arm.end >= 0) {
