@@ -1,8 +1,8 @@
 // The throw's poses (motion::ThrowPlanner; BIOMECHANICS 10.5). Degrees, metres.
 {
   "circles": {
-    // Round the chest (hand height) and round the standing throwing shoulder
-    // (the release), x the arm's length.
+    // Round the chest (hand height) and through the hand drawn back, its centre
+    // toward the standing throwing shoulder (the release), x the arm's length.
     "slotRadius": 1.0,
     "swingRadius": 1.0,
     // The hand goes to these slots (underarm .. overarm: the arm ~45 deg above
@@ -13,9 +13,10 @@
     "releaseMinDeg": -30,
     "releaseMaxDeg": 100,
     // The wheel leans the throw circle about the line from the shoulder to the
-    // hand drawn back (its pivot), per notch, at most maxTilt either way.
+    // hand drawn back (its pivot), per notch, at most maxTilt either way (180: a
+    // whole turn).
     "tiltStepDeg": 5,
-    "maxTiltDeg": 30
+    "maxTiltDeg": 180
   },
   // The force: the mouse draws the hand back from the slot point (m per pixel):
   // straight back to pullReach x the arm's length from the shoulder, then round

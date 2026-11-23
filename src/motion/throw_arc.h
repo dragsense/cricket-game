@@ -4,9 +4,10 @@
 // - Height circle: round the chest, square to the facing direction, like a
 //   clock face seen from the front; -90 deg straight down (underarm), 0 out to
 //   the throwing side (sidearm), +90 overhead (overarm).
-// - Throw circle: round the standing throwing shoulder, through the slot
+// - Throw circle: through the hand drawn back (its pivot), its centre on the
+//   line from the standing throwing shoulder to the hand; toward the slot
 //   point's way (0) and the facing direction (+90; -90 behind), turned by
-//   `tilt` about the line to the hand (its pivot: the hand stays in its plane).
+//   `tilt` about that line (the hand stays on it).
 // Pure math, no allocations.
 
 #include "math/math.h"
@@ -32,8 +33,9 @@ struct ThrowArc {
 
 // The height circle of a body facing +Z (+X its left).
 ThrowArc makeSlotArc(math::Vec3 chest, bool leftHand, float radius);
-// The throw circle round `shoulder` toward the height circle's point at
-// `slotAngle`, tilted by `tilt` radians about the line to `hand`.
+// The throw circle through `hand`, its centre toward `shoulder`, toward the
+// height circle's point at `slotAngle`, tilted by `tilt` radians about the line
+// from `shoulder` to `hand`.
 ThrowArc makeSwingArc(const ThrowArc& slotArc, float slotAngle, math::Vec3 shoulder, math::Vec3 hand, float tilt, float radius);
 
 } // namespace motion

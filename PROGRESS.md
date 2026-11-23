@@ -60,6 +60,12 @@ M6 waits.
     the reach at once: a decider line, ask first); 4 slot -60: elbow 46, the hand 34 deg
     behind. Later: the hips turn 260 deg/s of the planned 395 (cause not measured, P3c); the
     real hand off the release (the muscle drive, D).
+  - Yellow circle (the user's design, checked in the game 2026-11-23): through the hand
+    drawn back (its pivot), its centre on the line from the standing shoulder to the hand,
+    the wheel turning it about that line, up to 180 deg either way (was 30). Measured: the
+    hand on the circle 0.0 cm (before up to 14 cm off it, 37 off its plane); with the whole
+    pull the release points 10-15 cm further back, the real hand's way 20-66 deg off the
+    circle's (10-29), 6.9-9.8 m/s (7.8-12.0).
   - P3b The weight on the back foot (and the turned foot's outline). P3c The swing's timing
     from the whole coil.
 - [ ] P4 The front foot's step.

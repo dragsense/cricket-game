@@ -40,13 +40,20 @@ ThrowArc makeSlotArc(math::Vec3 chest, bool leftHand, float radius) {
 }
 
 ThrowArc makeSwingArc(const ThrowArc& slotArc, float slotAngle, math::Vec3 shoulder, math::Vec3 hand, float tilt, float radius) {
-    // side = shoulder to the slot point, up = the facing direction square to it.
+    // side = shoulder to the slot point, up = the facing direction square to it;
+    // that plane turned as little as holds the line from the shoulder to the
+    // hand, and the circle along it so the hand is on it (its pivot).
     ThrowArc a;
-    a.centre = shoulder;
     a.radius = radius;
-    a.side = math::safeNormalize(slotArc.point(slotAngle) - shoulder, slotArc.side);
-    a.up = math::safeNormalize(slotArc.normal - a.side * math::dot(slotArc.normal, a.side), math::kUp);
-    const math::Quat lean = math::fromAxisAngle(math::safeNormalize(hand - shoulder, a.side), tilt);
+    const math::Vec3 side = math::safeNormalize(slotArc.point(slotAngle) - shoulder, slotArc.side);
+    const math::Vec3 up = math::safeNormalize(slotArc.normal - side * math::dot(slotArc.normal, side), math::kUp);
+    const math::Vec3 toHand = math::safeNormalize(hand - shoulder, side);
+    math::Vec3 normal = math::cross(side, up);
+    normal = math::safeNormalize(normal - toHand * math::dot(normal, toHand), normal);
+    a.side = math::safeNormalize(side - normal * math::dot(side, normal), toHand);
+    a.up = math::cross(normal, a.side);
+    a.centre = hand - toHand * radius;
+    const math::Quat lean = math::fromAxisAngle(toHand, tilt);
     a.side = lean * a.side;
     a.up = lean * a.up;
     a.normal = math::cross(a.side, a.up);
