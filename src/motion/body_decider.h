@@ -287,6 +287,12 @@ private:
     enum Which { HandLW, HandRW, FootLW, FootRW, HipsW, ChestW, HeadW, kTargets };
 
     void blendWeights(const TargetSet& t, const BodyDeciderSettings& s);
+    // The feet's mean turn about the vertical (a step under way: by its progress).
+    float stanceNow() const;
+    // The pelvis's turn about the vertical, from the feet's mean turn, within
+    // its own range and within every grounded leg's hip twist (each foot's turn
+    // plus its hip's range): `s`'s pelvis range narrowed so (ranged_).
+    void rangePelvis(const BodyDeciderSettings& s);
     // Target k's pose for the blend: the given one while Driven, else the
     // last given (fading out).
     const Target& given(const TargetSet& t, int k) const;
@@ -529,6 +535,7 @@ private:
     float stanceYaw_ = 0.0f;
     float shortTurn_ = 0.0f;
     float turnHint_[2] = {0.0f, 0.0f};  // rad, each hand's trunk turn last tick (turnTrunk)
+    BodyDeciderSettings ranged_;  // this decide's settings, the pelvis range narrowed by the grounded hips
     Plan query_;            // shortStanding's copy of the desired pose
     BodyQueue queryQueue_;  // and its queue
     // Each hand path's end and time left last tick (negative: none), and the

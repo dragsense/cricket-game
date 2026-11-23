@@ -53,9 +53,16 @@ M6 waits.
     0.6 s, the foot at 51 deg. Swing (before, pull 0.9): hips 257-270 deg/s (77-105), chest
     607-675 (381-410), hand 7.2-12.2 m/s (5.5-9.1), 3-16 cm off the release (1-15). Walk,
     run, turning and 24 limb test cases bit-identical; tests pass.
-    Open, in the proposed order (next session: first what the user saw in the game, then one
-    at a time, a game check after each; P3b waits): 1 the front foot slips 1.0-1.5 cm in the
-    coil and 1.6-3 in the swing; 2 home again the back foot stays 5-6 deg turned; 3 slot 35
+    Pelvis within the grounded hips (2026-11-23, decider, general): a grounded foot lets the
+    pelvis turn only as far as its hip twists (its turn plus the hip's range), everywhere the
+    pelvis turns (the chest chain too). Coil pelvis 51.6 -> 50.0 (the hip at its 50), the
+    swing ends square (+1.3 -> 0), the chest 1.5-2 deg less (77-79); walk, run, limb test
+    bit-identical. It did NOT stop the front foot's slip (predicted it would): measured, the
+    slip comes as the back foot lands and takes the weight back (right 0.5 -> 1.0), the front
+    foot moving 1.2 cm across, 0.6 forward, not turning; in the swing 1.9-2.5 cm, 10-15 deg.
+    Open, in order (one at a time, a game check after each; P3b waits): 1 the front foot's
+    slip as the back foot lands (next: measure the ground forces on it then); 2 home again
+    the back foot stays 5-6 deg turned; 3 slot 35
     near 0.55 m: the hand 2.6 cm off (the coil's hips target takes the pelvis's share from
     the reach at once: a decider line, ask first); 4 slot -60: elbow 46, the hand 34 deg
     behind. Later: the hips turn 260 deg/s of the planned 395 (cause not measured, P3c); the

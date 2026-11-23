@@ -543,12 +543,13 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
     }
     blendWeights(t, s);
     pinFeet(t, s);
-    supportAndHips(t, s, out);
-    desiredPose(t, s, out);
-    limitOutput(t, s, out);
-    report(t, s, out);
-    timeSwings(t, s);
-    balanceStep(t, s, out);
+    rangePelvis(s);
+    supportAndHips(t, ranged_, out);
+    desiredPose(t, ranged_, out);
+    limitOutput(t, ranged_, out);
+    report(t, ranged_, out);
+    timeSwings(t, ranged_);
+    balanceStep(t, ranged_, out);
 
     // The balance step's advice: a step starts (from the foot's pinned spot;
     // one at a time) or the one under way re-aims; it runs from the next
@@ -813,9 +814,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             markPlanned(j, out);
         }
     refresh(d);
-    stanceYaw_ = 0.0f;
-    for (int i = 0; i < 2; ++i)
-        stanceYaw_ += 0.5f * (steps_[i].running() ? math::lerp(stepYawFrom_[i], stepYaw_[i], steps_[i].along()) : anchorYaw_[i]);
+    stanceYaw_ = stanceNow();
     float pelvisYaw = stanceYaw_ + pelvisTurn(t, s);
     {
         // A reach turns the hips (planReach) as far as the feet under them let.
@@ -970,8 +969,14 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             const PartOrder& o = out.orders[static_cast<size_t>(q)];
             if (o.share <= 0.0f) continue;
             if (o.joint == joints_.pelvis) {
+                // Within the pelvis's range, as everywhere it turns.
                 math::Transform p = pelvisOf(d);
                 p.rotation = math::normalize(math::slerp(math::identityQuat(), delta, o.share) * p.rotation);
+                const math::Quat from = math::normalize(p.rotation * math::inverse(pelvisBase()));
+                const math::Vec3 v = math::rotationVector(from);
+                bool beyond = false;
+                for (int a = 0; a < 3; ++a) beyond = beyond || v[a] < s.pelvisMin[a] || v[a] > s.pelvisMax[a];
+                if (beyond) p.rotation = math::normalize(clampRotationVector(from, s.pelvisMin, s.pelvisMax) * pelvisBase());
                 placePelvis(d, p);
             } else {
                 turnPlanned(d, o.joint, math::slerp(math::identityQuat(), delta, o.share));
@@ -1012,6 +1017,33 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     freeArms(t, s, out);
     levelHead(t, s, out);
     solveArms(d, t, s, out);
+}
+
+float BodyDecider::stanceNow() const {
+    float yaw = 0.0f;
+    for (int i = 0; i < 2; ++i)
+        yaw += 0.5f * (steps_[i].running() ? math::lerp(stepYawFrom_[i], stepYaw_[i], steps_[i].along()) : anchorYaw_[i]);
+    return yaw;
+}
+
+void BodyDecider::rangePelvis(const BodyDeciderSettings& s) {
+    // A grounded foot holds its leg's turn: the pelvis turns on it only as far
+    // as that hip twists (a hip turns out further than in). The left foot's
+    // outward turn is the pelvis turning right, the right one's left.
+    ranged_ = s;
+    if (!limits_ || joints_.legs[0].start < 0) return;
+    const ik::JointLimit& hip = limits_->limit(joints_.legs[0].start);  // left: + external
+    const float stance = stanceNow();
+    float lo = s.pelvisMin.y, hi = s.pelvisMax.y;
+    for (int i = 0; i < 2; ++i) {
+        if (!grounded_[i] || joints_.legs[i].start < 0) continue;
+        const float foot = std::remainder(anchorYaw_[i] - stance, math::kTwoPi);
+        lo = std::max(lo, i == 0 ? foot - hip.twistMax : foot + hip.twistMin);
+        hi = std::min(hi, i == 0 ? foot - hip.twistMin : foot + hip.twistMax);
+    }
+    if (lo > hi) lo = hi = 0.5f * (lo + hi);  // feet turned past what the hips span: between
+    ranged_.pelvisMin.y = lo;
+    ranged_.pelvisMax.y = hi;
 }
 
 void BodyDecider::planReach(const TargetSet& t, const BodyDeciderSettings& s) {

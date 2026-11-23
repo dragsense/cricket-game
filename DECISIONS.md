@@ -1079,3 +1079,12 @@ Dated log. Format: decision, reason, alternatives rejected.
   turn 50 back and come square again over flat feet (the hip turns out 50).
 - **Rejected:** the back foot at 90 (the hips cannot come square without a pivot on its ball);
   turning the body under the old hand path (elbow 113-124, the hand ahead of the shoulder line).
+
+## 2026-11-23: The pelvis turns within the grounded hips' twist
+- **Decision:** each decide narrows the pelvis's turn range about the vertical by every
+  grounded foot: that foot's turn plus its hip's twist range (out 50, in 40), used wherever
+  the pelvis turns, the chest chain included.
+- **Reason:** the plan turned the pelvis 1.6 deg past the left hip's range in the coil (the
+  physics joint stops at it). The user: one general rule, no special fix.
+- **Note:** it did not stop the front foot's slip in the coil (that comes as the back foot
+  lands, measured).
