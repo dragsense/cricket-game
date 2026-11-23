@@ -373,7 +373,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         }
     refresh(d);
     stanceYaw_ = stanceNow();
-    float pelvisYaw = stanceYaw_ + pelvisTurn(t, s);
+    float pelvisYaw = stanceYaw_;
     math::Quat pelvisRot = math::fromAxisAngle(math::kUp, pelvisYaw) * restPelvis_.rotation;
     {
         // A driven hips target turns the pelvis by its rotation weight, as
@@ -448,29 +448,10 @@ void BodyDecider::rangePelvis(const BodyDeciderSettings& s) {
     ranged_.pelvisMax.y = hi;
 }
 
-float BodyDecider::pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const {
-    // Each foot where it stands, or where its target is on a timed swing (the
-    // swinging leg carries its hip with it); the pelvis turns by
-    // pelvisTurnPerStep per metre the feet are apart fore-aft (the step's
-    // length). Left foot ahead: the left hip forward, a turn to the right
-    // (negative about +Y).
-    math::Vec3 at[2];
-    for (int i = 0; i < 2; ++i) {
-        if (joints_.legs[i].end < 0) return 0.0f;
-        const Target& f = t.foot[i];
-        const bool swinging = f.mode == TargetMode::Driven && f.swing >= 0.0f;
-        at[i] = swinging ? f.position : grounded_[i] ? anchor_[i] : planPos(output_, joints_.legs[i].end);
-    }
-    const math::Vec3 apart = math::fromAxisAngle(math::kUp, -stanceYaw_) * (at[0] - at[1]);
-    const float ahead = apart.z;  // left ahead of right, along the feet
-    return -s.pelvisTurnPerStep * ahead;
-}
-
 void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {
     // Grounded feet: each leg reaches its anchor from the hip (two-bone,
     // the knee tracking the foot: its pole turns with the foot from
-    // standing), the foot flat on its ground; the pelvis is already within
-    // every grounded leg's reach (the height constraint). Lifted feet: the
+    // standing), the foot flat on its ground. Lifted feet: the
     // leg reaches its target, clamped to its reach (the knee at limbMinBend: it
     // keeps its bend), the knee forward of the pelvis, the foot turned as
     // given by the blended rotation weight.
@@ -592,8 +573,7 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
     // shortest swing, adding no twist, and the elbow's bend turns with it
     // (no fixed direction, so none the arm can line up with); out of the
     // shoulder's range, the elbow goes round as little as brings it in
-    // (fitPole). Free hands
-    // keep what freeArms placed on the desired pose.
+    // (fitPole). A free hand stays where it is.
     const rig::Pose& rest = rig_->restPose();
     const bool isOutput = &p == &output_;
     bool pelvisTurned = false;
@@ -603,11 +583,10 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
         const math::Quat prevUpper = p.pose.locals[static_cast<size_t>(arm.start)].rotation;
         const math::Quat prevFore = p.pose.locals[static_cast<size_t>(arm.mid)].rotation;
         const bool driven = t.hand[h].mode == TargetMode::Driven;
-        const bool fading = !driven && act_[h] > 0.0f && isOutput;
-        if (!driven && !fading) {
+        if (!driven) {
             if (isOutput) {
-                // The free arm follows the desired pose (its swing), no faster
-                // than a limb turns.
+                // The free arm follows the desired pose (it stays where it
+                // is), no faster than a limb turns.
                 for (int j : {joints_.clavicles[h], arm.start, arm.mid, arm.end}) {
                     if (j < 0) continue;
                     math::Quat& o = p.pose.locals[static_cast<size_t>(j)].rotation;
@@ -620,9 +599,8 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
             continue;
         }
         const Target& hand = given(t, h);
-        // Driven: toward the target by its blended weight. Fading: the
-        // last target's full solve, blended below with the free arm.
-        const float k = fading ? 1.0f : act_[h] * std::clamp(hand.weightPosition, 0.0f, 1.0f);
+        // Toward the target by its blended weight.
+        const float k = act_[h] * std::clamp(hand.weightPosition, 0.0f, 1.0f);
         const float reach = limbReach(h, s);
         auto armTarget = [&] {
             const math::Quat chest = joints_.spine[2] >= 0 ? planRot(p, joints_.spine[2]) : math::identityQuat();
@@ -687,12 +665,6 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
         if (ik::solveTwoBone(arm, p.models, target, pole, 1.0f, p.pose)) {
             math::Quat& upper = p.pose.locals[static_cast<size_t>(arm.start)].rotation;
             math::Quat& fore = p.pose.locals[static_cast<size_t>(arm.mid)].rotation;
-            if (fading) {
-                // Toward the free arm (the desired pose's) as the activation fades.
-                const rig::Pose& freeArm = isOutput ? desired_.pose : p.pose;
-                upper = math::normalize(math::slerp(freeArm.locals[static_cast<size_t>(arm.start)].rotation, upper, act_[h]));
-                fore = math::normalize(math::slerp(freeArm.locals[static_cast<size_t>(arm.mid)].rotation, fore, act_[h]));
-            }
             if (isOutput) {
                 upper = limitTurn(prevUpper, upper, s.limbMaxRate, t.dt);
                 fore = limitTurn(prevFore, fore, s.limbMaxRate, t.dt);

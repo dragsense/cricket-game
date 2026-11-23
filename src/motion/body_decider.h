@@ -131,11 +131,6 @@ struct BodyDeciderSettings {
     // pendulum. 0: free arms only cancel the turning.
     float gravity = 0.0f;
     float armCancel = 0.63f;  // the share of the body's turning the free arms cancel
-    // The pelvis turns about the vertical with the legs: rad per metre the
-    // feet are apart fore-aft (a foot ahead turns its hip forward), so longer
-    // steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at 0.40 m/s,
-    // 19 at 1.47 m/s, Yang 2013; both are 12.4 deg per metre of step length).
-    float pelvisTurnPerStep = 0.216f;
     // The pelvis drops on the side of the leg without weight, about the hip
     // that carries it (pelvic list), this much (rad) with all the weight on
     // one leg, by the weight's share (the weight shift: it leads a lift).
@@ -267,8 +262,6 @@ private:
     // How far end e (hand L, R, foot L, R) reaches from its root: its span
     // with the middle joint at limbMinBend.
     float limbReach(int e, const BodyDeciderSettings& s) const;
-    // The pelvis's turn about the vertical from the feet (rad, + to the left).
-    float pelvisTurn(const TargetSet& t, const BodyDeciderSettings& s) const;
     // The head level in the world, facing the chest's way (desired pose).
     void levelHead(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
 

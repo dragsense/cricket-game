@@ -340,7 +340,6 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         throwSettings_.fittsB = muscleTiming_.fittsB;
         throwSettings_.fittsWidth = muscleTiming_.fittsWidth;
         auto dv = [&](const char* key, float value) { return jointsConfig_->getFloat(key, value); };
-        deciderSettings_.pelvisTurnPerStep = dv("decider.pelvisTurnPerStep", deciderSettings_.pelvisTurnPerStep);
         deciderSettings_.onGround = dv("decider.onGround", deciderSettings_.onGround);
         deciderSettings_.limbMinBend = math::radians(dv("decider.limbMinBendDeg", math::degrees(deciderSettings_.limbMinBend)));
         deciderSettings_.chainOnset = dv("decider.chainOnset", deciderSettings_.chainOnset);

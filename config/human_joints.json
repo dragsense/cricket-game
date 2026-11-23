@@ -92,19 +92,6 @@
     // Forward tilt 80 = hip flexion with straight knees (hamstrings).
     "pelvisMinDeg": [-10, -30, -20],
     "pelvisMaxDeg": [80, 30, 20],
-    // Through a step the hips follow the capture point's path over the
-    // standing foot (DCM, Englsberger 2015; Hof 2005), and the weight shift
-    // before the lift takes the shortest time that keeps the centre of
-    // pressure within the feet (real: ~0.3 s fastest, ~0.5 s natural). No
-    // value: it comes from the step's place and time and the body's height.
-    // The pelvis turns about the vertical with the legs: rad per metre the
-    // feet are apart fore-aft (a foot ahead turns its hip forward; longer
-    // steps turn it more). Real: 11 deg peak to peak at 0.40 m/s, 19 at
-    // 1.47 m/s (Yang 2013, BIOMECHANICS 4.3); with the step length 0.41 H
-    // (v / 1.35)^0.42 (H 1.8: 0.443 and 0.765 m) both are 12.4 deg of turn
-    // each way per metre = 0.216 rad/m. Approximate (the subjects were
-    // shorter women).
-    "pelvisTurnPerStep": 0.216,
     // The pelvis drops on the side of the leg without weight (pelvic list:
     // the stance hip's abductors let it go): this much (deg) with all the
     // weight on one leg, by the weight's share. Real: about 4 deg each way
