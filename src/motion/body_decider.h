@@ -143,10 +143,6 @@ struct BodyDeciderSettings {
     // pendulum. 0: free arms only cancel the turning.
     float gravity = 0.0f;
     float armCancel = 0.63f;  // the share of the body's turning the free arms cancel
-    // Every target is always there (the part's own frame); a Driven one
-    // pulls by its weight, the others by these shares, the body's own motion
-    // the rest (the user's design 2026-11-09).
-    float passiveHead = 0.7f, passiveHands = 0.5f, passiveHips = 0.5f, passiveChest = 0.5f;
     // The pelvis turns about the vertical with the legs: rad per metre the
     // feet are apart fore-aft (a foot ahead turns its hip forward), so longer
     // steps turn it more (BIOMECHANICS 4.3: 11 deg peak to peak at 0.40 m/s,
@@ -228,11 +224,8 @@ struct BodyDeciderSettings {
     // (the limb test's goals' values, human_joints.json "muscles").
     float fittsA = 0.1f, fittsB = 0.1f, fittsWidth = 0.1f;
     // The decider's own step: its shape (locomotion.json "step": height,
-    // apex, toe-off, ball of the foot; its timing is decided per step), and
-    // the parts' passive shares while it runs ("step.passive", unless the
-    // action gives its own).
+    // apex, toe-off, ball of the foot; its timing is decided per step).
     StepPlannerSettings stepShape;
-    PassiveShares stepPassive;
 };
 
 class BodyDecider {
@@ -267,7 +260,6 @@ public:
     int stepFoot() const;
     // Foot i's turn about the vertical on the ground (rad, character space).
     float footTurn(int i) const { return anchorYaw_[i]; }
-    float stepShare() const;
     // Foot i's step (tests, debugging) and its timing.
     const StepPlanner& step(int i) const { return steps_[i]; }
     const StepPlannerSettings& stepTiming(int i) const { return stepNow_[i]; }
@@ -364,7 +356,6 @@ private:
     math::Vec3 passUp(Plan& p, const int* chain, int count, math::Vec3 rest, const BodyDeciderSettings& s,
                       bool& pelvisTurned);
     int endRoot(int e) const;
-    float endReach(int e) const;
     // How far end e (hand L, R, foot L, R) reaches from its root: its span
     // with the middle joint at limbMinBend.
     float limbReach(int e, const BodyDeciderSettings& s) const;
@@ -376,14 +367,12 @@ private:
     // Free arms (no goal) swing to cancel the plan's turning and settle to
     // their rest in the chest's frame.
     void freeArms(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
-    void passiveHands(const bool free[2], float share, BodyQueue& out);
     // The head level in the world, facing the chest's way (desired pose).
     void levelHead(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out);
 
     // Plan editing (desired_ unless given).
     void turnPlanned(Plan& p, int j, math::Quat turn);
     void placePelvis(Plan& p, const math::Transform& t);
-    void movePelvis(Plan& p, math::Vec3 delta);
     bool refresh(Plan& p, int from = -1);
     math::Vec3 planPos(const Plan& p, int joint) const;
     math::Quat planRot(const Plan& p, int joint) const;
@@ -401,8 +390,6 @@ private:
     // reported short (`rangeMiss_`, the output plan only), never snapped.
     void clampLimb(Plan& p, int e, const int* joints, int count, math::Vec3 aim);
     math::Quat restFootLevel(int i) const;  // a foot's standing rotation on `anchorNormal_`
-    // The highest the hips may be for grounded foot i (its leg at its reach).
-    float reachableHeight(const Plan& p, int i, const BodyDeciderSettings& s, bool& valid) const;
 
     const rig::Rig* rig_ = nullptr;
     const ik::JointLimits* limits_ = nullptr;

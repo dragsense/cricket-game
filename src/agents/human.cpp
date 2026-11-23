@@ -30,8 +30,8 @@ bool Human::init(const rig::SkeletonDef& def, float height, const core::Config& 
 
 void Human::loadLocomotion(const core::Config& c) {
     // Load-time only (builds path strings): the decider's balance step
-    // (locomotion.json "step": its shape, its passive shares; its timing is
-    // the decider's own, per step).
+    // (locomotion.json "step": its shape; its timing is the decider's own,
+    // per step).
     moveSpeed_ = c.getFloat("move.speed", moveSpeed_);
     backSpeed_ = c.getFloat("move.backSpeed", backSpeed_);
     sideSpeed_ = c.getFloat("move.sideSpeed", sideSpeed_);
@@ -47,10 +47,6 @@ void Human::loadLocomotion(const core::Config& c) {
     stepSettings_.stepHeight = c.getFloat("step.stepHeight", stepSettings_.stepHeight);
     stepSettings_.peakAt = c.getFloat("step.swingPeakAt", stepSettings_.peakAt);
     toeOffPitch_ = math::radians(c.getFloat("step.toeOffPitchDeg", math::degrees(toeOffPitch_)));
-    stepPassive_.head = c.getFloat("step.passive.head", stepPassive_.head);
-    stepPassive_.hands = c.getFloat("step.passive.hands", stepPassive_.hands);
-    stepPassive_.hips = c.getFloat("step.passive.hips", stepPassive_.hips);
-    stepPassive_.chest = c.getFloat("step.passive.chest", stepPassive_.chest);
     runSettings_.enterSpeed = c.getFloat("run.enterSpeed", runSettings_.enterSpeed);
     runSettings_.exitSpeed = c.getFloat("run.exitSpeed", runSettings_.exitSpeed);
     runSettings_.swingTime = c.getFloat("run.swingTime", runSettings_.swingTime);
@@ -75,7 +71,6 @@ void Human::loadLocomotion(const core::Config& c) {
     shape.height = stepSettings_.stepHeight;
     shape.peakAt = stepSettings_.peakAt;
     shape.toeOffPitch = toeOffPitch_;
-    deciderSettings_.stepPassive = stepPassive_;
 }
 
 void Human::loadThrow(const core::Config& c) {
@@ -349,10 +344,6 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         throwSettings_.fittsWidth = muscleTiming_.fittsWidth;
         deciderSettings_.queueShare = jointsConfig_->getFloat("decider.queueShare", deciderSettings_.queueShare);
         deciderSettings_.armCancel = jointsConfig_->getFloat("decider.armCancel", deciderSettings_.armCancel);
-        deciderSettings_.passiveHead = jointsConfig_->getFloat("decider.passiveInfluence.head", deciderSettings_.passiveHead);
-        deciderSettings_.passiveHands = jointsConfig_->getFloat("decider.passiveInfluence.hands", deciderSettings_.passiveHands);
-        deciderSettings_.passiveHips = jointsConfig_->getFloat("decider.passiveInfluence.hips", deciderSettings_.passiveHips);
-        deciderSettings_.passiveChest = jointsConfig_->getFloat("decider.passiveInfluence.chest", deciderSettings_.passiveChest);
         auto dv = [&](const char* key, float value) { return jointsConfig_->getFloat(key, value); };
         deciderSettings_.pelvisTurnPerStep = dv("decider.pelvisTurnPerStep", deciderSettings_.pelvisTurnPerStep);
         deciderSettings_.pelvisList =

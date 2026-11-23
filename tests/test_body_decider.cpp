@@ -131,14 +131,10 @@ TEST_CASE("body decider: activation and support weights blend, never switch") {
     }
     CHECK(ticks == doctest::Approx(f.settings.supportBlendTime / kDt).epsilon(0.1));
     CHECK(f.queue.supportWeight[1] == doctest::Approx(1.0f));
-    const Vec3 rightFoot = f.pos(f.joints.legs[1].end);
-    const float k = f.settings.passiveHips;
-    CHECK(f.queue.hipsReference.x == doctest::Approx((1.0f - k) * rightFoot.x).epsilon(0.05));
 }
 
 TEST_CASE("body decider: the hips never exceed their speed and acceleration bounds, whatever the targets do") {
     Fixture f;
-    f.settings.passiveHips = 0.0f;  // the hips go fully over the support
     f.giveMassesAndGravity();       // a step's hips ride the body's pendulum (DCM), as in the game
     motion::TargetSet t = f.standing();
     t.balanceSteps = false;         // the landing is the test's own (no balance step re-aims it)

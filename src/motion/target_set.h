@@ -69,13 +69,6 @@ inline math::Vec3 drivenPart(const Target& t, math::Vec3 v) {
     return sum;
 }
 
-// The passive shares (0..1) the planner gives for its action: how far each
-// part without a goal goes back to its own target (decider.passiveInfluence
-// in human_joints.json). Negative: the decider's own (idle).
-struct PassiveShares {
-    float head = -1.0f, hands = -1.0f, hips = -1.0f, chest = -1.0f;
-};
-
 struct TargetSet {
     Target hand[2];  // left, right: the wrist
     Target foot[2];  // left, right: the ankle
@@ -83,7 +76,6 @@ struct TargetSet {
     Target chest;    // rotation only
     Target head;     // rotation only (gaze)
     float dt = 0.0f;        // s, this tick (the fixed physics step)
-    PassiveShares passive;  // the action's own passive shares (each negative: the decider's)
     // The decider may take balance steps (false: a foot is placed by hand,
     // the limb test; a step under way finishes).
     bool balanceSteps = true;

@@ -240,8 +240,6 @@ private:
 
     // Where each foot is planted (character space): the limb test's feet.
     motion::FootStepper stepper_;
-    // A balance step's passive shares (locomotion.json "step.passive").
-    motion::PassiveShares stepPassive_;
     Joints joints_;
     rig::Pose previous_, current_;
     std::vector<math::Mat4> models_;  // scratch, sized at build

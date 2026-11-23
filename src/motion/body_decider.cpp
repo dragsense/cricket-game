@@ -12,19 +12,10 @@ namespace motion {
 
 namespace {
 
-// A passive share: the action's own (TargetSet::passive) or, negative, the decider's.
-float passiveShare(float given, float fallback) { return std::clamp(given >= 0.0f ? given : fallback, 0.0f, 1.0f); }
 
 // --- Limb reach math (law of cosines; BIOMECHANICS 9). Pure, no allocations. ---
 
 constexpr float kReachEpsilon = 1e-4f;  // m; closer than this counts as reached
-
-// Clamps `q` per axis of its rotation vector (axis * angle, radians).
-math::Quat clampRotationVector(math::Quat q, math::Vec3 min, math::Vec3 max) {
-    const math::Vec3 c = math::clamp(math::rotationVector(q), min, max);
-    const float angle = math::length(c);
-    return angle < math::kEpsilon ? math::identityQuat() : math::fromAxisAngle(c / angle, angle);
-}
 
 // `target` moved toward `from` so it is at most `reach` away.
 math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach) {
@@ -41,13 +32,6 @@ void add(BodyQueue& out, int joint, PartMove kind, math::Vec3 direction, math::V
     assert(out.count < BodyQueue::kCapacity);
     if (out.count >= BodyQueue::kCapacity) return;
     out.orders[static_cast<size_t>(out.count++)] = {joint, kind, direction, velocity, goal, active, share};
-}
-
-// The unit axis of a turn, zero for none.
-math::Vec3 axisOf(math::Quat q) {
-    const math::Vec3 v = math::rotationVector(q);
-    const float angle = math::length(v);
-    return angle > kMinAngle ? v / angle : math::Vec3(0.0f);
 }
 
 math::Vec3 level(math::Vec3 v) { return math::Vec3(v.x, 0.0f, v.z); }
@@ -261,17 +245,6 @@ void BodyDecider::placePelvis(Plan& p, const math::Transform& t) {
     refresh(p, joints_.pelvis);
 }
 
-void BodyDecider::movePelvis(Plan& p, math::Vec3 delta) {
-    // A move without a turn shifts the pelvis and everything below it by
-    // `delta` (no skeleton pass needed: the same result).
-    const int pelvis = joints_.pelvis;
-    const int parent = rig_->parent(pelvis);
-    const math::Vec3 local =
-        parent >= 0 ? math::inverse(math::toTransform(p.models[static_cast<size_t>(parent)]).rotation) * delta : delta;
-    p.pose.locals[static_cast<size_t>(pelvis)].position += local;
-    for (int j = pelvis; j < rig_->subtreeEnd(pelvis); ++j) p.models[static_cast<size_t>(j)][3] += math::Vec4(delta, 0.0f);
-}
-
 math::Quat BodyDecider::limitTurn(math::Quat from, math::Quat to, float rate, float dt) {
     const float angle = math::angleBetween(from, to);
     const float most = std::max(rate, 0.0f) * dt;
@@ -319,21 +292,6 @@ math::Quat BodyDecider::restFootLevel(int i) const {
     return math::normalize(math::fromTo(math::kUp, anchorNormal_[i]) * math::fromAxisAngle(math::kUp, anchorYaw_[i]) * restFoot_[i]);
 }
 
-float BodyDecider::reachableHeight(const Plan& p, int i, const BodyDeciderSettings& s, bool& valid) const {
-    // The pelvis can be no higher than puts the hip at the leg's reach from
-    // where the leg reaches to (the anchor, or the ankle risen by the
-    // toe-off in the weight shift: reachFrom_; the knee keeps limbMinBend);
-    // level distance beyond that reach: no height works.
-    const math::Transform pelvis = pelvisOf(p);
-    const math::Vec3 hip = pelvis.position + pelvis.rotation * hipOffset_[i];
-    const float reach = limbReach(2 + i, s);
-    const math::Vec3 d = reachFrom_[i] - hip;
-    const float flat = d.x * d.x + d.z * d.z;
-    valid = flat < reach * reach;
-    if (!valid) return pelvis.position.y;
-    return reachFrom_[i].y + std::sqrt(reach * reach - flat) - (hip.y - pelvis.position.y);
-}
-
 // ---- the tick -----------------------------------------------------------------
 
 void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, BodyQueue& out) {
@@ -352,8 +310,7 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
 
     // The decider's own steps: each stepping foot's target over time (Start:
     // the weight shifts off it, Up: the swing, Land: pinned on its spot) in
-    // place of the one given; the parts follow by the step's passive shares
-    // unless the action gives its own.
+    // place of the one given.
     work_ = given;  // no allocation (a plain struct)
     const TargetSet& t = work_;
     bool stepping = false;
@@ -399,10 +356,6 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
             footEvent_ = true;
         }
     }
-    if (stepping) {
-        const PassiveShares& p = given.passive;
-        if (p.head < 0.0f && p.hands < 0.0f && p.hips < 0.0f && p.chest < 0.0f) work_.passive = s.stepPassive;
-    }
 
     if (s.gravity <= 0.0f && !warnedNoGravity_) {
         warnedNoGravity_ = true;
@@ -423,11 +376,6 @@ int BodyDecider::stepFoot() const {
     for (int i = 0; i < 2; ++i)
         if (steps_[i].running()) return i;
     return -1;
-}
-
-float BodyDecider::stepShare() const {
-    const int f = stepFoot() >= 0 ? stepFoot() : lastStarted_;
-    return f >= 0 ? steps_[f].share() : 0.0f;
 }
 
 void BodyDecider::timeSwings(const TargetSet& t, const BodyDeciderSettings& s) {
@@ -716,19 +664,6 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         passUp(d, chain, 4, math::rotationVector(math::normalize(delta)), s, pelvisTurned);
         solveLegs(d, t, s, out);  // the legs under the turned pelvis
     }
-    // Posture: the chest back toward upright by its passive share when no
-    // hand drives the trunk (a hand's trunk serves the hand fully).
-    if (act_[HandLW] <= 0.0f && act_[HandRW] <= 0.0f && act_[ChestW] <= 0.0f) {
-        const float k = passiveShare(t.passive.chest, s.passiveChest);
-        bool turned = false;
-        for (int j : joints_.spine)
-            if (j >= 0 && k > 0.0f) {
-                math::Quat& q = d.pose.locals[static_cast<size_t>(j)].rotation;
-                q = math::normalize(math::slerp(q, rest.locals[static_cast<size_t>(j)].rotation, k));
-                turned = true;
-            }
-        if (turned && joints_.spine[0] >= 0) refresh(d, joints_.spine[0]);
-    }
     // The chest's turn through the trunk's spring-damper (Prins 2019), shared
     // evenly by the three spine joints; a hand or chest target driving the
     // trunk serves its goal instead (the spring keeps running).
@@ -1009,7 +944,22 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
             float unused = 0.0f;
             const math::Vec3 armPole = fitPole(armShape(h, p, s), armHang(h, p), armFrame(h, p), shoulder, at, unused);
             if (ik::solveTwoBone(arm, p.models, at, armPole, 1.0f, p.pose)) {
-                const math::Vec3 beyond = beyondRange(p, arm.start, s);
+                math::Vec3 beyond = beyondRange(p, arm.start, s);
+                // Further than the arm reaches (the elbow straight, at its
+                // range): the rest is the turn, about the lower back, that
+                // brings the hand onto the line to the target; the chain
+                // shares it the same way.
+                const math::Quat chestNow = joints_.spine[2] >= 0 ? planRot(p, joints_.spine[2]) : math::identityQuat();
+                const math::Vec3 chestAt = joints_.spine[2] >= 0 ? planPos(p, joints_.spine[2]) : math::Vec3(0.0f);
+                const math::Vec3 restAt = chestAt + chestNow * restHandChest_[h];
+                const math::Vec3 wanted = math::lerp(restAt, hand.position, k);
+                if (joints_.spine[0] >= 0 && math::distance(shoulder, wanted) > reach + kReachEpsilon) {
+                    const math::Vec3 pivot = planPos(p, joints_.spine[0]);
+                    const math::Vec3 from = planPos(p, arm.end) - pivot, to = wanted - pivot;
+                    const math::Vec3 normal = math::cross(from, to);
+                    const float sine = math::length(normal);
+                    if (sine > 1e-6f) beyond += normal / sine * std::atan2(sine, math::dot(from, to));
+                }
                 armAtRest();
                 if (math::length(beyond) > kMinAngle) {
                     const int chain[5] = {joints_.clavicles[h], joints_.spine[2], joints_.spine[1], joints_.spine[0],
@@ -1444,8 +1394,6 @@ math::Quat BodyDecider::armFrame(int h, const Plan& p) const {
 
 int BodyDecider::endRoot(int e) const { return e < 2 ? joints_.arms[e].start : joints_.legs[e - 2].start; }
 
-float BodyDecider::endReach(int e) const { return e < 2 ? armLength_[e] : legLength_[e - 2]; }
-
 float BodyDecider::limbReach(int e, const BodyDeciderSettings& s) const {
     const float bend = std::clamp(s.limbMinBend, 0.0f, 1.5f);
     return e < 2 ? bentSpan(upperArmLength_[e], forearmLength_[e], bend)
@@ -1487,10 +1435,7 @@ void BodyDecider::freeArms(const TargetSet& t, const BodyDeciderSettings& s, Bod
     };
     for (int h = 0; h < 2; ++h)
         if (free[h]) place(h);
-    if (totalMass_ <= 0.0f || t.dt <= 0.0f) {
-        passiveHands(free, passiveShare(t.passive.hands, s.passiveHands), out);
-        return;
-    }
+    if (totalMass_ <= 0.0f || t.dt <= 0.0f) return;
     const math::Vec3 com = planCentreOfMass();
     float spin = 0.0f, mass[2] = {0.0f, 0.0f}, lever[2] = {0.0f, 0.0f}, inertia[2] = {0.0f, 0.0f};
     for (size_t j = 0; j < mass_.size() && j < d.models.size() && j < centre_.size(); ++j) {
@@ -1525,34 +1470,6 @@ void BodyDecider::freeArms(const TargetSet& t, const BodyDeciderSettings& s, Bod
         const float pendulum = inertia[h] > 0.0f ? std::sqrt(std::max(0.0f, s.gravity) * lever[h] / inertia[h]) : 0.0f;
         armAngle_[h] += (cancel - pendulum * armAngle_[h]) * t.dt;
         place(h);
-    }
-    passiveHands(free, passiveShare(t.passive.hands, s.passiveHands), out);
-}
-
-void BodyDecider::passiveHands(const bool free[2], float share, BodyQueue& out) {
-    // A hand without a goal still has its target (hanging at rest in the
-    // chest's frame): the swing goes on, and the hand goes the passive share
-    // of the way from where the swing has it to that target (the elbow
-    // bending back, as it hangs).
-    Plan& d = desired_;
-    const float k = share;
-    if (k <= 0.0f) return;
-    const math::Quat chest = joints_.spine[2] >= 0 ? planRot(d, joints_.spine[2]) : math::identityQuat();
-    const math::Vec3 chestPos = joints_.spine[2] >= 0 ? planPos(d, joints_.spine[2]) : math::Vec3(0.0f);
-    for (int h = 0; h < 2; ++h) {
-        const ik::TwoBoneChain& arm = joints_.arms[h];
-        if (!free[h] || arm.end < 0) continue;
-        const math::Vec3 at = planPos(d, arm.end);
-        const math::Vec3 want = at + k * (chestPos + chest * restHandChest_[h] - at);
-        if (ik::solveTwoBone(arm, d.models, want, chest * hangBend_[h], 1.0f, d.pose)) {
-            if (limits_)
-                for (int j : {arm.start, arm.mid})
-                    d.pose.locals[static_cast<size_t>(j)].rotation =
-                        ik::clampRotation(math::normalize(d.pose.locals[static_cast<size_t>(j)].rotation), limits_->limitIn(j, d.pose));
-            refresh(d, arm.start);
-            markPlanned(arm.start, out);
-            markPlanned(arm.mid, out);
-        }
     }
 }
 
