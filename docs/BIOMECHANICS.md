@@ -1427,6 +1427,81 @@ MTP joint ([Konstanz CPA 6369](https://ojs.ub.uni-konstanz.de/cpa/article/view/6
 
 ---
 
+## 15. How each joint follows the next (the body chain, added 2026-11-23)
+
+The user's design: only the hands and feet get targets; every other part moves because
+the part next to it moved, each joint within its range, the next one joining as it
+nears its range. This section collects how real joints share a movement with their
+neighbours.
+
+### 15.1 Shares grow with the range used, smoothly (never a switch at the limit)
+- **Arm → shoulder girdle (scapulohumeral rhythm).** Over the whole arm elevation the
+  ratio is about 2:1 (humerus : scapula; Inman, Saunders & Abbott 1944; 2.34:1 measured
+  in [PMC3377910](https://pmc.ncbi.nlm.nih.gov/articles/PMC3377910/)) **[P]**. It is not
+  even along the way: the scapula gives **2.5 %** of the first 30° of elevation, **21–38 %**
+  of each 15° step from 30° to 90°, and **53 %** from 90° to 120° (same source) **[P]**. It
+  turns the same way as the humerus (upward rotation with elevation).
+- **Lumbar spine → hips (lumbopelvic rhythm, 9.1):** lumbar : hip ≈ 1.9 for 0–30° of
+  bending, 0.9 for 30–60°, 0.4 for 60–90° (Esola 1996) **[P]**. The same pattern: the
+  first joint leads, the next one's share rises as the first uses its range.
+- **Arm → trunk (9.1):** the trunk joins a reach only past what the shoulder and elbow
+  can do (Levin 2001), at about 0.8–0.9 of the arm's reach (Moriyama 2022) **[P]**.
+- **Reading for us [E]:** one rule fits all three: a joint's own part of a movement is
+  all of it at first; past a share of its range (about 0.8, the scapula's 30° of a
+  ~150° elevation is the early, near-free part) the next joint takes a growing share,
+  reaching about half at the end of the first joint's range. Same direction as the
+  joint before it.
+
+### 15.2 The leg's segments move as one (planar covariation)
+- In walking and running the thigh, shank and foot elevation angles (each segment's
+  angle from the vertical, sagittal) stay on one plane: the first two principal
+  components explain **98.2 ± 1.2 %** (97.0–99.3 %) of their changes across walking modes
+  ([Ivanenko et al. 2008](https://journals.physiology.org/doi/full/10.1152/jn.01308.2007);
+  Borghese, Bianchi & Lacquaniti 1996, [PubMed 8865081](https://pubmed.ncbi.nlm.nih.gov/8865081/))
+  and **98.3–99.5 %** for backward, normal, fast walking and running
+  ([Hicheur et al. 2006](https://journals.physiology.org/doi/full/10.1152/jn.00289.2006)) **[P]**.
+  So the leg has about two degrees of freedom, not three: knowing the foot's path
+  fixes the shank and thigh.
+- **Foot and shank move together** (r > 0.95); the thigh is the independent one (r < 0.7
+  with either) **[P]** (Hicheur 2006).
+- **The thigh leads:** its motion comes **100–160 ms** before the shank's and foot's
+  (those two have nearly no lag between them) **[P]** (Hicheur 2006). Proximal first, as in
+  throwing (10.2) and jumping (6.1).
+- **Speed:** the plane turns about **20°** between 3 and 9 km/h and differs between gaits;
+  from backward walking to running the foot's angle range grows by about **20°**, the
+  shank's by about **7°**, the thigh's by about **6°** **[P]** (Ivanenko 2008; Hicheur 2006).
+  One law, its numbers by speed and gait.
+- **Broken on purpose:** stooping to grasp something on the floor while walking breaks
+  the plane (Ivanenko 2008) **[P]**: a hand target overrides the gait's leg pattern.
+
+### 15.3 Rotate first, the hips move from it
+- **Walking:** the hips do not move on their own. The standing leg rotates over the foot
+  (heel, ankle, forefoot rockers, section 12) and carries the hips forward and over it
+  as an inverted pendulum; the hips are highest at mid-stance **[T]** (Perry; 4.3).
+- **Running:** the standing leg is a spring (spring-mass model, section 13; Blickhan
+  1989, Geyer, Seyfarth & Blickhan 2006): it shortens and rotates over the foot, the
+  hips lowest at mid-stance, then thrown into the flight by the leg's push **[P/T]**.
+  The same compliant-leg model gives both gaits (Geyer 2006): walking with a stiffer,
+  longer contact, running with a softer one and a flight.
+- **So the hips' path comes from the legs:** a leg's rotation about its foot (and its
+  length, for a run) places the hips; the momentum (capture point, 3) sets how fast
+  they go over it. The pelvis turn and list come from the legs too (4.3).
+
+### Implementation notes
+- `motion/body_chain` (`chainOwnPart`): a joint's own part of a need, all of it up to
+  `decider.chainOnset` (0.8) of its range, then bending over smoothly toward the range;
+  the rest is the next joint's. To use the joint's **real** range (the one its clamp
+  uses), not a separate estimate (measured 2026-11-23: `footHike` estimated the hip's
+  abduction with the knee forward, 14–25°, while the clamp stopped the thigh at 46.9°,
+  so the pelvis never hiked).
+- Planned (the user's design, plan in PROGRESS.md): the planners give only hand and foot
+  targets; the hips come from the standing leg's rotation (15.3), the leg's segments
+  from the foot by the covariation (15.2), the trunk and girdle by the shares (15.1).
+- Gap: no measured numbers for how the thoracic spine shares an axial turn with the
+  pelvis past their ranges in a throw; the 0.8 onset for leg joints is an estimate **[E]**.
+
+---
+
 ## Gaps and follow-ups
 - These numbers were not found online and rely on standard textbook values: the exact
   Winter / Perry joint-angle curves, arm-swing shoulder ranges, and running hip and knee
