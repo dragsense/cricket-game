@@ -1088,3 +1088,16 @@ Dated log. Format: decision, reason, alternatives rejected.
   physics joint stops at it). The user: one general rule, no special fix.
 - **Note:** it did not stop the front foot's slip in the coil (that comes as the back foot
   lands, measured).
+
+## 2026-11-23: The pelvic list rises with the swing, level at heel strike
+- **Decision:** a lifted side's pelvic list fades with its foot's timed path (1 - smoothstep
+  of the swing's share) and is level when the foot lands; it stays faded until that leg
+  carries all its weight again. A foot held up without timing keeps its full list; the list
+  still comes with the weight shift before a lift.
+- **Reason:** measured in the throw's coil: the list (4 deg) and the hips' height (1.3 cm)
+  came back only after the landing, inside the 0.12 s support blend; the support spring
+  rolled the real pelvis by 150 N m, the front foot's load fell to 0 and it slid 1.3-1.5 cm.
+  Real pelvic obliquity is level again at the other foot's initial contact (Perry 2010).
+  The user: one general rule, from research.
+- **Rejected:** a rate limit on the list (a smoothing patch); the list from the centre of
+  mass's lever share (it still returns within the blend).

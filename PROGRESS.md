@@ -60,8 +60,22 @@ M6 waits.
     bit-identical. It did NOT stop the front foot's slip (predicted it would): measured, the
     slip comes as the back foot lands and takes the weight back (right 0.5 -> 1.0), the front
     foot moving 1.2 cm across, 0.6 forward, not turning; in the swing 1.9-2.5 cm, 10-15 deg.
+    The list rises with the swing (2026-11-23, decider, general; the user checked it in the game: perfect):
+    measured (ground forces from Newton on foot + toe and the ankle joint's force), at the
+    back foot's landing the front foot's load fell 300 -> 0 N in 0.05 s while its leg still
+    pulled it ~100 N, so it slid at the friction limit (0.55); the centre of mass stayed over
+    it (lever 0.40-0.45). Cause: the plan's pelvic list (4 deg) and the hips' height (1.3 cm)
+    came back only after the landing, within the support blend (0.12 s), and the support
+    spring rolled the real pelvis by 150 N m. Rule now: a lifted side's list fades with its
+    foot's path (1 - smoothstep of the swing), level at heel strike (pelvic obliquity is
+    level again at the other foot's initial contact, Perry 2010), held until that leg carries
+    all its weight; a foot held up without timing keeps its list. The height comes back with
+    it. Front foot slip 1.3-1.5 -> 0.1 cm (slots -45, 0, 35), friction ratio <= 0.2. Walk
+    (speeds 0/3/6/10): stance slide 1.62/10.38/10.65/10.65 -> 1.54/9.60/9.80/9.80 cm, spring
+    roll torque mean 67/60/66/67 -> 59/52/61/68 N m. Held-up feet bit-identical; walk, run
+    and the two side hand reaches that step changed. Tests pass.
     Open, in order (one at a time, a game check after each; P3b waits): 1 the front foot's
-    slip as the back foot lands (next: measure the ground forces on it then); 2 home again
+    slip in the swing (1.9-2.5 cm, 10-15 deg; not measured yet); 2 home again
     the back foot stays 5-6 deg turned; 3 slot 35
     near 0.55 m: the hand 2.6 cm off (the coil's hips target takes the pelvis's share from
     the reach at once: a decider line, ask first); 4 slot -60: elbow 46, the hand 34 deg

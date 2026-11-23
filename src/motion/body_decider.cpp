@@ -263,6 +263,7 @@ void BodyDecider::seed(const rig::Pose& pose) {
         anchorRot_[i] = restFoot_[i];
         grounded_[i] = true;
         support_[i] = 1.0f;
+        listLeft_[i] = 1.0f;
     }
     for (float& a : act_) a = 0.0f;
     hipsRef_ = pelvisOf(output_).position;
@@ -832,10 +833,26 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         // trunk turns back from it.
         // Eased (smoothstep of the weight's share) so it starts and stops
         // without a jerk although the weight shifts at an even rate.
+        // The lifted side rises again with its foot's path: level when the
+        // foot lands (pelvic obliquity peaks early in single support and is
+        // level again at the other foot's initial contact, Perry 2010), so
+        // the landing leg takes the weight under a level pelvis. Held after
+        // the landing until that leg carries all its weight. A foot held up
+        // without timing keeps its list.
+        for (int i = 0; i < 2; ++i) {
+            const Target& f = t.foot[i];
+            if (f.mode == TargetMode::Driven && f.swing >= 0.0f) {
+                const float u = std::clamp(f.swing, 0.0f, 1.0f);
+                listLeft_[i] = std::min(listLeft_[i], 1.0f - u * u * (3.0f - 2.0f * u));
+            } else if (support_[i] >= 1.0f) {
+                listLeft_[i] = 1.0f;
+            }
+        }
         const float load = support_[0] + support_[1];
         const float x = std::clamp(support_[0] - support_[1], -1.0f, 1.0f), ax = std::abs(x);
+        const float left = listLeft_[x >= 0.0f ? 1 : 0];  // the side that drops: the one with less weight
         listAngle_ = load > 1e-3f && joints_.legs[0].start >= 0 && joints_.legs[1].start >= 0
-                         ? s.pelvisList * std::copysign(ax * ax * (3.0f - 2.0f * ax), x)  // +: the left side up
+                         ? s.pelvisList * left * std::copysign(ax * ax * (3.0f - 2.0f * ax), x)  // +: the left side up
                          : 0.0f;
         listAxis_ = math::fromAxisAngle(math::kUp, pelvisYaw) * math::kForward;
     }

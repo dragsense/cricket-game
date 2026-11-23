@@ -583,6 +583,10 @@ private:
     // The pelvic list this decide (rad about the pelvis's forward, +: the
     // left side up) and that forward: the trunk turns back from it.
     float listAngle_ = 0.0f;
+    // Per side: how much of its list is left while its foot is on a timed
+    // swing (1 - smoothstep of the swing's share), held after it lands until
+    // its leg carries all its weight again.
+    float listLeft_[2] = {1.0f, 1.0f};
     math::Vec3 listAxis_{0.0f, 0.0f, 1.0f};
     // The list the output pelvis carries and its pivot (pelvis frame: the
     // weighted hips), taken off before its bounds each tick and put back on.
