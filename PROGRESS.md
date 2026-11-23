@@ -160,6 +160,17 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
   trailing hip asks 30.5 (walk) / 33 deg (run) of its 30 deg extension at toe-off, so the
   pelvis tilts forward there (at most 2.5 / 4.4 deg a tick); walk stance slide 3.3 -> 4.1
   and 4.9 -> 4.4 cm. Tests pass.
+- [ ] C3 The hand's chain, the foot's rule (built 2026-11-23, committed, WAITING for the game
+  check): solveArms measures the upper arm with its fitPole elbow (ik::limitAngles); what
+  it asks past chainOnset of its range on each axis the clavicle, chest, spine_02,
+  spine_01 and pelvis take in turn, the same way about the same axis, each within its
+  own limits (BodyDecider::passUp; the foot's chainPelvis rule). turnTrunk and its
+  trigger are gone. The old reach steps are gone too (the user): planReach,
+  shortStanding, reachStep, reach_ and their helpers. Limb test, hand (final miss): back
+  0.1 -> 0.0, across 17.5 -> 18.5 (no step now), up 0.2 -> 4.0 (the plan hand jumps 5 m/s
+  once, open), down 0.1 -> 0.6 cm. Foot cases and walk bit-identical; tests pass.
+  Tried and dropped on the way: the trunk turn by turnToReach (flickers), the IK
+  (CCD) direction and a twist-only rule (the user: the foot's rule, same axis).
 - [ ] C3 The hand's chain: arm -> clavicle (the scapulohumeral shares, 15.1) -> chest,
   spine_02, spine_01 -> pelvis -> the hips -> a step, by the same rule; replaces
   turnTrunk, trunkOrders, planTrunk (hands), armMiss and the rounds.
