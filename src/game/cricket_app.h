@@ -86,7 +86,7 @@ private:
     bool poseActive_ = false;      // poseTarget_ / poseTurn_ belong to the chosen target
     bool poseTurned_ = false;      // the chosen target was turned
     bool freeView_ = false;        // V: the camera moves freely, the player keeps their heading
-    bool poseSent_ = false;        // the body goes to the chosen target as it is now (C)
+    bool poseSent_ = false;        // the body goes to the chosen target as it is now (each press, or C)
     math::Vec3 poseTarget_{0.0f};  // world
     math::Quat poseTurn_ = math::identityQuat();  // world
     bool throwMode_ = false;       // T

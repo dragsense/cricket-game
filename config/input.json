@@ -37,8 +37,8 @@
     // away/near; Ctrl+Shift Left/Right roll it about the camera's view. The
     // head only turns (its arrows turn it without Ctrl); the chest moves by
     // the trunk bending, within its joints' ranges. It
-    // stays where it is left. The body does not follow it until C is pressed:
-    // then it goes to the target as it is set. R resets the pose.
+    // stays where it is left. The body goes to it at each press (C sends it
+    // again as it is). R resets the pose.
     "ResetPose": ["R"],
     "PoseLimb": ["F"],
     "PoseGo": ["C"],

@@ -149,7 +149,7 @@ range, the next joint joining smoothly as it nears that range (`motion/body_chai
 planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range cut, the
 8 rounds). One piece at a time, the user's game check after each.
 
-- [ ] C1 The leg's chain on its real range (built 2026-11-23, uncommitted, WAITING for the
+- [x] C1 The leg's chain on its real range (committed 7a7ba73; the user checked it in the game: perfect; was the
   game check): `ik::limitAngles` reads a joint's angles as its clamp counts them; a lifted
   thigh past `chainOnset` of its range on any axis (twist, flexion/extension, abduction)
   hands the rest to the pelvis, turned the same way about the same axis, about the

@@ -264,8 +264,8 @@ void CricketApp::updatePose(float /*seconds: the target jumps per press, not per
         poseActive_ = false;
     }
     if (input_.uiWantsKeyboard) return;
-    // C: the body goes to the target as it is set now; until then the arrows
-    // only set it.
+    // C: the body goes to the target as it is set now (each arrow press
+    // sends it too).
     if (poseActive_ && actions_.pressed(input_, core::Action::PoseGo)) {
         fielder.setPoseGoal(kPoseOrder[poseLimb_], poseTarget_, poseTurn_, poseTurned_);
         poseSent_ = true;
@@ -314,7 +314,9 @@ void CricketApp::updatePose(float /*seconds: the target jumps per press, not per
         // the part reaches as near as the body allows.
         poseTarget_.y = std::max(poseTarget_.y, 0.0f);
     }
-    poseSent_ = false;
+    // Each press acts at once: the body goes to the target as it is now.
+    fielder.setPoseGoal(goal, poseTarget_, poseTurn_, poseTurned_);
+    poseSent_ = true;
 }
 
 void CricketApp::fixedUpdate(double dt) {
