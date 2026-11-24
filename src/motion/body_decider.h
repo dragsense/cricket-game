@@ -99,6 +99,11 @@ struct BodyQueue {
     // the next decide) and which joints the decider planned (non-zero).
     const std::vector<math::Mat4>* plan = nullptr;
     std::array<uint8_t, kMaxJoints> planned{};
+    // Which joints work for a target this tick (non-zero): a driven limb's,
+    // the chain links that turn for it; and which carry the body's weight
+    // (a grounded leg's). The muscles' activity follows (HumanBody).
+    std::array<uint8_t, kMaxJoints> active{};
+    std::array<uint8_t, kMaxJoints> holding{};
     // What the decider decided this tick, for the planner and debug drawing.
     float supportWeight[2] = {1.0f, 1.0f};  // left, right foot
     math::Vec3 hipsReference{0.0f};         // where support puts the hips (character space)
@@ -277,6 +282,7 @@ private:
     math::Quat planRot(const Plan& p, int joint) const;
     math::Transform pelvisOf(const Plan& p) const;
     void markPlanned(int joint, BodyQueue& out) const;
+    static void mark(int joint, std::array<uint8_t, BodyQueue::kMaxJoints>& set);
     // A local rotation moved from `from` toward `to` by at most `rate` x dt.
     static math::Quat limitTurn(math::Quat from, math::Quat to, float rate, float dt);
     void limitJoint(int j, float rate, float dt);
@@ -339,6 +345,11 @@ private:
     // a new B is a new target, every link's way starts again (newWay_).
     math::Vec3 chainAim_[2]{};
     bool newWay_ = false;
+    // Each free arm's pose (upper arm, forearm locals) as it was let go: the
+    // desired pose stands there, a foot's chain turning it from there each
+    // tick (solveLegs); armHeld_: its hand was driven last decide.
+    math::Quat freeArm_[2][2] = {{math::identityQuat(), math::identityQuat()}, {math::identityQuat(), math::identityQuat()}};
+    bool armHeld_[2] = {false, false};
     // The leg whose thigh the hand's chain turned this tick (-1: none): its
     // thigh turned on its knee toward the target, the hips on it; its shin and
     // foot are not the decider's (physics), so no reach to its anchor.

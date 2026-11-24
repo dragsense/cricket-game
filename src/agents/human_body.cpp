@@ -121,6 +121,9 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             r.motor.damping = muscles.damping;
             r.motor.maxTorque = strength;  // 0: no muscle (the joint hangs free)
             p.muscle = strength > 0.0f;
+            p.idle = std::clamp(valueOf(muscles.idle, bone.name), 0.0f, 1.0f);
+            p.posture = std::find(muscles.posture.begin(), muscles.posture.end(), baseName(bone.name)) !=
+                        muscles.posture.end();
             // Two muscles about one axis: which axis of the joint's frame it
             // is (X, Y, Z) and which way is +.
             const std::string base = baseName(bone.name);
@@ -192,6 +195,8 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
     beyondMass_.assign(parts_.size(), 0.0f);
     beyondMoment_.assign(parts_.size(), math::Vec3(0.0f));
     hold_.assign(parts_.size(), math::Vec3(0.0f));
+    hops_.assign(parts_.size(), 0);
+    nearShare_ = muscles.nearShare;
     ground_.assign(parts_.size(), math::Vec3(0.0f));
     LOG_INFO("human body: Jolt ragdoll, {} parts, {:.1f} kg", parts_.size(), totalMass_);
     return true;
@@ -294,6 +299,36 @@ void HumanBody::holdWeight(physics::PhysicsWorld& world, const StanceFeet& feet)
         }
     }
     world.setRagdollHold(ragdoll_, hold_.data(), ground_.data(), static_cast<int>(hold_.size()));
+}
+
+void HumanBody::setActivity(physics::PhysicsWorld& world, const uint8_t* active, const uint8_t* holding,
+                            int count) const {
+    if (parts_.empty() || !active || !holding) return;
+    constexpr int kFar = 1 << 20;
+    auto in = [&](const uint8_t* set, int joint) { return joint >= 0 && joint < count && set[joint] != 0; };
+    for (size_t i = 0; i < parts_.size(); ++i) hops_[i] = in(active, parts_[i].joint) ? 0 : kFar;
+    // Joints apart along the body (parts join their parents): a few sweeps
+    // both ways reach every part the shares count.
+    const int sweeps = static_cast<int>(nearShare_.size()) + 1;
+    for (int k = 0; k < sweeps; ++k)
+        for (size_t i = 0; i < parts_.size(); ++i) {
+            const int parent = parts_[i].parent;
+            if (parent < 0) continue;
+            int& mine = hops_[i];
+            int& theirs = hops_[static_cast<size_t>(parent)];
+            mine = std::min(mine, theirs + 1);
+            theirs = std::min(theirs, mine + 1);
+        }
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        const Part& p = parts_[i];
+        if (p.parent < 0) continue;
+        float share = 1.0f;
+        if (hops_[i] > 0 && !in(holding, p.joint)) {
+            const size_t near = static_cast<size_t>(std::min(hops_[i], kFar) - 1);
+            share = std::min(p.idle + (near < nearShare_.size() ? nearShare_[near] : 0.0f), 1.0f);
+        }
+        world.setRagdollPartStrength(ragdoll_, static_cast<int>(i), share, p.posture ? 1.0f : share);
+    }
 }
 
 ik::JointLimit HumanBody::limitNow(const physics::PhysicsWorld& world, int part) const {

@@ -282,6 +282,17 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             if (auto t = m->find("maxTorque"); t != m->end() && t->is_object())
                 for (auto it = t->begin(); it != t->end(); ++it)
                     if (it->is_number()) muscles.maxTorque.emplace_back(it.key(), it->get<float>());
+        if (auto m = root.find("muscles"); m != root.end()) {
+            if (auto t = m->find("idle"); t != m->end() && t->is_object())
+                for (auto it = t->begin(); it != t->end(); ++it)
+                    if (it->is_number()) muscles.idle.emplace_back(it.key(), it->get<float>());
+            if (auto t = m->find("nearShare"); t != m->end() && t->is_array())
+                for (const nlohmann::json& v : *t)
+                    if (v.is_number()) muscles.nearShare.push_back(v.get<float>());
+            if (auto t = m->find("posture"); t != m->end() && t->is_array())
+                for (const nlohmann::json& v : *t)
+                    if (v.is_string()) muscles.posture.push_back(v.get<std::string>());
+        }
         if (auto m = root.find("muscles"); m != root.end())
             if (auto t = m->find("directional"); t != m->end() && t->is_object())
                 for (auto it = t->begin(); it != t->end(); ++it) {
@@ -666,6 +677,9 @@ void Human::physicsTick(const std::vector<math::Mat4>& target, float dt) {
     stance.halfLength = deciderSettings_.footHalfLength;
     stance.ahead = deciderSettings_.footCentreAhead;
     stance.load = run_.on() ? run_.load() : 1.0f;
+    // The muscles' activity: working and weight-carrying joints at their
+    // strength, the rest at ease plus their share near the working ones.
+    humanBody_.setActivity(world, queue_.active.data(), queue_.holding.data(), motion::BodyQueue::kMaxJoints);
     humanBody_.holdWeight(world, stance);
     humanBody_.drivePose(world, target, root_, joints_.head, dt);
     // The capsule is as tall as the pose's pelvis is high (crouch, stride).

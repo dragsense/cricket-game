@@ -57,6 +57,15 @@ struct MuscleSettings {
         float plus = 0.0f, minus = 0.0f;
     };
     std::vector<Directional> directional;
+    // Each muscle's activity standing at ease, a share of its strength (by
+    // bone name without its side; not listed: 0), and the extra share a muscle
+    // next to a working one gets, by how many joints away (1, 2, ...).
+    std::vector<std::pair<std::string, float>> idle;
+    std::vector<float> nearShare;
+    // Postural muscles (by bone name without its side): at ease they still
+    // carry their part's weight (the whole gravity hold); the others' hold
+    // eases with them (a free arm hangs).
+    std::vector<std::string> posture;
 };
 
 // How fast a muscle closes its target's gap: Fitts' law movement time
@@ -91,6 +100,8 @@ public:
         bool hinge = false;                // turns about frameX only
         math::Vec3 frameX{1, 0, 0}, frameY{0, 1, 0}, frameZ{0, 0, 1};  // the joint's axes in the bone frame (X twist)
         bool muscle = false;               // its motor has strength
+        float idle = 0.0f;                 // its activity standing at ease (share of its strength)
+        bool posture = false;              // at ease it still carries its part's weight
         int coupledPart = -1;              // its range follows this part's joint angle (-1: fixed range)
     };
     const std::vector<Part>& parts() const { return parts_; }
@@ -98,6 +109,15 @@ public:
     // and that mass's centre in the bone's frame. Load time.
     void jointMasses(int numJoints, std::vector<float>& mass, std::vector<math::Vec3>& centre) const;
     float totalMass() const { return totalMass_; }
+
+    // The muscles' activity this tick (the user's rule, 2026-11-25), one rule
+    // for every muscle: a joint working for a target (`active`, per rig joint)
+    // or carrying the body (`holding`) at its whole strength; every other one
+    // at its idle activity plus its nearShare by how many joints it is from
+    // the nearest working one (none past the list). Its gravity hold eases
+    // with it (gravity takes its part), a postural muscle's stays whole (it
+    // carries its part at ease). No allocations.
+    void setActivity(physics::PhysicsWorld& world, const uint8_t* active, const uint8_t* holding, int count) const;
 
     // Every muscle carries the weight of the parts beyond it (away from the
     // pelvis), as real muscles hold posture: a torque on the part and the
@@ -164,6 +184,8 @@ private:
     mutable std::vector<math::Vec3> beyondMoment_;  // scratch per part: their mass x centre of mass (world)
     mutable std::vector<math::Vec3> hold_;          // scratch per part: the torque its weight needs (world)
     mutable std::vector<math::Vec3> ground_;        // scratch per part: the share of it the ground gives the part (world)
+    mutable std::vector<int> hops_;                 // scratch per part: joints from the nearest working one
+    std::vector<float> nearShare_;                  // MuscleSettings::nearShare
     // The drive's lead: per part D / K (s) and the target last tick (before
     // its lead); none yet after a reset.
     std::vector<float> lead_;

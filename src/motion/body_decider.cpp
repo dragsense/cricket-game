@@ -140,6 +140,13 @@ void BodyDecider::seed(const rig::Pose& pose) {
     hipsRef_ = pelvisOf(output_).position;
     hipsRefVel_ = hipsVel_ = math::Vec3(0.0f);
     anchorYaw_[0] = anchorYaw_[1] = stanceYaw_ = 0.0f;
+    for (int h = 0; h < 2; ++h) {
+        const ik::TwoBoneChain& arm = joints_.arms[h];
+        if (arm.start < 0) continue;
+        freeArm_[h][0] = pose.locals[static_cast<size_t>(arm.start)].rotation;
+        freeArm_[h][1] = pose.locals[static_cast<size_t>(arm.mid)].rotation;
+        armHeld_[h] = false;
+    }
     for (float& c : chainTravel_) c = 0.0f;
     armFree_[0] = armFree_[1] = true;
     seeded_ = true;
@@ -185,6 +192,10 @@ math::Quat BodyDecider::planRot(const Plan& p, int joint) const {
 
 math::Transform BodyDecider::pelvisOf(const Plan& p) const {
     return math::toTransform(p.models[static_cast<size_t>(joints_.pelvis)]);
+}
+
+void BodyDecider::mark(int joint, std::array<uint8_t, BodyQueue::kMaxJoints>& set) {
+    if (joint >= 0 && joint < BodyQueue::kMaxJoints) set[static_cast<size_t>(joint)] = 1;
 }
 
 void BodyDecider::markPlanned(int joint, BodyQueue& out) const {
@@ -262,6 +273,8 @@ void BodyDecider::decide(const TargetSet& given, const BodyDeciderSettings& s, B
     out.count = 0;
     out.plan = nullptr;
     out.planned.fill(0);
+    out.active.fill(0);
+    out.holding.fill(0);
     out.heightClamped = false;
     out.landed[0] = out.landed[1] = false;
     for (ReachReport& r : out.reach) r = {};
@@ -380,6 +393,21 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
             d.pose.locals[static_cast<size_t>(j)].rotation = rest.locals[static_cast<size_t>(j)].rotation;
             markPlanned(j, out);
         }
+    // A free arm stands as it was let go (a foot's chain turns it from there).
+    for (int h = 0; h < 2; ++h) {
+        const ik::TwoBoneChain& arm = joints_.arms[h];
+        if (arm.start < 0) continue;
+        const bool driven = t.hand[h].mode == TargetMode::Driven;
+        if (!driven) {
+            if (armHeld_[h]) {
+                freeArm_[h][0] = output_.pose.locals[static_cast<size_t>(arm.start)].rotation;
+                freeArm_[h][1] = output_.pose.locals[static_cast<size_t>(arm.mid)].rotation;
+            }
+            d.pose.locals[static_cast<size_t>(arm.start)].rotation = freeArm_[h][0];
+            d.pose.locals[static_cast<size_t>(arm.mid)].rotation = freeArm_[h][1];
+        }
+        armHeld_[h] = driven;
+    }
     refresh(d);
     stanceYaw_ = stanceNow();
     float pelvisYaw = stanceYaw_;
@@ -422,6 +450,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
         const int chain[4] = {joints_.spine[2], joints_.spine[1], joints_.spine[0], joints_.pelvis};
         bool pelvisTurned = false;
         passUp(d, chain, 4, math::rotationVector(math::normalize(delta)), s, pelvisTurned);
+        for (int j : chain) mark(j, out.active);
         solveLegs(d, t, s, out);  // the legs under the turned pelvis
     }
     levelHead(t, s, out);
@@ -566,6 +595,11 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
                 clampLimb(p, 2 + i, chain, 2, target);
             }
         }
+        if (!isOutput)
+            for (int j : {leg.start, leg.mid, leg.end}) {
+                if (grounded_[i] && support_[i] > 0.0f) mark(j, out.holding);
+                if (driven) mark(j, out.active);
+            }
         // The foot: flat on its ground, or as given, within the ankle's range.
         math::Quat footLocal = math::normalize(math::inverse(planRot(p, leg.mid)) * footRot);
         if (limits_) footLocal = ik::clampRotation(footLocal, limits_->limitIn(leg.end, p.pose));
@@ -573,15 +607,30 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
         refresh(p, leg.end);
         for (int j : {leg.start, leg.mid, leg.end}) markPlanned(j, out);
     }
-    // The chain (passUp), once a tick: what a lifted thigh asks past its
-    // range the pelvis, spine_01, spine_02 and the chest take in turn; the
+    // The foot's chain (the user, 2026-11-25), once a tick: what a lifted
+    // thigh asks past its range (its IK's turn, past its own limit) the
+    // pelvis, spine_01, spine_02, the chest and the crossed arm (clavicle,
+    // upper arm, the elbow) each take, the whole of it up to its own limits
+    // (passUp per link); the crossed arm only while its hand is free. The
     // legs once more under the turned pelvis.
     if (!isOutput && !legChained_) {
         legChained_ = true;
-        const int chain[4] = {joints_.pelvis, joints_.spine[0], joints_.spine[1], joints_.spine[2]};
         bool turned = false;
-        for (int i = 0; i < 2; ++i)
-            if (math::length(legBeyond[i]) > kMinAngle) passUp(p, chain, 4, legBeyond[i], s, turned);
+        for (int i = 0; i < 2; ++i) {
+            if (math::length(legBeyond[i]) <= kMinAngle) continue;
+            const int o = 1 - i;  // left foot, right arm
+            const ik::TwoBoneChain& arm = joints_.arms[o];
+            const bool armFree = t.hand[o].mode != TargetMode::Driven;
+            const int chain[7] = {joints_.pelvis, joints_.spine[0], joints_.spine[1], joints_.spine[2],
+                                  armFree ? joints_.clavicles[o] : -1, armFree ? arm.start : -1,
+                                  armFree ? arm.mid : -1};
+            for (const int& link : chain) {
+                passUp(p, &link, 1, legBeyond[i], s, turned);
+                mark(link, out.active);
+            }
+            if (armFree)
+                for (int j : {arm.start, arm.mid, arm.end}) markPlanned(j, out);
+        }
         if (turned) solveLegs(p, t, s, out);
     }
 }
@@ -626,6 +675,8 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
             for (int j : {arm.start, arm.mid, arm.end}) markPlanned(j, out);
             continue;
         }
+        if (!isOutput)
+            for (int j : {arm.start, arm.mid, arm.end}) mark(j, out.active);
         const Target& hand = given(t, h);
         // Toward the target by its blended weight.
         const float k = act_[h] * std::clamp(hand.weightPosition, 0.0f, 1.0f);
@@ -760,6 +811,8 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
                 }
             }
             missAt(depth, share, pelvisTurned);
+            if (share > 0.0f)
+                for (int c = 0; c < depth; ++c) mark(chain[c], out.active);
             armAtRest();
         }
         const math::Vec3 from = planPos(p, arm.start);
@@ -872,8 +925,12 @@ math::Vec3 BodyDecider::passUp(Plan& p, const int* chain, int count, math::Vec3 
                 legLink = f;
         const float sign = legLink >= 0 ? -1.0f : 1.0f;
         if (legLink >= 0 && act_[HipsW] >= 1.0f) break;
+        // The legs that hold the hips: on the ground and not turning with them
+        // (not the chain's: heldLeg_, this link's). None: the hips' range
+        // from standing (pelvisMin / pelvisMax).
         bool legsHold = false;
-        for (int f = 0; f < 2; ++f) legsHold = legsHold || (grounded_[f] && joints_.legs[f].start >= 0);
+        for (int f = 0; f < 2; ++f)
+            legsHold = legsHold || (grounded_[f] && joints_.legs[f].start >= 0 && f != heldLeg_ && f != legLink);
         // The joint's angles now and its range, on its range axes (world).
         math::Vec3 axis[3], now, lo, hi;
         if (j == joints_.pelvis) {
@@ -1131,6 +1188,7 @@ void BodyDecider::levelHead(const TargetSet& t, const BodyDeciderSettings& s, Bo
     bool pelvisTurned = false;
     passUp(d, chain, 6, math::rotationVector(math::normalize(want * math::inverse(planRot(d, joints_.head)))), s,
            pelvisTurned);
+    for (int j : chain) mark(j, out.active);
     if (pelvisTurned) solveLegs(d, t, s, out);
     markPlanned(joints_.head, out);
 }

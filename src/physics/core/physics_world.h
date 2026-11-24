@@ -329,6 +329,13 @@ public:
     // strength (below 1: hits, falls, get-up; above 1, up to 10: more of the
     // muscles recruited for a faster pace). No allocations.
     void setRagdollStrength(RagdollId id, float scale);
+    // One part's muscles (the joint moving `part`, as built), on top of the
+    // body's strength (setRagdollStrength): its pose motors at `scale` of what
+    // the gravity hold leaves them, the hold at `holdScale` of its torque
+    // (within the muscle): a relaxed limb hangs under gravity, a postural
+    // muscle at ease still carries its part. From the next driveRagdollToPose.
+    // No allocations.
+    void setRagdollPartStrength(RagdollId id, int part, float scale, float holdScale);
     // The joint moving part `part` (as built): its rotation ranges (rad,
     // about its frame's X, Y, Z as RagdollPart), changed while it runs (a
     // range set by another joint's angle). No allocations.

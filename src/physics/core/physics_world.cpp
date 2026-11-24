@@ -214,6 +214,8 @@ struct PhysicsWorld::Impl {
         std::vector<math::Vec3> hold;    // per part: setRagdollHold's torque (world)
         std::vector<math::Vec3> ground;  // per part: its share the ground gives (world; on the parent only)
         float scale = 1.0f;  // setRagdollStrength
+        std::vector<float> partScale;  // per part: setRagdollPartStrength's motor share
+        std::vector<float> partHold;   // per part: setRagdollPartStrength's hold share
     };
     std::vector<RagdollSlot> ragdolls;
 
@@ -1011,6 +1013,8 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
     r.hold.assign(parts.size(), math::Vec3(0.0f));
     r.ground.assign(parts.size(), math::Vec3(0.0f));
     r.target.assign(parts.size(), JPH::Quat::sIdentity());
+    r.partScale.assign(parts.size(), 1.0f);
+    r.partHold.assign(parts.size(), 1.0f);
     r.jointOf.assign(parts.size(), -1);
     for (size_t i = 0; i < parts.size(); ++i)
         if (const RagdollPart& p = parts[i]; p.parent >= 0) {
@@ -1048,13 +1052,13 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
 namespace {
 
 // One joint's muscles this tick. The gravity hold (`hold`, world: the torque
-// the part needs about its joint) and the pose motors share each axis's
-// strength (base, or the directional pair on its axis; at the body's
-// strength `k`), axis by axis in the joint's frame on the part: the hold
-// stays within it and the motor gets what is left (lo - h, hi - h), so the
-// two never give more than the muscle.
+// the part needs about its joint; `kHold` of it) and the pose motors share
+// each axis's strength (base, or the directional pair on its axis; at the
+// body's strength `k`), axis by axis in the joint's frame on the part: the
+// hold stays within it and the motor gets `kMotor` of what is left
+// ((lo - h), (hi - h)), so the two never give more than the muscle.
 void applyMuscles(JPH::SixDOFConstraint& c, float base, int axis, float plus, float minus, math::Vec3 hold,
-                  math::Vec3 ground, float k) {
+                  math::Vec3 ground, float k, float kMotor, float kHold) {
     JPH::Body* b1 = c.GetBody1();
     JPH::Body* b2 = c.GetBody2();
     const JPH::Quat toWorld = b2->GetRotation() * c.GetConstraintToBody2Matrix().GetQuaternion();
@@ -1069,8 +1073,8 @@ void applyMuscles(JPH::SixDOFConstraint& c, float base, int axis, float plus, fl
     }
     // The whole hold within the muscle's strength; the ground's share of it
     // the part does not get (the ground pushes it there itself).
-    JPH::Vec3 h = toWorld.Conjugated() * toJolt((hold + ground) * k);
-    JPH::Vec3 gnd = toWorld.Conjugated() * toJolt(ground * k);
+    JPH::Vec3 h = toWorld.Conjugated() * toJolt((hold + ground) * (k * kHold));
+    JPH::Vec3 gnd = toWorld.Conjugated() * toJolt(ground * (k * kHold));
     for (int a = 0; a < 3; ++a) {
         h.SetComponent(static_cast<JPH::uint>(a), std::clamp(h[a], lo[a], hi[a]));
         gnd.SetComponent(static_cast<JPH::uint>(a), std::clamp(gnd[a], lo[a], hi[a]));
@@ -1081,7 +1085,8 @@ void applyMuscles(JPH::SixDOFConstraint& c, float base, int axis, float plus, fl
     if (!onPart.IsNearZero()) b2->AddTorque(onPart);
     using A = JPH::SixDOFConstraintSettings::EAxis;
     for (int a = 0; a < 3; ++a)
-        c.GetMotorSettings(static_cast<A>(A::RotationX + a)).SetTorqueLimits(lo[a] - h[a], hi[a] - h[a]);
+        c.GetMotorSettings(static_cast<A>(A::RotationX + a))
+            .SetTorqueLimits((lo[a] - h[a]) * kMotor, (hi[a] - h[a]) * kMotor);
 }
 
 } // namespace
@@ -1094,7 +1099,8 @@ void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations,
         const size_t part = static_cast<size_t>(j.part);
         r.target[part] = toJolt(math::normalize(rotations[part]));
         j.constraint->SetTargetOrientationBS(r.target[part]);
-        applyMuscles(*j.constraint, j.base, j.axis, j.plus, j.minus, r.hold[part], r.ground[part], r.scale);
+        applyMuscles(*j.constraint, j.base, j.axis, j.plus, j.minus, r.hold[part], r.ground[part], r.scale,
+                     r.partScale[part], r.partHold[part]);
     }
 }
 
@@ -1175,6 +1181,14 @@ void PhysicsWorld::setRagdollStrength(RagdollId id, float scale) {
                 .SetTorqueLimits(-(directional ? j.minus : j.base) * k, (directional ? j.plus : j.base) * k);
         }
     }
+}
+
+void PhysicsWorld::setRagdollPartStrength(RagdollId id, int part, float scale, float holdScale) {
+    if (!impl_ || id >= impl_->ragdolls.size()) return;
+    Impl::RagdollSlot& r = impl_->ragdolls[id];
+    if (part < 0 || static_cast<size_t>(part) >= r.partScale.size()) return;
+    r.partScale[static_cast<size_t>(part)] = std::clamp(scale, 0.0f, 1.0f);
+    r.partHold[static_cast<size_t>(part)] = std::clamp(holdScale, 0.0f, 1.0f);
 }
 
 JointId PhysicsWorld::createSupport(BodyId a, BodyId b, const MotorDesc& linear, const MotorDesc& angular,

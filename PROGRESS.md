@@ -201,6 +201,53 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
   the other foot never turns. Tests pass, no warnings. Next (the user): the foot case the
   same way, its chain up to the opposite arm past the elbow, with its own check and
   calculation; then the body's parts colliding with each other.
+- [ ] C10 The muscles' activity (the user's rule, 2026-11-25; built, NOT committed):
+  replaces C8's relaxed tone. The decider reports which joints work for a target
+  (BodyQueue::active: a driven limb's, the chain links used) and which carry the body
+  (holding: a grounded leg's); HumanBody::setActivity puts working and holding joints at
+  their whole strength, every other muscle at its idle share (muscles.idle, quiet standing
+  [E]) plus nearShare 10 / 7 / 5 % by joints from the nearest working one. Tests pass, the
+  foot's chain and seven hand cases as before, but "hand L across low" now misses 104 cm
+  (was 0.6): the output's chain stalls after spine_01 (spine_02 .. arm never start). Likely
+  (not proven): the weaker at-ease trunk lets the real body drift, the root follows it, the
+  hand's B in character space moves past kReachEpsilon every tick, so every link's way
+  restarts (newWay_) each tick. DISPROVED: the body neither fell nor drifted (root
+  0.9 cm). Then (the user's choice (a)): postural muscles (muscles.posture: spine_01,
+  spine_02, chest, head, clavicle) carry their part's whole weight at ease, only their
+  pose pull eases (PhysicsWorld::setRagdollPartStrength scale + holdScale; the motor gets
+  its share of what the hold leaves); the arms' hold eases with them (they hang). The
+  foot's chain passing only the rest on was tried (side lift: arm 0; high kick upper arm
+  31, elbow 0) and REVERTED on the user's word: each link takes the whole turn again.
+  Measured (with the rest-passing chain): all eight hand
+  cases reach again (across low 104 -> 0.6 cm), the real head within 4 cm of the plan's
+  (no slump), the free right hand hangs up to 11.6 cm below the plan's; foot to the side
+  now turns only the pelvis (arm 0), high kick upper arm 89 -> 31 deg, elbow 80 -> 0.
+  Tests pass, no warnings. WAITING for the game check.
+- [ ] C9 The hips' range fix and the foot's chain (the user, 2026-11-25; built, NOT
+  committed, WAITING for the game check). The hips' range: only the legs that hold them
+  count (on the ground, not the chain's: heldLeg_ / this link's); none: pelvisMin /
+  pelvisMax (the sudden 90 / 180 deg turns: the chained leg was skipped and the other foot
+  in the air left the hips unbounded). The foot's chain: what a lifted thigh asks past its
+  range (its IK's turn past its own limit, the user's choice) the pelvis, spine_01,
+  spine_02, the chest and the crossed arm (clavicle, upper arm, elbow; only while that
+  hand is free) each take, the whole of it up to their own limits; a free arm's desired
+  pose stands as it was let go (freeArm_), the chain turning it from there; the arm's
+  joints count as planned then (their muscles' strength, C8). Measured (`measure: the
+  foot's chain`, plan, deg of each joint's own turn): knee high and behind high stay
+  inside the thigh's range (nothing above moves, as before); far out to the side pelvis
+  19.6, spine_01 0 -> 14.8, spine_02 0 -> 10, chest 0 -> 8, clavicle_r 5, upper_arm_r
+  19.6, elbow 0; high kick: pelvis 40, spines as before, clavicle_r 25, upper_arm_r 89,
+  elbow 80, the foot still 57.9 cm short (as before, open). Hand chain unchanged; tests
+  pass, no warnings. Walk / run not measured (a trailing hip a little past its range at
+  toe-off now also turns the trunk and the crossed arm).
+- [ ] C8 Muscles without a plan relax (the user, 2026-11-25; built, NOT committed, WAITING
+  for the game check): one rule for every muscle, no per-muscle code: a joint the decider
+  planned this tick (BodyQueue::planned) keeps its muscles' strength, one it has no plan
+  for is at `muscles.relaxedTone` (0.02 [E]) of its strength and its gravity hold, so
+  gravity takes it (a free arm hangs; the toes too, never planned). Glue:
+  PhysicsWorld::setRagdollPartStrength (per part, on top of setRagdollStrength), set each
+  physics tick in Human::physicsTick. Tests pass, no warnings; the hanging not measured in
+  the physics yet (the chain measure is the plan's, unchanged).
 - [ ] C6 The hand's chain in time, from the hips (the user, 2026-11-24; built, NOT committed,
   WAITING for the game check): the calculation is one formula (2026-11-24, solveArms):
   the arm's free room first (the arm alone within its range and length; inside it, no

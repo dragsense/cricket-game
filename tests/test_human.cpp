@@ -221,6 +221,7 @@ void chainTiming(math::Vec3 local, const char* name, math::Vec3 second = {}, int
         return math::degrees(std::atan2(f.x, f.z));
     };
     constexpr int kTicks = 120;
+    const math::Vec3 rootStart = h.root().position;
     std::vector<float> turn(6 * kTicks);
     math::Vec3 goal = h.root().transformPoint(local);
     for (int i = 0; i < kTicks; ++i) {
@@ -248,6 +249,19 @@ void chainTiming(math::Vec3 local, const char* name, math::Vec3 second = {}, int
         std::printf("  %-11s starts tick %4d, 80%% at tick %4d, ends %6.1f deg\n", names[k], begin, most, end);
     }
     std::printf("  yaw (+ left): pelvis %6.1f, foot L %6.1f, foot R %6.1f deg\n", yawNow(0), yawNow(1), yawNow(2));
+    std::printf("  supported at the end: %d, root moved %.1f cm\n", h.supported() ? 1 : 0,
+                100.0f * math::distance(h.root().position, rootStart));
+    // The real body against the plan: the head's height (a slumping back
+    // drops it) and the free right hand's height.
+    const std::vector<math::Mat4>& plan = *h.bodyQueue().plan;
+    auto real = [&](const char* bone) {
+        return h.humanBody().boneWorld(world, h.humanBody().partOf(h.rig().findJoint(bone))).position.y;
+    };
+    auto planned = [&](const char* bone) {
+        return h.root().transformPoint(math::Vec3(plan[static_cast<size_t>(h.rig().findJoint(bone))][3])).y;
+    };
+    std::printf("  real - plan height: head %.1f cm, free hand R %.1f cm\n", 100.0f * (real("head") - planned("head")),
+                100.0f * (real("hand_r") - planned("hand_r")));
 }
 } // namespace
 
@@ -260,6 +274,49 @@ TEST_CASE("measure: the hand's chain in time" * doctest::skip()) {
     chainTiming(math::Vec3(-0.6f, 0.6f, 0.4f), "hand L across low");
     chainTiming(math::Vec3(0.3f, 0.8f, -0.7f), "hand L far behind");
     chainTiming(math::Vec3(-0.5f, 1.2f, 0.3f), "hand L across, again at tick 17", math::Vec3(-0.6f, 1.2f, 0.2f), 17);
+}
+
+// Measurement (on demand): the foot's chain. A left foot goal held up (ahead,
+// to the side, behind); per joint of the chain (pelvis .. right forearm) the
+// plan's turn of its own from standing at the end, and the foot's miss.
+TEST_CASE("measure: the foot's chain" * doctest::skip()) {
+    struct Case { math::Vec3 goal; const char* name; };
+    const Case cases[] = {{{0.1f, 0.5f, 0.4f}, "foot L ahead, knee high"},
+                          {{0.1f, 1.0f, 0.7f}, "foot L ahead, high kick"},
+                          {{0.8f, 0.7f, 0.0f}, "foot L far out to the side"},
+                          {{0.1f, 0.6f, -0.6f}, "foot L behind, high"}};
+    const char* names[7] = {"pelvis", "spine_01", "spine_02", "chest", "clavicle_r", "upper_arm_r", "forearm_r"};
+    for (const Case& c : cases) {
+        core::Config pw;
+        REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+        physics::PhysicsWorld world;
+        REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+        agents::Human h;
+        REQUIRE(makeLiveHuman(h));
+        REQUIRE(h.attachPhysics(world));
+        constexpr float kDt = 1.0f / 120.0f;
+        for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+        int joint[7];
+        for (int k = 0; k < 7; ++k) joint[k] = h.rig().findJoint(names[k]);
+        auto localRot = [&](int j) {
+            const std::vector<math::Mat4>& m = *h.bodyQueue().plan;
+            const int parent = h.rig().parent(j);
+            const math::Quat r = math::toTransform(m[static_cast<size_t>(j)]).rotation;
+            return parent >= 0 ? math::inverse(math::toTransform(m[static_cast<size_t>(parent)]).rotation) * r : r;
+        };
+        math::Quat start[7];
+        for (int k = 0; k < 7; ++k) start[k] = joint[k] >= 0 ? localRot(joint[k]) : math::identityQuat();
+        const math::Vec3 goal = h.root().transformPoint(c.goal);
+        for (int i = 0; i < 180; ++i) {
+            h.setPoseFoot(motion::Foot::Left, goal);
+            h.tick(kDt);
+            world.step(kDt);
+        }
+        std::printf("%s (miss %4.1f cm):", c.name, 100.0f * math::distance(h.ankle(true, *h.bodyQueue().plan, h.root()), goal));
+        for (int k = 0; k < 7; ++k)
+            if (joint[k] >= 0) std::printf(" %s %.1f", names[k], math::degrees(math::angleBetween(start[k], localRot(joint[k]))));
+        std::printf("\n");
+    }
 }
 
 // Measurement (on demand): a foot goal behind; the hip's extension the plan
