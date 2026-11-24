@@ -608,11 +608,11 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
         for (int j : {leg.start, leg.mid, leg.end}) markPlanned(j, out);
     }
     // The foot's chain (the user, 2026-11-25), once a tick: what a lifted
-    // thigh asks past its range (its IK's turn, past its own limit) the
-    // pelvis, spine_01, spine_02, the chest and the crossed arm (clavicle,
-    // upper arm, the elbow) each take, the whole of it up to its own limits
-    // (passUp per link); the crossed arm only while its hand is free. The
-    // legs once more under the turned pelvis.
+    // thigh asks past its range (its IK's turn, past its own limit) goes to
+    // the pelvis, spine_01, spine_02, the chest and the crossed arm (clavicle,
+    // upper arm, the elbow), each its own part within its limits and the rest
+    // on (passUp); the crossed arm only while its hand is free. The legs once
+    // more under the turned pelvis.
     if (!isOutput && !legChained_) {
         legChained_ = true;
         bool turned = false;
@@ -624,9 +624,15 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
             const int chain[7] = {joints_.pelvis, joints_.spine[0], joints_.spine[1], joints_.spine[2],
                                   armFree ? joints_.clavicles[o] : -1, armFree ? arm.start : -1,
                                   armFree ? arm.mid : -1};
+            // Each link takes its own part, the rest goes on (the user,
+            // 2026-11-25): the hips to their limit first, then the back and the
+            // chest, the arm only what they cannot take.
+            math::Vec3 rest = legBeyond[i];
             for (const int& link : chain) {
-                passUp(p, &link, 1, legBeyond[i], s, turned);
-                mark(link, out.active);
+                if (math::length(rest) <= kMinAngle) break;
+                const math::Vec3 left = passUp(p, &link, 1, rest, s, turned);
+                if (math::length(rest - left) > kMinAngle) mark(link, out.active);
+                rest = left;
             }
             if (armFree)
                 for (int j : {arm.start, arm.mid, arm.end}) markPlanned(j, out);

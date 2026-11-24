@@ -217,12 +217,16 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
   pose pull eases (PhysicsWorld::setRagdollPartStrength scale + holdScale; the motor gets
   its share of what the hold leaves); the arms' hold eases with them (they hang). The
   foot's chain passing only the rest on was tried (side lift: arm 0; high kick upper arm
-  31, elbow 0) and REVERTED on the user's word: each link takes the whole turn again.
+  31, elbow 0), reverted on a misunderstanding, then RESTORED (the user: the thigh to its
+  range, then the hips to theirs, then the back and the chest, the arm only the rest).
   Measured (with the rest-passing chain): all eight hand
   cases reach again (across low 104 -> 0.6 cm), the real head within 4 cm of the plan's
   (no slump), the free right hand hangs up to 11.6 cm below the plan's; foot to the side
   now turns only the pelvis (arm 0), high kick upper arm 89 -> 31 deg, elbow 80 -> 0.
-  Tests pass, no warnings. WAITING for the game check.
+  Tests pass, no warnings. The user checked the arms in the game (no swinging, fine).
+  Next (the user, for the morning): the foot's chain (rest-passing) in the game; then the
+  body's parts colliding with each other (an arm went into the body); "across low"'s stall
+  fixed itself with the posture hold, its cause never found.
 - [ ] C9 The hips' range fix and the foot's chain (the user, 2026-11-25; built, NOT
   committed, WAITING for the game check). The hips' range: only the legs that hold them
   count (on the ground, not the chain's: heldLeg_ / this link's); none: pelvisMin /
