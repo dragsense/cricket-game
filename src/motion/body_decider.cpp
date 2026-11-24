@@ -27,6 +27,11 @@ math::Vec3 clampToReach(math::Vec3 from, math::Vec3 target, float reach) {
 // Turns smaller than this (rad) are no direction at all.
 constexpr float kMinAngle = 1e-4f;
 
+// A hand closer than this (m) to its goal is inside the arm's free room; the
+// chain's least turn that brings it there is found in this many halvings.
+constexpr float kFreeRoomEpsilon = 2e-3f;
+constexpr int kFreeRoomSteps = 8;
+
 void add(BodyQueue& out, int joint, PartMove kind, math::Vec3 direction, math::Vec3 velocity, Goal goal, bool active,
          float share = 1.0f) {
     assert(out.count < BodyQueue::kCapacity);
@@ -135,6 +140,8 @@ void BodyDecider::seed(const rig::Pose& pose) {
     hipsRef_ = pelvisOf(output_).position;
     hipsRefVel_ = hipsVel_ = math::Vec3(0.0f);
     anchorYaw_[0] = anchorYaw_[1] = stanceYaw_ = 0.0f;
+    for (float& c : chainTravel_) c = 0.0f;
+    armFree_[0] = armFree_[1] = true;
     seeded_ = true;
 }
 
@@ -152,6 +159,7 @@ void BodyDecider::rebase(const math::Transform& toNew) {
         l.pathEnd = toNew.transformPoint(l.pathEnd);
         for (math::Vec3& d : l.directions) d = toNew.rotation * d;
     }
+    for (math::Vec3& a : chainAim_) a = toNew.transformPoint(a);
     hipsRef_ = toNew.transformPoint(hipsRef_);
     hipsRefVel_ = toNew.rotation * hipsRefVel_;
     hipsVel_ = toNew.rotation * hipsVel_;
@@ -363,6 +371,7 @@ void BodyDecider::desiredPose(const TargetSet& t, const BodyDeciderSettings& s, 
     // straightens after a reach), the limbs from the output (warm start).
     Plan& d = desired_;
     legChained_ = false;
+    heldLeg_ = -1;
     d.pose.locals = output_.pose.locals;  // same size: no allocation
     const rig::Pose& rest = rig_->restPose();
     for (int j : {joints_.spine[0], joints_.spine[1], joints_.spine[2], joints_.neck, joints_.head, joints_.clavicles[0],
@@ -461,6 +470,16 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
     for (int i = 0; i < 2; ++i) {
         const ik::TwoBoneChain& leg = joints_.legs[i];
         if (leg.start < 0) continue;
+        if (i == heldLeg_) {
+            // The hand chain's thigh (turned on its knee, the hips on it): no
+            // reach to its anchor, its shin and foot are physics'; the output
+            // follows the plan's joints by rate.
+            if (isOutput)
+                for (int j : {leg.start, leg.mid, leg.end}) limitJoint(j, s.legMaxRate, t.dt);
+            refresh(p, leg.start);
+            for (int j : {leg.start, leg.mid, leg.end}) markPlanned(j, out);
+            continue;
+        }
         const math::Quat prevThigh = p.pose.locals[static_cast<size_t>(leg.start)].rotation;
         const math::Quat prevShin = p.pose.locals[static_cast<size_t>(leg.mid)].rotation;
         for (int j : {leg.start, leg.mid})
@@ -535,14 +554,15 @@ void BodyDecider::solveLegs(Plan& p, const TargetSet& t, const BodyDeciderSettin
                 refresh(p, leg.start);
                 if (!isOutput && t.foot[i].mode == TargetMode::Pinned) {
                     // The chain down to the ground: what the thigh asks past
-                    // its range its foot takes, pivoting on the ground (passUp).
-                    const math::Vec3 beyond = beyondRange(p, leg.start, s);
-                    bool unused = false;
-                    if (math::length(beyond) > kMinAngle) passUp(p, &leg.end, 1, beyond, s, unused);
+                    // its range its foot takes, pivoting on the ground (passUp);
+                    // past the range itself (onset 1: the hips' turn keeps the
+                    // grounded hips within it, legsOver).
+                    const math::Vec3 beyond = beyondRange(p, leg.start, s, 1.0f);
+                    anchorYaw_[i] += math::dot(beyond, math::kUp);  // about the vertical
                 }
             } else {
                 // What the thigh asks past its range: the chain's, after both legs.
-                if (!isOutput && !legChained_) legBeyond[i] = beyondRange(p, leg.start, s);
+                if (!isOutput && !legChained_) legBeyond[i] = beyondRange(p, leg.start, s, s.chainOnset);
                 clampLimb(p, 2 + i, chain, 2, target);
             }
         }
@@ -598,15 +618,23 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
             }
             continue;
         }
+        if (isOutput && !armFree_[h]) {
+            // The hand's chain in time: the arm keeps its own turns (riding
+            // the trunk) until its clavicle is chainOnset of its way along
+            // (limitOutput).
+            rangeMiss_[h] = 0.0f;
+            for (int j : {arm.start, arm.mid, arm.end}) markPlanned(j, out);
+            continue;
+        }
         const Target& hand = given(t, h);
         // Toward the target by its blended weight.
         const float k = act_[h] * std::clamp(hand.weightPosition, 0.0f, 1.0f);
         const float reach = limbReach(h, s);
-        auto armTarget = [&] {
+        auto armTarget = [&](math::Vec3 goal, float k) {
             const math::Quat chest = joints_.spine[2] >= 0 ? planRot(p, joints_.spine[2]) : math::identityQuat();
             const math::Vec3 chestPos = joints_.spine[2] >= 0 ? planPos(p, joints_.spine[2]) : math::Vec3(0.0f);
             const math::Vec3 restWorld = chestPos + chest * restHandChest_[h];
-            return clampToReach(planPos(p, arm.start), math::lerp(restWorld, hand.position, k), reach);
+            return clampToReach(planPos(p, arm.start), math::lerp(restWorld, goal, k), reach);
         };
         auto armAtRest = [&] {
             for (int j : {arm.start, arm.mid})
@@ -620,44 +648,122 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
             // past chainOnset of its range on each of its range axes the
             // clavicle, the chest, spine_02, spine_01 and the pelvis take in
             // turn, the same way about the same axis, each its own part
-            // within its own limits (passUp).
-            const math::Vec3 at = armTarget(), shoulder = planPos(p, arm.start);
-            // The arm's own first: its elbow round as little as keeps the
-            // shoulder in range (fitPole), as the solve below.
-            float unused = 0.0f;
-            const math::Vec3 armPole = fitPole(armShape(h, p, s), armHang(h, p), armFrame(h, p), shoulder, at, unused);
-            if (ik::solveTwoBone(arm, p.models, at, armPole, 1.0f, p.pose)) {
-                math::Vec3 beyond = beyondRange(p, arm.start, s);
-                // Further than the arm reaches (the elbow straight, at its
-                // range): the arm pushes the shoulder along its own direction;
-                // the shoulder cannot move, the clavicle turns it that way
-                // (the push's arc over the clavicle), and the chain carries
-                // that turn on, the same axis (passUp).
-                const math::Quat chestNow = joints_.spine[2] >= 0 ? planRot(p, joints_.spine[2]) : math::identityQuat();
-                const math::Vec3 chestAt = joints_.spine[2] >= 0 ? planPos(p, joints_.spine[2]) : math::Vec3(0.0f);
-                const math::Vec3 wanted = math::lerp(chestAt + chestNow * restHandChest_[h], hand.position, k);
-                const int clavicle = joints_.clavicles[h];
-                const float push = math::distance(shoulder, wanted) - reach;
-                if (clavicle >= 0 && push > kReachEpsilon) {
-                    const math::Vec3 bone = shoulder - planPos(p, clavicle);
-                    const math::Vec3 armWay = math::normalize(wanted - shoulder);
-                    const math::Vec3 normal = math::cross(bone, armWay);
-                    const float sine = math::length(normal), length = math::length(bone);
-                    if (sine > 1e-6f && length > 1e-4f) beyond += normal / sine * (push / length);
-                }
+            // within its own limits (passUp). Worked out up front for the
+            // whole move: from where the hand's path ends (B, the sync
+            // formula), so the trunk can go first (limitOutput).
+            // The whole of it (its given weight, not the blend's ramp in).
+            const math::Vec3 aim = hand.pathLeft >= 0.0f ? hand.pathEnd : hand.position;
+            // A new B (a new target, e.g. each arrow press): the chain goes
+            // from the hips again (limitOutput).
+            if (math::distance(aim, chainAim_[h]) > kReachEpsilon) newWay_ = true;
+            chainAim_[h] = aim;
+            const float kB = std::clamp(hand.weightPosition, 0.0f, 1.0f);
+            // One formula (the user's design, 2026-11-24). The arm's free
+            // room: where the arm alone, within its range and length, puts
+            // the hand. A target inside it: the arm alone. Outside it: the
+            // chain goes as deep as it has to (clavicle, chest, spine_02,
+            // spine_01, the pelvis), its deepest link turns toward the
+            // target and each next one follows the one before it; the arm
+            // reaches last. Below the hips it goes on in the opposite leg (the
+            // crossed chain, the user's design 2026-11-24/25): its thigh (the
+            // hip joint), its knee, its shin (the ankle), the body above riding
+            // on each (passUp); its foot is physics'. Only while that foot is
+            // on the ground; with both hands driven the chain stops at the hips.
+            const int other = 1 - h;
+            const bool thighFree = grounded_[other] && t.hand[other].mode != TargetMode::Driven;
+            constexpr int kLinks = 8;
+            const int chain[kLinks] = {joints_.clavicles[h], joints_.spine[2], joints_.spine[1], joints_.spine[0],
+                                       joints_.pelvis, thighFree ? joints_.legs[other].start : -1,
+                                       thighFree ? joints_.legs[other].mid : -1,
+                                       thighFree ? joints_.legs[other].end : -1};
+            constexpr int kKept = 10;
+            math::Quat saved[kKept];
+            const math::Transform pelvisSaved = p.pose.locals[static_cast<size_t>(joints_.pelvis)];
+            const int keep[kKept] = {chain[0], chain[1], chain[2], chain[3], arm.start, arm.mid, arm.end,
+                                     joints_.legs[other].start, joints_.legs[other].mid, joints_.legs[other].end};
+            for (int i = 0; i < kKept; ++i)
+                if (keep[i] >= 0) saved[i] = p.pose.locals[static_cast<size_t>(keep[i])].rotation;
+            auto restore = [&] {
+                for (int i = 0; i < kKept; ++i)
+                    if (keep[i] >= 0) p.pose.locals[static_cast<size_t>(keep[i])].rotation = saved[i];
+                p.pose.locals[static_cast<size_t>(joints_.pelvis)] = pelvisSaved;
+                refresh(p, joints_.pelvis);
+                heldLeg_ = -1;
+            };
+            auto goalNow = [&] {
+                const math::Quat chest = joints_.spine[2] >= 0 ? planRot(p, joints_.spine[2]) : math::identityQuat();
+                const math::Vec3 chestPos = joints_.spine[2] >= 0 ? planPos(p, joints_.spine[2]) : math::Vec3(0.0f);
+                return math::lerp(chestPos + chest * restHandChest_[h], aim, kB);
+            };
+            // How far the arm alone leaves the hand from its goal (0: inside
+            // its free room).
+            auto armMiss = [&] {
                 armAtRest();
-                if (math::length(beyond) > kMinAngle) {
-                    const int chain[5] = {joints_.clavicles[h], joints_.spine[2], joints_.spine[1], joints_.spine[0],
-                                          joints_.pelvis};
-                    passUp(p, chain, 5, beyond, s, pelvisTurned);
-                    refresh(p, arm.start);
+                const math::Vec3 goal = goalNow(), shoulder = planPos(p, arm.start);
+                const math::Vec3 at = clampToReach(shoulder, goal, reach);
+                float unused = 0.0f;
+                const math::Vec3 armPole = fitPole(armShape(h, p, s), armHang(h, p), armFrame(h, p), shoulder, at, unused);
+                if (!ik::solveTwoBone(arm, p.models, at, armPole, 1.0f, p.pose)) return math::distance(shoulder, goal);
+                clampJoint(p, arm.start);
+                clampJoint(p, arm.mid);
+                refresh(p, arm.start);
+                return math::distance(planPos(p, arm.end), goal);
+            };
+            // The one formula (the user, 2026-11-24/25), every depth alike:
+            // the chain's last link (the deepest) asks the turn toward the
+            // target (share f of its shoulder's line from it onto the target's
+            // line from it); every link turns that whole turn, the same way,
+            // each up to its own limits, and stops there (passUp): a link at
+            // its limit does not stop the others. The arm's miss after it.
+            bool tried = false;
+            auto missAt = [&](int n, float f, bool& turned) {
+                restore();
+                math::Vec3 turn(0.0f);
+                bool first = true;
+                for (int c = n - 1; c >= 0 && f > 0.0f; --c) {
+                    const int j = chain[c];
+                    if (j < 0) continue;
+                    if (first) {
+                        first = false;
+                        const math::Vec3 about = planPos(p, j);
+                        const math::Vec3 from = planPos(p, arm.start) - about, to = goalNow() - about;
+                        if (math::length(from) < 1e-4f || math::length(to) < 1e-4f) break;
+                        turn = math::rotationVector(math::fromTo(math::normalize(from), math::normalize(to))) * f;
+                    }
+                    if (math::length(turn) <= kMinAngle) break;
+                    passUp(p, &chain[c], 1, turn, s, turned);
                 }
-            } else {
-                armAtRest();
+                return armMiss();
+            };
+            // As deep as it has to go and as little as does: the shallowest
+            // chain with a share that brings the target into the free room,
+            // the least such share (none: the whole chain, its whole turn).
+            int depth = kLinks;
+            float share = 1.0f;
+            bool fits = missAt(0, 0.0f, tried) <= kFreeRoomEpsilon;
+            if (fits) {
+                depth = 0;
+                share = 0.0f;
             }
+            for (int n = 1; n <= kLinks && !fits; ++n) {
+                if (chain[n - 1] < 0) continue;
+                for (int i = 1; i <= kFreeRoomSteps && !fits; ++i) {
+                    if (missAt(n, static_cast<float>(i) / kFreeRoomSteps, tried) > kFreeRoomEpsilon) continue;
+                    fits = true;
+                    depth = n;
+                    float lo = static_cast<float>(i - 1) / kFreeRoomSteps, hi = static_cast<float>(i) / kFreeRoomSteps;
+                    for (int halving = 0; halving < kFreeRoomSteps; ++halving) {
+                        const float mid = 0.5f * (lo + hi);
+                        (missAt(n, mid, tried) <= kFreeRoomEpsilon ? hi : lo) = mid;
+                    }
+                    share = hi;
+                }
+            }
+            missAt(depth, share, pelvisTurned);
+            armAtRest();
         }
         const math::Vec3 from = planPos(p, arm.start);
-        const math::Vec3 target = armTarget();
+        const math::Vec3 target = armTarget(hand.position, k);
         const ArmHang hang = armHang(h, p);
         math::Vec3 pole = relaxedPole(hang, math::safeNormalize(target - from, hang.down));
         float miss = 0.0f;
@@ -724,9 +830,10 @@ void BodyDecider::solveArms(Plan& p, const TargetSet& t, const BodyDeciderSettin
     if (pelvisTurned) solveLegs(p, t, s, out);
 }
 
-math::Vec3 BodyDecider::beyondRange(const Plan& p, int j, const BodyDeciderSettings& s) const {
-    // What joint j asks past chainOnset of its range on each of its range
+math::Vec3 BodyDecider::beyondRange(const Plan& p, int j, const BodyDeciderSettings& s, float onset) const {
+    // What joint j asks past `onset` of its range on each of its range
     // axes (before its clamp), as one rotation (world rotation vector).
+    (void)s;
     math::Vec3 beyond(0.0f);
     if (!limits_ || j < 0) return beyond;
     const ik::JointLimit lim = limits_->limitIn(j, p.pose);
@@ -737,7 +844,7 @@ math::Vec3 BodyDecider::beyondRange(const Plan& p, int j, const BodyDeciderSetti
     for (int a = 0; a < 3; ++a) {
         const float bound = need[a] >= 0.0f ? f.max[a] : -f.min[a];
         if (bound <= 0.0f) continue;
-        const float over = std::abs(need[a]) - chainOwnPart(std::abs(need[a]), bound, s.chainOnset);
+        const float over = std::abs(need[a]) - chainOwnPart(std::abs(need[a]), bound, onset);
         beyond += math::normalize(parent * axes[a]) * std::copysign(over, need[a]);
     }
     return beyond;
@@ -753,28 +860,33 @@ math::Vec3 BodyDecider::passUp(Plan& p, const int* chain, int count, math::Vec3 
     for (int k = 0; k < count && math::length(rest) > kMinAngle; ++k) {
         const int j = chain[k];
         if (j < 0) continue;
-        // A grounded foot: it pivots on the ground about the vertical by
-        // what comes to it that way (its next turn, anchorYaw_).
-        bool pivot = false;
+        // A grounded leg's hip, knee or ankle (the hand's crossed chain): the
+        // body above it turns on it (on the hip joint, the thigh on its knee,
+        // the shin on its ankle), what is below stays as it stands, so the joint's angle
+        // turns the other way, within its own range (sign); that leg's foot
+        // is physics' (heldLeg_); the other leg follows under the turned
+        // pelvis.
+        int legLink = -1;
         for (int f = 0; f < 2; ++f)
-            if (j == joints_.legs[f].end && grounded_[f]) {
-                const float yaw = math::dot(rest, math::kUp);
-                anchorYaw_[f] += yaw;
-                rest -= math::kUp * yaw;
-                pivot = true;
-            }
-        if (pivot) continue;
+            if ((j == joints_.legs[f].start || j == joints_.legs[f].mid || j == joints_.legs[f].end) && grounded_[f])
+                legLink = f;
+        const float sign = legLink >= 0 ? -1.0f : 1.0f;
+        if (legLink >= 0 && act_[HipsW] >= 1.0f) break;
+        bool legsHold = false;
+        for (int f = 0; f < 2; ++f) legsHold = legsHold || (grounded_[f] && joints_.legs[f].start >= 0);
         // The joint's angles now and its range, on its range axes (world).
         math::Vec3 axis[3], now, lo, hi;
         if (j == joints_.pelvis) {
-            // Its range from standing (pelvisMin / pelvisMax, character axes);
-            // driven hips are not the chain's to turn.
+            // Its range comes from the legs (the user, 2026-11-24): on the
+            // ground, as far as the grounded hips allow (legsOver, below);
+            // in the air, its range from standing (pelvisMin / pelvisMax,
+            // character axes). Driven hips are not the chain's to turn.
             if (act_[HipsW] >= 1.0f) break;
             const math::Transform pel = pelvisOf(p);
             for (int a = 0; a < 3; ++a) axis[a] = math::Vec3(a == 0, a == 1, a == 2);
             now = math::rotationVector(math::normalize(pel.rotation * math::inverse(pelvisBase())));
-            lo = s.pelvisMin;
-            hi = s.pelvisMax;
+            lo = legsHold ? math::Vec3(-math::kPi) : s.pelvisMin;
+            hi = legsHold ? math::Vec3(math::kPi) : s.pelvisMax;
         } else {
             if (!limits_) break;
             const ik::JointLimit lim = limits_->limitIn(j, p.pose);
@@ -791,28 +903,91 @@ math::Vec3 BodyDecider::passUp(Plan& p, const int* chain, int count, math::Vec3 
         // has plus the rest that comes to it), never more than comes.
         math::Vec3 take(0.0f);
         for (int a = 0; a < 3; ++a) {
-            const float comes = math::dot(rest, axis[a]);
+            const float comes = sign * math::dot(rest, axis[a]);
             const float total = now[a] + comes;
             const float bound = total >= 0.0f ? hi[a] : -lo[a];
             if (bound <= 0.0f || std::abs(comes) <= 1e-6f) continue;
             const float own = std::copysign(chainOwnPart(std::abs(total), bound, onset), total) - now[a];
             const float part = comes >= 0.0f ? std::clamp(own, 0.0f, comes) : std::clamp(own, comes, 0.0f);
-            take += axis[a] * part;
+            take += axis[a] * (sign * part);
         }
         const float angle = math::length(take);
         if (angle <= kMinAngle) continue;
         const math::Quat turn = math::fromAxisAngle(take / angle, angle);
-        if (j == joints_.pelvis) {
-            math::Transform pel = pelvisOf(p);
-            pel.rotation = math::normalize(turn * pel.rotation);
-            placePelvis(p, pel);
-            pelvisTurned = true;
+        if (legLink >= 0 || j == joints_.pelvis) {
+            // The hips turn: on the chained leg's hip, knee or ankle, or in place;
+            // only as far as the grounded legs' hips stay within their ranges
+            // (the other hip follows up to its own limit), the most of the
+            // turn that does (halving).
+            const math::Transform before = pelvisOf(p);
+            const math::Vec3 about = legLink >= 0 ? planPos(p, j) : before.position;
+            const math::Quat below = planRot(p, j);
+            if (legLink >= 0) heldLeg_ = legLink;  // its leg is not the hips' bound: it turns with them
+            auto place = [&](float f) {
+                const math::Quat q = math::fromAxisAngle(take / angle, angle * f);
+                math::Transform pel = before;
+                pel.position = about + q * (before.position - about);
+                pel.rotation = math::normalize(q * before.rotation);
+                placePelvis(p, pel);
+                if (legLink >= 0) {
+                    // What is below the joint as it stands (the body above
+                    // turned on it).
+                    p.pose.locals[static_cast<size_t>(j)].rotation =
+                        math::normalize(math::inverse(planRot(p, rig_->parent(j))) * below);
+                    refresh(p, j);
+                }
+            };
+            float share = 1.0f;
+            if (legsHold) {
+                const float overBefore = legsOver(p, s);
+                place(1.0f);
+                if (legsOver(p, s) > overBefore + kMinAngle) {
+                    float held = 0.0f, past = 1.0f;
+                    for (int i = 0; i < kFreeRoomSteps; ++i) {
+                        const float mid = 0.5f * (held + past);
+                        place(mid);
+                        (legsOver(p, s) > overBefore + kMinAngle ? past : held) = mid;
+                    }
+                    share = held;
+                }
+            }
+            place(share);
+            take *= share;
+            if (share > 0.0f) pelvisTurned = true;
         } else {
             turnPlanned(p, j, turn);
         }
         rest -= take;
     }
     return rest;
+}
+
+float BodyDecider::legsOver(Plan& p, const BodyDeciderSettings& s) {
+    float over = 0.0f;
+    if (!limits_) return over;
+    const rig::Pose& rest = rig_->restPose();
+    for (int i = 0; i < 2; ++i) {
+        const ik::TwoBoneChain& leg = joints_.legs[i];
+        if (!grounded_[i] || leg.start < 0 || i == heldLeg_) continue;
+        math::Quat& thigh = p.pose.locals[static_cast<size_t>(leg.start)].rotation;
+        math::Quat& shin = p.pose.locals[static_cast<size_t>(leg.mid)].rotation;
+        const math::Quat thighWas = thigh, shinWas = shin;
+        thigh = rest.locals[static_cast<size_t>(leg.start)].rotation;
+        shin = rest.locals[static_cast<size_t>(leg.mid)].rotation;
+        refresh(p, leg.start);
+        // As solveLegs reaches a grounded foot: the knee tracking the foot.
+        const math::Vec3 pole = anchorRot_[i] * footToPelvis_[i] * s.kneePole;
+        if (ik::solveTwoBone(leg, p.models, anchor_[i], pole, 1.0f, p.pose)) {
+            const ik::JointLimit lim = limits_->limitIn(leg.start, p.pose);
+            const ik::LimitFrame f = ik::limitFrame(lim);
+            const math::Vec3 a = ik::limitAngles(thigh, lim);
+            for (int k = 0; k < 3; ++k) over += std::max(a[k] - f.max[k], 0.0f) + std::max(f.min[k] - a[k], 0.0f);
+        }
+        thigh = thighWas;
+        shin = shinWas;
+        refresh(p, leg.start);
+    }
+    return over;
 }
 
 void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, BodyQueue& out) {
@@ -835,18 +1010,44 @@ void BodyDecider::limitOutput(const TargetSet& t, const BodyDeciderSettings& s, 
         const math::Vec3 vWant = dist > 1e-6f ? d * (speed / dist) : math::Vec3(0.0f);
         hipsVel_ += clampLength(vWant - hipsVel_, std::max(s.hipsMaxAccel, 0.0f) * dt);
         have.position += hipsVel_ * dt;
+    }
+    // The hand's chain in time (the user's design, 2026-11-24): its links
+    // from the hips, each toward the desired pose by rate, and each starts
+    // only once the one before it is chainOnset of its way along (or has
+    // none to go): the pelvis first, then spine_01, spine_02, the chest,
+    // the clavicle, the arm last (solveArms, armFree_). What each link
+    // turns is worked out up front (the desired pose, passUp).
+    const float onset = std::clamp(s.chainOnset, 0.0f, 1.0f);
+    // A new target: every link's way starts here (none counts as along).
+    if (newWay_)
+        for (float& c : chainTravel_) c = 0.0f;
+    newWay_ = false;
+    auto link = [&](int k, float moved, float left) {
+        chainTravel_[k] = moved > kMinAngle ? chainTravel_[k] + moved : 0.0f;
+        return left <= kMinAngle || left <= (1.0f - onset) * (chainTravel_[k] + left);
+    };
+    const math::Quat pelvisWas = have.rotation;
+    if (dt > 0.0f) {
         have.rotation = limitTurn(have.rotation, want.rotation, s.hipsMaxTurnRate, dt);
     } else {
         have = math::Transform{wantPosition, want.rotation};
         hipsVel_ = math::Vec3(0.0f);
     }
+    bool open = link(0, math::angleBetween(pelvisWas, have.rotation), math::angleBetween(have.rotation, want.rotation));
     // The height under every grounded leg's reach is the desired pose's
     // (solveLegs), so the hips get there within the legs' bounds.
     placePelvis(output_, have);
 
-    // The trunk and head joints toward the desired ones by rate.
-    for (int j : {joints_.spine[0], joints_.spine[1], joints_.spine[2], joints_.clavicles[0], joints_.clavicles[1]})
-        limitJoint(j, s.trunkMaxRate, dt);
+    auto follow = [&](int k, int j, bool go) {
+        if (j < 0) return go;
+        const math::Quat was = output_.pose.locals[static_cast<size_t>(j)].rotation;
+        if (go) limitJoint(j, s.trunkMaxRate, dt);
+        const math::Quat now = output_.pose.locals[static_cast<size_t>(j)].rotation;
+        return go && link(k, math::angleBetween(was, now),
+                          math::angleBetween(now, desired_.pose.locals[static_cast<size_t>(j)].rotation));
+    };
+    for (int i = 0; i < 3; ++i) open = follow(1 + i, joints_.spine[i], open);
+    for (int h = 0; h < 2; ++h) armFree_[h] = follow(4 + h, joints_.clavicles[h], open);
     for (int j : {joints_.neck, joints_.head}) limitJoint(j, s.headMaxRate, dt);
     refresh(output_, joints_.pelvis);
     // The legs on the output pelvis (grounded feet exactly on their anchors),

@@ -160,6 +160,68 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
   trailing hip asks 30.5 (walk) / 33 deg (run) of its 30 deg extension at toe-off, so the
   pelvis tilts forward there (at most 2.5 / 4.4 deg a tick); walk stance slide 3.3 -> 4.1
   and 4.9 -> 4.4 cm. Tests pass.
+- [ ] C7 The crossed chain, the hand case (the user's locked design 2026-11-24; built, NOT
+  committed, WAITING for the game check): the hand's chain ends in the opposite thigh
+  (left hand: right thigh), only while its foot is on the ground and the other hand is
+  free; the thigh first within its own range (its hip joint, passUp sign -1; the leg's
+  shin and foot are not driven, the leg reaches its anchor as before), the hips on its
+  hip joint, then the pelvis in place, spine .. arm as C6. The hips' range comes from the
+  legs (the user): on the ground every hips turn (any chain) goes only as far as the
+  grounded hips stay within their ranges (`legsOver`, halving; the other hip follows up to
+  its own limit); pelvisMin / pelvisMax only in the air and for driven hips. A grounded
+  foot pivots only past its hip's range itself (beyondRange onset 1), so a chain never
+  turns the feet. Measured (release, `measure: the hand's chain in time`, miss cm,
+  baseline C6 -> now): behind 27.3 -> 2.1, across 10.7 -> 0.5 (pelvis turns right, was
+  left 76 in the first try), far behind 66 -> 0.0, far ahead low 74 -> 18.8 (spine stays
+  still: the hips take little and each next link follows that), far ahead / near side /
+  across low as before; the feet never turn (all 0, were up to 76 deg). Open: a second
+  press across at tick 17 misses 34 cm (C6 27.6). Tests pass, no warnings.
+  Then (the user: the chain's last link, the thigh, turns toward the target itself; its
+  shin and foot physics'; every link follows the last link's turn): the thigh turns on
+  its knee, the hips on it, the shin kept as it stands (heldLeg_, no reach to its anchor).
+  FAILED, worse (miss cm): far ahead low 18.8 -> 65.6, across low 0.4 -> 64.2, far behind
+  0.0 -> 38.1, behind 2.1 -> 24.9, second press 34 -> 49; the thigh turns ~6 deg and every
+  link follows that. Cause: a thigh can lean toward a target ahead on a still shin only by
+  bending the knee backward, which the knee does not; leaning forward needs the shin to
+  lean (the ankle), which is physics'.
+  Then (the user, 2026-11-25, NOW BUILT, WAITING for the game check): the chain goes down
+  to the opposite knee (clavicle, chest, spine_02, spine_01, pelvis, the thigh's hip
+  joint, the knee); the deepest link asks the whole turn toward the target and EVERY link
+  takes that whole turn up to its own limit and stops (one at its limit does not stop
+  the others; passUp per link). The hip and knee links turn the body above on them, what
+  is below kept as it stands (heldLeg_: no reach to its anchor, its foot physics').
+  Measured (miss cm): behind 0.2, across 0.5, far ahead 0.2, near side 0.0, across low
+  0.8, far behind 0.2, second press 0.4 (was 34), far ahead low 60.5 (open: needs the
+  knees to bend, a squat); the feet never turn (0, foot R 0.5 deg once). Tests pass, no
+  warnings. Then (the user): the chain on to the opposite shin (its ankle: shin, knee,
+  thigh, hips, ...), the foot kept as it stands; the foot's own pivot (a grounded thigh
+  past its range) now set in solveLegs directly, no longer through passUp. Measured:
+  every case reaches (miss 0.0-0.6 cm), far ahead low 60.5 -> 0.1 (pelvis yaw -15.5,
+  the chained foot R -3.5 deg in the plan: the output's held leg follows by rate);
+  the other foot never turns. Tests pass, no warnings. Next (the user): the foot case the
+  same way, its chain up to the opposite arm past the elbow, with its own check and
+  calculation; then the body's parts colliding with each other.
+- [ ] C6 The hand's chain in time, from the hips (the user, 2026-11-24; built, NOT committed,
+  WAITING for the game check): the calculation is one formula (2026-11-24, solveArms):
+  the arm's free room first (the arm alone within its range and length; inside it, no
+  trunk); outside it the chain goes only as deep as it has to (clavicle, chest, spine_02,
+  spine_01, pelvis), and every link from the deepest out rides the ones before it, then
+  brings its shoulder toward the target within its own limits, by the least share that
+  brings the target into the free room (halving). Measured: behind, across, far ahead all
+  reach (miss under 1 cm), near side arm only; sweep hand forward 3.3, back 2.5, out 3.3,
+  across 24, up 7.9, down 40 cm. From where the hand's path ends (pathEnd, its full weight);
+  the output then moves them from the hips: pelvis first, each next link (spine_01,
+  spine_02, chest, clavicle, the arm last) starts once the one before it is chainOnset
+  of its way along or has none to go (`chainTravel_`, `armFree_`, limitOutput). Every new
+  B (a new target, e.g. each arrow press) starts every link's way again (`chainAim_`,
+  `newWay_`): a press while the pelvis still turns goes from the hips again (measured: a
+  second press at tick 17: pelvis 17, spine_01 18, spine_02 22, chest 29, clavicle 36, arm
+  42). A small
+  move needs no trunk, so the arm goes alone (the straight chain). Measured (`measure:
+  the hand's chain in time`), hand across: pelvis 0 -> 80% at tick 14, spine_01 14, spine_02
+  20, chest 27, clavicle 34, arm 40 (was arm 0, chest 32, pelvis 39); end angles and miss
+  unchanged; near side unchanged. Arrow-key sweep: hand forward 12 ticks against the goal
+  (worst -0.46 m/s), up 9 (-1.14); no baseline of this sweep on 85afc1e to compare.
 - [ ] C5 After C4, the same day (all committed, pushed to origin/body-chain 85afc1e;
   NOT game-checked): the hand's roll by the chain (forearm twist, then the elbow round);
   a hand past the arm's reach pushes the shoulder the arm's way (the clavicle's turn,

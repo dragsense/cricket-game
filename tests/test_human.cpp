@@ -185,6 +185,83 @@ TEST_CASE("measure: arrow-key limb test, every direction" * doctest::skip()) {
 }
 
 
+// Measurement (on demand): the hand's chain in time. A hand goal set at once
+// (behind, across, far ahead); per joint of the chain (pelvis .. upper arm)
+// the plan's turn of its own (local) from standing: the tick it starts (past
+// 1 deg) and reaches 80% of where it ends, and that end.
+namespace {
+void chainTiming(math::Vec3 local, const char* name, math::Vec3 second = {}, int pressAt = -1) {
+    core::Config pw;
+    REQUIRE(pw.load(CRICKET_CONFIG_DIR "/physics_world.json"));
+    physics::PhysicsWorld world;
+    REQUIRE(world.init(physics::readWorldSettings(pw), physics::readPhysicsSettings(pw)));
+    agents::Human h;
+    REQUIRE(makeLiveHuman(h));
+    REQUIRE(h.attachPhysics(world));
+    constexpr float kDt = 1.0f / 120.0f;
+    for (int i = 0; i < 60; ++i) { h.tick(kDt); world.step(kDt); }
+    const char* names[6] = {"pelvis", "spine_01", "spine_02", "chest", "clavicle_l", "upper_arm_l"};
+    int joint[6];
+    for (int k = 0; k < 6; ++k) joint[k] = h.rig().findJoint(names[k]);
+    auto localRot = [&](const std::vector<math::Mat4>& m, int j) {
+        const int parent = h.rig().parent(j);
+        const math::Quat r = math::toTransform(m[static_cast<size_t>(j)]).rotation;
+        return parent >= 0 ? math::inverse(math::toTransform(m[static_cast<size_t>(parent)]).rotation) * r : r;
+    };
+    math::Quat start[6];
+    for (int k = 0; k < 6; ++k) start[k] = localRot(*h.bodyQueue().plan, joint[k]);
+    // Which way the pelvis and each foot turned about the vertical (deg, +
+    // to the body's left), in the plan, from before the goal.
+    const int yawJoint[3] = {joint[0], h.rig().findJoint("foot_l"), h.rig().findJoint("foot_r")};
+    auto modelRot = [&](int j) { return math::toTransform((*h.bodyQueue().plan)[static_cast<size_t>(j)]).rotation; };
+    math::Quat yawStart[3];
+    for (int k = 0; k < 3; ++k) yawStart[k] = modelRot(yawJoint[k]);
+    auto yawNow = [&](int k) {
+        const math::Vec3 f = (modelRot(yawJoint[k]) * math::inverse(yawStart[k])) * math::kForward;
+        return math::degrees(std::atan2(f.x, f.z));
+    };
+    constexpr int kTicks = 120;
+    std::vector<float> turn(6 * kTicks);
+    math::Vec3 goal = h.root().transformPoint(local);
+    for (int i = 0; i < kTicks; ++i) {
+        if (i == pressAt) {
+            // A second press: its turns counted from here.
+            goal = h.root().transformPoint(second);
+            for (int k = 0; k < 6; ++k) start[k] = localRot(*h.bodyQueue().plan, joint[k]);
+        }
+        h.setPoseHand(true, goal);
+        h.tick(kDt);
+        world.step(kDt);
+        for (int k = 0; k < 6; ++k)
+            turn[static_cast<size_t>(k * kTicks + i)] =
+                math::degrees(math::angleBetween(start[k], localRot(*h.bodyQueue().plan, joint[k])));
+    }
+    std::printf("%s (miss %4.1f cm):\n", name, 100.0f * math::distance(h.wrist(true, *h.bodyQueue().plan, h.root()), goal));
+    for (int k = 0; k < 6; ++k) {
+        const float* t = &turn[static_cast<size_t>(k * kTicks)];
+        const float end = t[kTicks - 1];
+        int begin = -1, most = -1;
+        for (int i = std::max(pressAt, 0); i < kTicks; ++i) {
+            if (begin < 0 && t[i] > 1.0f) begin = i;
+            if (most < 0 && end > 1.0f && t[i] >= 0.8f * end) most = i;
+        }
+        std::printf("  %-11s starts tick %4d, 80%% at tick %4d, ends %6.1f deg\n", names[k], begin, most, end);
+    }
+    std::printf("  yaw (+ left): pelvis %6.1f, foot L %6.1f, foot R %6.1f deg\n", yawNow(0), yawNow(1), yawNow(2));
+}
+} // namespace
+
+TEST_CASE("measure: the hand's chain in time" * doctest::skip()) {
+    chainTiming(math::Vec3(0.25f, 1.2f, -0.5f), "hand L behind");
+    chainTiming(math::Vec3(-0.5f, 1.2f, 0.3f), "hand L across");
+    chainTiming(math::Vec3(0.2f, 1.0f, 0.9f), "hand L far ahead");
+    chainTiming(math::Vec3(0.45f, 1.0f, 0.2f), "hand L near side");
+    chainTiming(math::Vec3(0.2f, 0.5f, 0.9f), "hand L far ahead low");
+    chainTiming(math::Vec3(-0.6f, 0.6f, 0.4f), "hand L across low");
+    chainTiming(math::Vec3(0.3f, 0.8f, -0.7f), "hand L far behind");
+    chainTiming(math::Vec3(-0.5f, 1.2f, 0.3f), "hand L across, again at tick 17", math::Vec3(-0.6f, 1.2f, 0.2f), 17);
+}
+
 // Measurement (on demand): a foot goal behind; the hip's extension the plan
 // asks for and the real body's, in the pelvis's frame (+: thigh behind).
 TEST_CASE("measure: hip extension for a foot behind" * doctest::skip()) {

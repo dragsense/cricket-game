@@ -249,7 +249,11 @@ private:
     math::Quat armFrame(int h, const Plan& p) const;
     // What joint j asks past chainOnset of its range (before its clamp), as a
     // world rotation vector (the chain's start, passUp).
-    math::Vec3 beyondRange(const Plan& p, int j, const BodyDeciderSettings& s) const;
+    math::Vec3 beyondRange(const Plan& p, int j, const BodyDeciderSettings& s, float onset) const;
+    // How far the grounded legs' hips are past their ranges (rad, summed over
+    // their range axes), each leg reaching its anchor under the plan's pelvis;
+    // the legs' pose is left as it was. The hips' turn keeps to it (passUp).
+    float legsOver(Plan& p, const BodyDeciderSettings& s);
     // The chain rule up `chain` (each joint the next one's child; the pelvis
     // may come last), the foot's rule: `rest` is the rotation (world rotation
     // vector) the joint before the chain cannot keep; each joint takes its
@@ -323,6 +327,22 @@ private:
     math::Vec3 hipsRef_{0.0f}, hipsRefVel_{0.0f};
     math::Vec3 hipsVel_{0.0f};
     float rangeMiss_[kEnds] = {0.0f, 0.0f, 0.0f, 0.0f};  // m: the output limb's end off its aim by its joints' ranges
+    // The hand's chain in time (the user's design, 2026-11-24): its links
+    // from the hips (pelvis, spine_01, spine_02, chest, clavicle L, R), each
+    // one's output turn so far on its way (rad, since it last stood still).
+    // A link starts once the one before it is chainOnset of its way along
+    // (or has none to go); the arm last, after its clavicle (armFree_).
+    static constexpr int kChainLinks = 6;
+    float chainTravel_[kChainLinks] = {};
+    bool armFree_[2] = {true, true};
+    // Each driven hand's B (its path's end, character space) last decide:
+    // a new B is a new target, every link's way starts again (newWay_).
+    math::Vec3 chainAim_[2]{};
+    bool newWay_ = false;
+    // The leg whose thigh the hand's chain turned this tick (-1: none): its
+    // thigh turned on its knee toward the target, the hips on it; its shin and
+    // foot are not the decider's (physics), so no reach to its anchor.
+    int heldLeg_ = -1;
     // Each foot's turn about the vertical on the ground (rad), the turn of
     // its step under way (from, to), and the feet's mean turn this tick: the
     // pelvis's range counts from it.
