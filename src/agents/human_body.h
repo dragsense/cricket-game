@@ -66,6 +66,9 @@ struct MuscleSettings {
     // carry their part's weight (the whole gravity hold); the others' hold
     // eases with them (a free arm hangs).
     std::vector<std::string> posture;
+    // Each joint's passive tissue damping (N m s / rad, by bone name without
+    // its side; not listed: none), whatever its muscle's activity.
+    std::vector<std::pair<std::string, float>> passiveDamping;
 };
 
 // How fast a muscle closes its target's gap: Fitts' law movement time

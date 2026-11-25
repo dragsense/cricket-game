@@ -207,6 +207,7 @@ struct PhysicsWorld::Impl {
             float base = 0.0f;      // its motors' full torque limit (N m)
             int axis = -1;          // RagdollPart's directional strength
             float plus = 0.0f, minus = 0.0f;
+            float passive = 0.0f;   // RagdollPart's passiveDamping (N m s / rad)
         };
         std::vector<Joint> joints;
         std::vector<int> jointOf;        // per part: its joint (-1: the root)
@@ -1025,6 +1026,7 @@ RagdollId PhysicsWorld::createRagdoll(const std::vector<RagdollPart>& parts, uin
             if (c && c->GetSubType() == JPH::EConstraintSubType::SixDOF) j.constraint = static_cast<JPH::SixDOFConstraint*>(c);
             j.part = static_cast<int>(i);
             j.base = std::max(p.motor.maxTorque, 0.0f);
+            j.passive = std::max(p.passiveDamping, 0.0f);
             if (p.directionalAxis >= 0 && p.directionalAxis <= 2) {
                 j.axis = p.directionalAxis;
                 j.plus = std::max(p.plusTorque, 0.0f);
@@ -1101,6 +1103,18 @@ void PhysicsWorld::driveRagdollToPose(RagdollId id, const math::Quat* rotations,
         j.constraint->SetTargetOrientationBS(r.target[part]);
         applyMuscles(*j.constraint, j.base, j.axis, j.plus, j.minus, r.hold[part], r.ground[part], r.scale,
                      r.partScale[part], r.partHold[part]);
+        if (j.passive > 0.0f) {
+            // The joint's passive tissue, whatever the muscle does: against
+            // the part's turn relative to its parent, equal and opposite.
+            JPH::Body* parent = j.constraint->GetBody1();
+            JPH::Body* body = j.constraint->GetBody2();
+            const JPH::Vec3 rel = body->GetAngularVelocity() - parent->GetAngularVelocity();
+            const JPH::Vec3 damp = -rel * j.passive;
+            if (!damp.IsNearZero()) {
+                body->AddTorque(damp);
+                parent->AddTorque(-damp);
+            }
+        }
     }
 }
 

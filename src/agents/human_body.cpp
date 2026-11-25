@@ -120,6 +120,7 @@ bool HumanBody::init(physics::PhysicsWorld& world, const rig::SkeletonDef& def, 
             r.motor.frequency = frequency;
             r.motor.damping = muscles.damping;
             r.motor.maxTorque = strength;  // 0: no muscle (the joint hangs free)
+            r.passiveDamping = std::max(valueOf(muscles.passiveDamping, bone.name), 0.0f);
             p.muscle = strength > 0.0f;
             p.idle = std::clamp(valueOf(muscles.idle, bone.name), 0.0f, 1.0f);
             p.posture = std::find(muscles.posture.begin(), muscles.posture.end(), baseName(bone.name)) !=

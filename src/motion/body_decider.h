@@ -177,6 +177,9 @@ struct BodyDeciderSettings {
     float footHalfWidth = 0.045f;   // m, the foot's outline: half its width
     float footHalfLength = 0.11f;   // m, half its length
     float footCentreAhead = 0.05f;  // m, the foot's centre ahead of the ankle
+    // m: the hips' move for a foot's reach keeps the centre of mass this far
+    // inside the standing foot's outline (decider.comMargin).
+    float comMargin = 0.02f;
     float landingBehind = 0.05f;    // m
     float minFootGap = 0.1f;        // m
     float maxStepForward = 0.6f, maxStepSide = 0.5f;  // m
@@ -259,6 +262,9 @@ private:
     // their range axes), each leg reaching its anchor under the plan's pelvis;
     // the legs' pose is left as it was. The hips' turn keeps to it (passUp).
     float legsOver(Plan& p, const BodyDeciderSettings& s);
+    float legOver(Plan& p, const BodyDeciderSettings& s, int i);  // one leg's part of legsOver
+    bool legStands(int i) const;       // on the ground or the chain's far leg (its spot)
+    math::Vec3 legSpot(int i) const;   // where it stands: its anchor, or the far leg's spot
     // The chain rule up `chain` (each joint the next one's child; the pelvis
     // may come last), the foot's rule: `rest` is the rotation (world rotation
     // vector) the joint before the chain cannot keep; each joint takes its
@@ -267,6 +273,25 @@ private:
     // could take; `pelvisTurned` set if the pelvis moved (legs to solve).
     math::Vec3 passUp(Plan& p, const int* chain, int count, math::Vec3 rest, const BodyDeciderSettings& s,
                       bool& pelvisTurned);
+    // The one chain formula, the hand's and the foot's alike (the user,
+    // 2026-11-24/25): the limb alone first (`miss`: its end's distance from
+    // its goal); outside its free room the chain goes as deep as it has to
+    // (`chain`, nearest link first), its deepest link asks the turn of
+    // `line`'s from onto its to (share of it), every link takes that whole
+    // turn up to its own limits (passUp); the shallowest depth and least
+    // share that bring the goal in (none: the whole chain, its whole turn).
+    // `restore` puts the plan back before each try. Returns the depth;
+    // `left`: what the nearest link could not take of the turn, as chosen.
+    // The formula's one turn: the chain's first `n` links, its deepest asks
+    // share f of `line`'s from onto its to (about itself), every link takes
+    // that whole turn up to its own limits (passUp), deepest first. Returns
+    // what the nearest link could not take.
+    template <class Line>
+    math::Vec3 turnChain(Plan& p, const int* chain, int n, float f, Line&& line, const BodyDeciderSettings& s,
+                         bool& pelvisTurned);
+    template <class Restore, class Line, class Miss>
+    int reachChain(Plan& p, const int* chain, int links, Restore&& restore, Line&& line, Miss&& miss,
+                   const BodyDeciderSettings& s, bool& pelvisTurned, float& share, math::Vec3* left = nullptr);
     int endRoot(int e) const;
     // How far end e (hand L, R, foot L, R) reaches from its root: its span
     // with the middle joint at limbMinBend.
@@ -333,27 +358,90 @@ private:
     math::Vec3 hipsRef_{0.0f}, hipsRefVel_{0.0f};
     math::Vec3 hipsVel_{0.0f};
     float rangeMiss_[kEnds] = {0.0f, 0.0f, 0.0f, 0.0f};  // m: the output limb's end off its aim by its joints' ranges
-    // The hand's chain in time (the user's design, 2026-11-24): its links
-    // from the hips (pelvis, spine_01, spine_02, chest, clavicle L, R), each
-    // one's output turn so far on its way (rad, since it last stood still).
-    // A link starts once the one before it is chainOnset of its way along
-    // (or has none to go); the arm last, after its clavicle (armFree_).
-    static constexpr int kChainLinks = 6;
-    float chainTravel_[kChainLinks] = {};
-    bool armFree_[2] = {true, true};
-    // Each driven hand's B (its path's end, character space) last decide:
-    // a new B is a new target, every link's way starts again (newWay_).
+    // The chain in time, one rule for the hand's and the foot's (the user,
+    // 2026-11-25): it starts at the link the calculation reached (the
+    // deepest), which turns toward the target; each next link toward the
+    // limb follows once the one before it is chainOnset of its way along (or
+    // has none to go); the limb (`orderEnd_`: hand L, R, foot L, R; -1 none)
+    // last (limbOpen_). The hand's chain from the hips up, the foot's from
+    // the crossed forearm down to the hips; below the hips the legs are the
+    // IK's. One chain leads at a time (a hand's first).
+    // orderTravel_: each link's output turn so far on its way (rad).
+    static constexpr int kOrderLinks = 9;
+    int order_[kOrderLinks] = {};
+    int orderCount_ = 0;
+    int orderEnd_ = -1;
+    int orderEndWas_ = -1;
+    float orderTravel_[kOrderLinks] = {};
+    bool limbOpen_ = true;
+    bool inOrder(int j) const;  // j is one of the leading chain's links
+    // m: the output hips' move so far on its way, its first part (toward the
+    // target) and the whole (their turn waits for it); hipsDown_: the
+    // leading foot chain's second part, the drop (character space), which
+    // starts once the first is chainOnset along (downOpen_).
+    float moveTravel_[2] = {0.0f, 0.0f};
+    math::Vec3 hipsDown_{0.0f};
+    bool downOpen_ = true;
+    // A lifted foot i's hips move (solveLegs): how far plan p's centre of mass
+    // is outside the standing foot's outline less comMargin (m, level; -1:
+    // the other foot is not on the ground), and whether the standing leg
+    // still reaches its foot.
+    float comOutside(const Plan& p, int i, const BodyDeciderSettings& s) const;
+    bool standingReaches(const Plan& p, int i, const BodyDeciderSettings& s) const;
+    // The foot chain's links: the hips alone (the body above rides them).
+    static constexpr int kFootLinks = 1;
+    // Each driven hand's / foot's B (its path's end, character space) last
+    // decide: a new B is a new target, every link's way starts again (newWay_).
     math::Vec3 chainAim_[2]{};
+    math::Vec3 footAim_[2]{};
     bool newWay_ = false;
+    // Each end's chain as last worked out (hand L, R, foot L, R): its depth
+    // and share, each link's own number (its local rotation; the pelvis's
+    // rotation, character space) and the leg it let go. The search
+    // (reachChain) runs only for a new B; else each link takes its saved
+    // number again.
+    struct ChainCache {
+        bool valid = false;
+        int depth = 0;
+        float share = 0.0f;
+        math::Quat local[kOrderLinks] = {};
+        math::Quat pelvis = math::identityQuat();
+        int held = -1;
+        math::Vec3 shift{0.0f};  // a foot's chain: the hips' move before their turn (character space)
+        math::Vec3 down{0.0f};   // its second part, the drop (in shift too)
+    };
+    // Saves / puts back a chain's links' numbers (its first `depth` links).
+    void saveChain(Plan& p, const int* chain, ChainCache& c);
+    bool loadChain(Plan& p, const int* chain, const ChainCache& c);
+    ChainCache chainCache_[kEnds];
+    // The foot chain's tries (reachChain): this leg reaches `trialGoal_`
+    // (its B), not its ramped target (-1: none).
+    int trialLeg_ = -1;
+    math::Vec3 trialGoal_{0.0f};
     // Each free arm's pose (upper arm, forearm locals) as it was let go: the
     // desired pose stands there, a foot's chain turning it from there each
     // tick (solveLegs); armHeld_: its hand was driven last decide.
     math::Quat freeArm_[2][2] = {{math::identityQuat(), math::identityQuat()}, {math::identityQuat(), math::identityQuat()}};
     bool armHeld_[2] = {false, false};
-    // The leg whose thigh the hand's chain turned this tick (-1: none): its
-    // thigh turned on its knee toward the target, the hips on it; its shin and
-    // foot are not the decider's (physics), so no reach to its anchor.
+    // The leg whose thigh the hand's chain turns this tick (-1: none): not
+    // the hips' bound, so they turn past its hip's range (passUp, legsOver).
     int heldLeg_ = -1;
+    // The chain's far end (the user, 2026-11-25): the hand's chain ends at
+    // the opposite thigh, the foot's at the crossed forearm. The chain turns
+    // that link; where it then puts its limb's end (the foot, the hand) is
+    // that end's target, reached by its IK exactly as a driven end's
+    // (support, ranges, blend). farEnd_: that end from last decide (hand L,
+    // R, foot L, R; -1 none), farNext_ this one's, farTarget_ / farRot_ its
+    // pose; farSpot_: the lifted foot's ground spot (the chain turns the
+    // leg from standing there). handGiven_ / footGiven_: the planner drives
+    // that end itself (never the chain's far end).
+    int farEnd_ = -1;
+    int farNext_ = -1;
+    math::Vec3 farTarget_{0.0f};
+    math::Quat farRot_ = math::identityQuat();
+    math::Vec3 farSpot_{0.0f};
+    bool handGiven_[2] = {false, false};
+    bool footGiven_[2] = {false, false};
     // Each foot's turn about the vertical on the ground (rad), the turn of
     // its step under way (from, to), and the feet's mean turn this tick: the
     // pelvis's range counts from it.

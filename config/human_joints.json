@@ -87,6 +87,12 @@
     // next one in the chain takes over smoothly (never a jump at the limit).
     // The trunk joins a reach at ~0.8-0.9 of the arm's (Moriyama 2022).
     "chainOnset": 0.8,
+    // A lifted foot out of its leg's reach (the user, 2026-11-26): the hips
+    // move toward it first, only as far as it needs, while the body's centre
+    // of mass stays this far (m) inside the standing foot's outline
+    // (balanceStep.foot*) and the standing knee bends no more than
+    // oneLegKneeMaxDeg; then the hips turn. [E]
+    "comMargin": 0.02,
     // The pelvis tilt limits (BIOMECHANICS 9.3), rotation vector in degrees,
     // character space: [forward tilt (hip flexion, + forward), turn, side tilt].
     // Forward tilt 80 = hip flexion with straight knees (hamstrings).
@@ -243,7 +249,7 @@
     // to hold the posture. [E]
     "idle": {
       "spine_01": 0.1, "spine_02": 0.1, "chest": 0.1, "head": 0.1,
-      "clavicle": 0.15, "upper_arm": 0.02, "forearm": 0.01, "hand": 0.01,
+      "clavicle": 0.15, "upper_arm": 0.06, "forearm": 0.04, "hand": 0.03,  // arms: raised from 2 / 1 / 1 % (the user: they hung too much)
       "thigh": 0.05, "shin": 0.05, "foot": 0.15, "toe": 0.05
     },
     "nearShare": [0.10, 0.07, 0.05],  // the user's choice: 10, 7, 5 % then nothing [E]
@@ -251,6 +257,19 @@
     // is above or beyond them (the back, the neck and the shoulder girdle hold
     // the upper body, the head and the shoulder; the arms hang).
     "posture": ["spine_01", "spine_02", "chest", "head", "clavicle"],
+    // The joints' passive tissue (capsule, ligaments, the muscles' own
+    // viscosity): a torque against the joint's turn rate whatever the
+    // muscle's activity, N m s / rad, by bone name without its side; not
+    // listed: none. A relaxed arm's swing dies out in a few swings
+    // (pendulum tests). Every joint with tissue has it. Relaxed joint
+    // viscosity: trunk ~1-5, neck ~0.2-0.6, shoulder girdle ~0.2-0.5,
+    // shoulder ~0.3-1, elbow ~0.1-0.3, wrist ~0.01-0.05, hip ~0.5-2, knee
+    // ~0.1-0.5 (Wartenberg pendulum), ankle ~0.2-0.6, toes ~0.005-0.02. [E]
+    "passiveDamping": {
+      "spine_01": 2.0, "spine_02": 2.0, "chest": 2.0, "head": 0.4, "clavicle": 0.3,
+      "upper_arm": 0.5, "forearm": 0.2, "hand": 0.03,
+      "thigh": 1.0, "shin": 0.3, "foot": 0.4, "toe": 0.01
+    },
     "damping": 1.0,          // ratio: reaches the pose without overshoot
     // Strongest torque per joint, N m (adult men; one value per joint for both
     // directions: the mean where flexion and extension differ). Not listed:

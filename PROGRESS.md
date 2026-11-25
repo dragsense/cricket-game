@@ -227,6 +227,17 @@ planTrunk, armMiss / arm_fit's trunk use, footHike, footTrunk, solveLegs' range 
   Next (the user, for the morning): the foot's chain (rest-passing) in the game; then the
   body's parts colliding with each other (an arm went into the body); "across low"'s stall
   fixed itself with the posture hold, its cause never found.
+- [ ] C11 The foot's reach moves the hips first (the user, 2026-11-26; built, NOT
+  committed, NOT game-checked, not measured): a lifted foot its leg alone cannot bring to
+  its B moves the hips the way the foot still has to go (any way, down too), only as far
+  as it needs (the least share of that way, steps then halving), while the body's centre
+  of mass stays `decider.comMargin` (0.02 m [E]) inside the standing foot's outline
+  (balanceStep.foot*; never further out than it already was) and the standing leg still
+  reaches its foot (its knee at most `oneLegKneeMaxDeg`, now loaded); then the hips' turn
+  (reachChain) from there, as before. Then (the user's game check: a ground target ahead, the hips only went ahead, the foot stayed in the air: the centre of mass stopped the whole move, its drop with it) the move in two parts: the way first as far as the centre of mass allows, then what is still missing up or down alone (least share, the same two bounds), the drop starting in time once the first part is chainOnset along (hipsDown_, downOpen_). Searched only on a new B (> 0.1 mm), the move saved
+  with the chain (ChainCache::shift). In time: the hips move first, their turn waits until
+  the move is chainOnset along (moveTravel_), the leg last. The user: if it does not work
+  well, it comes out again.
 - [ ] C9 The hips' range fix and the foot's chain (the user, 2026-11-25; built, NOT
   committed, WAITING for the game check). The hips' range: only the legs that hold them
   count (on the ground, not the chain's: heldLeg_ / this link's); none: pelvisMin /

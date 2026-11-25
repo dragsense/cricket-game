@@ -173,6 +173,9 @@ struct RagdollPart {
     // Axis: 0 X, 1 Y, 2 Z of the joint's frame; -1: maxTorque on every axis.
     int directionalAxis = -1;
     float plusTorque = 0.0f, minusTorque = 0.0f;
+    // Its joint's passive tissue: a torque against the part's turn rate
+    // relative to its parent (N m s / rad), whatever the muscle does.
+    float passiveDamping = 0.0f;
 };
 
 class PhysicsWorld {

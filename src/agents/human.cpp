@@ -292,6 +292,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
             if (auto t = m->find("posture"); t != m->end() && t->is_array())
                 for (const nlohmann::json& v : *t)
                     if (v.is_string()) muscles.posture.push_back(v.get<std::string>());
+            if (auto t = m->find("passiveDamping"); t != m->end() && t->is_object())
+                for (auto it = t->begin(); it != t->end(); ++it)
+                    if (it->is_number()) muscles.passiveDamping.emplace_back(it.key(), it->get<float>());
         }
         if (auto m = root.find("muscles"); m != root.end())
             if (auto t = m->find("directional"); t != m->end() && t->is_object())
@@ -375,6 +378,9 @@ bool Human::attachPhysics(physics::PhysicsWorld& world) {
         deciderSettings_.footHalfWidth = dv("decider.balanceStep.footHalfWidth", deciderSettings_.footHalfWidth);
         deciderSettings_.footHalfLength = dv("decider.balanceStep.footHalfLength", deciderSettings_.footHalfLength);
         deciderSettings_.footCentreAhead = dv("decider.balanceStep.footCentreAhead", deciderSettings_.footCentreAhead);
+        deciderSettings_.comMargin = dv("decider.comMargin", deciderSettings_.comMargin);
+        deciderSettings_.oneLegKneeMax =
+            math::radians(dv("decider.oneLegKneeMaxDeg", math::degrees(deciderSettings_.oneLegKneeMax)));
         deciderSettings_.kneePole = ik_.kneePole;  // knees forward
         const nlohmann::json& root = jointsConfig_->root();
         if (auto d = root.find("decider"); d != root.end()) {
